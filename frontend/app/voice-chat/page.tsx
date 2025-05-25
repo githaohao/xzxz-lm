@@ -1010,65 +1010,18 @@ export default function VoiceChatPage() {
     // 可以在这里显示错误提示
   }, [])
 
-  // 处理语音对话响应
-  const handleVoiceChatResponse = useCallback((response: any) => {
-    console.log('📥 收到语音对话响应:', response)
-    
-    if (response.success) {
-      // 添加用户消息
-      if (response.recognized_text) {
-        const userMessage: VoiceMessage = {
-          id: Date.now().toString(),
-          content: response.recognized_text,
-          isUser: true,
-          timestamp: new Date(),
-          recognizedText: response.recognized_text
-        }
-        setMessages(prev => [...prev, userMessage])
-      }
-      
-      // 添加AI回复
-      if (response.response) {
-        const aiMessage: VoiceMessage = {
-          id: (Date.now() + 1).toString(),
-          content: response.response,
-          isUser: false,
-          timestamp: new Date()
-        }
-        setMessages(prev => [...prev, aiMessage])
-        
-        // 更新对话轮数
-        setConversationRounds(response.history_length || 0)
-        
-        // 播放AI回复
-        speakText(response.response)
-      }
-    } else {
-      // 处理错误
-      const errorMessage: VoiceMessage = {
-        id: Date.now().toString(),
-        content: '抱歉，处理您的语音时出现了问题。请稍后重试。',
-        isUser: false,
-        timestamp: new Date()
-      }
-      setMessages(prev => [...prev, errorMessage])
-    }
-  }, [])
-
   return (
     <div className="min-h-screen bg-background">
       <div className="container mx-auto p-4">
         <Navigation />
         <div className="max-w-4xl mx-auto space-y-6">
           
-          {/* 统一语音监听组件 */}
+          {/* 唤醒词监听组件 */}
           {callState === 'idle' && (
             <VoiceListenerWS
               onWakeWordDetected={handleWakeWordDetected}
-              onVoiceChatResponse={handleVoiceChatResponse}
               onError={handleWakeWordError}
               enabled={wakeWordEnabled}
-              mode="both"
               config={{
                 wake_words: ["小智小智", "小智", "智能助手", "hey xiaozhi"],
                 confidence_threshold: 0.6,

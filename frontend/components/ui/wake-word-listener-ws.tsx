@@ -15,8 +15,7 @@ import {
   Play,
   Pause,
   Wifi,
-  WifiOff,
-  MessageCircle
+  WifiOff
 } from 'lucide-react'
 
 interface VoiceConfig {
@@ -30,11 +29,9 @@ interface VoiceConfig {
 
 interface VoiceListenerWSProps {
   onWakeWordDetected: (detectedWord: string, confidence: number) => void
-  onVoiceChatResponse: (response: any) => void
   onError: (error: string) => void
   config?: Partial<VoiceConfig>
   enabled?: boolean
-  mode?: 'wake_word' | 'voice_chat' | 'both'
 }
 
 type ListeningState = 'idle' | 'connecting' | 'connected' | 'listening' | 'processing' | 'detected' | 'error'
@@ -42,11 +39,9 @@ type ConnectionState = 'disconnected' | 'connecting' | 'connected' | 'error'
 
 export default function VoiceListenerWS({
   onWakeWordDetected,
-  onVoiceChatResponse,
   onError,
   config = {},
-  enabled = true,
-  mode = 'both'
+  enabled = true
 }: VoiceListenerWSProps) {
   const [listeningState, setListeningState] = useState<ListeningState>('idle')
   const [connectionState, setConnectionState] = useState<ConnectionState>('disconnected')
@@ -56,9 +51,6 @@ export default function VoiceListenerWS({
   const [lastDetectionTime, setLastDetectionTime] = useState<Date | null>(null)
   const [reconnectAttempts, setReconnectAttempts] = useState(0)
   const [latency, setLatency] = useState<number>(0)
-  const [currentMode, setCurrentMode] = useState<'wake_word' | 'voice_chat'>(
-    mode === 'both' ? 'wake_word' : mode
-  )
   
   const wsRef = useRef<WebSocket | null>(null)
   const mediaRecorderRef = useRef<MediaRecorder | null>(null)
@@ -88,10 +80,10 @@ export default function VoiceListenerWS({
     }
 
     setConnectionState('connecting')
-    console.log('🔌 建立统一语音WebSocket连接...')
+    console.log('🔌 建立唤醒词WebSocket连接...')
     
     try {
-      // 构建WebSocket URL - 使用新的统一端点
+      // 构建WebSocket URL - 使用唤醒词检测端点
       const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:'
       const backendHost = process.env.NEXT_PUBLIC_BACKEND_HOST || 'localhost:8000'
       const wsUrl = `${protocol}//${backendHost}/api/voice/ws/voice`
@@ -100,7 +92,7 @@ export default function VoiceListenerWS({
       wsRef.current = ws
       
       ws.onopen = () => {
-        console.log('✅ 统一语音WebSocket连接已建立')
+        console.log('✅ 唤醒词WebSocket连接已建立')
         setConnectionState('connected')
         setReconnectAttempts(0)
         
@@ -121,7 +113,7 @@ export default function VoiceListenerWS({
       }
       
       ws.onclose = (event) => {
-        console.log('🔌 统一语音WebSocket连接关闭:', event.code, event.reason)
+        console.log('🔌 唤醒词WebSocket连接关闭:', event.code, event.reason)
         setConnectionState('disconnected')
         setListeningState('idle')
         
@@ -144,7 +136,7 @@ export default function VoiceListenerWS({
       }
       
       ws.onerror = (error) => {
-        console.error('❌ 统一语音WebSocket连接错误:', error)
+        console.error('❌ 唤醒词WebSocket连接错误:', error)
         setConnectionState('error')
         onError('WebSocket连接失败')
       }
@@ -189,7 +181,7 @@ export default function VoiceListenerWS({
       }
       
       wsRef.current.send(JSON.stringify(configMessage))
-      console.log('📤 发送统一语音配置信息:', configMessage)
+      console.log('📤 发送唤醒词配置信息:', configMessage)
     }
   }, [finalConfig])
 
@@ -214,7 +206,7 @@ export default function VoiceListenerWS({
     switch (type) {
       case 'status':
         if (message.status === 'connected') {
-          console.log('✅ 统一语音WebSocket服务器确认连接')
+          console.log('✅ 唤醒词WebSocket服务器确认连接')
         } else if (message.status === 'listening') {
           setListeningState('listening')
         } else if (message.status === 'processing') {
@@ -223,7 +215,7 @@ export default function VoiceListenerWS({
         break
         
       case 'config_ack':
-        console.log('✅ 统一语音配置已确认:', message.config)
+        console.log('✅ 唤醒词配置已确认:', message.config)
         break
         
       case 'detection':
@@ -248,21 +240,6 @@ export default function VoiceListenerWS({
         }
         break
         
-      case 'voice_chat_response':
-        console.log('✅ WebSocket语音对话响应:', message)
-        setListeningState('connected')
-        
-        // 通知父组件
-        onVoiceChatResponse(message)
-        
-        // 短暂延迟后恢复监听
-        setTimeout(() => {
-          if (isEnabled) {
-            setListeningState('listening')
-          }
-        }, 500)
-        break
-        
       case 'pong':
         // 计算延迟
         const currentTime = Date.now()
@@ -273,7 +250,7 @@ export default function VoiceListenerWS({
         break
         
       case 'error':
-        console.error('❌ 统一语音WebSocket服务器错误:', message.error)
+        console.error('❌ 唤醒词WebSocket服务器错误:', message.error)
         setListeningState('error')
         onError(message.error)
         break
@@ -281,26 +258,26 @@ export default function VoiceListenerWS({
       default:
         console.warn('⚠️ 未知消息类型:', type)
     }
-  }, [isEnabled, onWakeWordDetected, onVoiceChatResponse, onError])
+  }, [isEnabled, onWakeWordDetected, onError])
 
   // 发送音频数据
-  const sendAudioData = useCallback((audioData: string, mode: 'wake_word' | 'voice_chat' = currentMode) => {
+  const sendAudioData = useCallback((audioData: string) => {
     if (wsRef.current?.readyState === WebSocket.OPEN) {
       const audioMessage = {
-        type: mode === 'voice_chat' ? 'voice_chat' : 'audio',
+        type: 'audio',
         data: audioData,
-        mode: mode,
+        mode: 'wake_word',
         timestamp: Date.now(),
         session_id: finalConfig.session_id
       }
       wsRef.current.send(JSON.stringify(audioMessage))
     }
-  }, [currentMode, finalConfig.session_id])
+  }, [finalConfig.session_id])
 
   // 初始化音频监听
   const initializeAudioListening = useCallback(async () => {
     try {
-      console.log('🎤 初始化统一语音WebSocket音频监听...')
+      console.log('🎤 初始化唤醒词WebSocket音频监听...')
       
       const stream = await navigator.mediaDevices.getUserMedia({ 
         audio: {
@@ -343,7 +320,7 @@ export default function VoiceListenerWS({
         }
       }
       
-      console.log('✅ 统一语音WebSocket音频监听初始化成功')
+      console.log('✅ 唤醒词WebSocket音频监听初始化成功')
       return true
       
     } catch (error) {
@@ -451,7 +428,7 @@ export default function VoiceListenerWS({
     // 断开WebSocket连接
     disconnectWebSocket()
     
-    console.log('🔇 统一语音WebSocket监听已停止')
+    console.log('🔇 唤醒词WebSocket监听已停止')
   }, [stopRecording, disconnectWebSocket])
 
   // 切换监听状态
@@ -462,13 +439,6 @@ export default function VoiceListenerWS({
       stopListening()
     }
   }, [listeningState, startListening, stopListening])
-
-  // 切换模式
-  const toggleMode = useCallback(() => {
-    if (mode === 'both') {
-      setCurrentMode(prev => prev === 'wake_word' ? 'voice_chat' : 'wake_word')
-    }
-  }, [mode])
 
   // 音频级别监控
   useEffect(() => {
@@ -487,6 +457,22 @@ export default function VoiceListenerWS({
       updateAudioLevel()
     }
   }, [listeningState])
+
+  // 自动启动监听 - 当启用状态和连接状态都准备好时
+  useEffect(() => {
+    if (isEnabled && connectionState === 'connected' && listeningState === 'idle') {
+      console.log('🚀 自动开始唤醒词监听...')
+      startListening()
+    }
+  }, [isEnabled, connectionState, listeningState, startListening])
+
+  // 组件挂载时自动建立连接
+  useEffect(() => {
+    if (isEnabled) {
+      console.log('🔌 组件挂载，自动建立WebSocket连接...')
+      connectWebSocket()
+    }
+  }, [isEnabled, connectWebSocket])
 
   // 组件卸载时清理
   useEffect(() => {
@@ -516,7 +502,7 @@ export default function VoiceListenerWS({
   const getStatusText = () => {
     switch (listeningState) {
       case 'connecting': return '正在连接...'
-      case 'listening': return currentMode === 'wake_word' ? '正在监听唤醒词...' : '正在监听语音对话...'
+      case 'listening': return '正在监听唤醒词...'
       case 'detected': return '检测到唤醒词！'
       case 'processing': return '处理中...'
       case 'error': return '检测异常'
@@ -534,7 +520,7 @@ export default function VoiceListenerWS({
   }
 
   const getModeIcon = () => {
-    return currentMode === 'wake_word' ? <Zap className="h-4 w-4" /> : <MessageCircle className="h-4 w-4" />
+    return <Zap className="h-4 w-4" />
   }
 
   return (
@@ -542,7 +528,7 @@ export default function VoiceListenerWS({
       <CardHeader className="pb-3">
         <CardTitle className="flex items-center gap-2">
           {getModeIcon()}
-          统一语音监听 (WebSocket)
+          唤醒词监听 (WebSocket)
           {getConnectionIcon()}
         </CardTitle>
       </CardHeader>
@@ -564,29 +550,6 @@ export default function VoiceListenerWS({
             )}
           </div>
         </div>
-
-        {/* 模式切换 */}
-        {mode === 'both' && (
-          <div className="flex items-center justify-between">
-            <span className="text-sm font-medium">当前模式:</span>
-            <div className="flex items-center gap-2">
-              <Badge variant={currentMode === 'wake_word' ? 'default' : 'outline'}>
-                唤醒词检测
-              </Badge>
-              <Button
-                onClick={toggleMode}
-                variant="outline"
-                size="sm"
-                className="h-6 px-2"
-              >
-                切换
-              </Button>
-              <Badge variant={currentMode === 'voice_chat' ? 'default' : 'outline'}>
-                语音对话
-              </Badge>
-            </div>
-          </div>
-        )}
 
         {/* 重连信息 */}
         {reconnectAttempts > 0 && connectionState !== 'connected' && (
@@ -642,18 +605,16 @@ export default function VoiceListenerWS({
         </div>
 
         {/* 唤醒词列表 */}
-        {(currentMode === 'wake_word' || mode !== 'both') && (
-          <div className="space-y-2">
-            <span className="text-sm font-medium">支持的唤醒词：</span>
-            <div className="flex flex-wrap gap-1">
-              {finalConfig.wake_words.map((word, index) => (
-                <Badge key={index} variant="outline" className="text-xs">
-                  {word}
-                </Badge>
-              ))}
-            </div>
+        <div className="space-y-2">
+          <span className="text-sm font-medium">支持的唤醒词：</span>
+          <div className="flex flex-wrap gap-1">
+            {finalConfig.wake_words.map((word, index) => (
+              <Badge key={index} variant="outline" className="text-xs">
+                {word}
+              </Badge>
+            ))}
           </div>
-        )}
+        </div>
 
         {/* 最近检测记录 */}
         {detectedWords.length > 0 && (
@@ -680,7 +641,7 @@ export default function VoiceListenerWS({
           <p>• 🔄 自动重连机制，连接更稳定</p>
           <p>• 💡 心跳检测，实时监控连接状态</p>
           <p>• ⚡ 基于FunAudioLLM高性能识别引擎</p>
-          <p>• 🎯 统一支持唤醒词检测和语音对话</p>
+          <p>• 🎯 专注唤醒词检测，精准快速</p>
         </div>
       </CardContent>
     </Card>
