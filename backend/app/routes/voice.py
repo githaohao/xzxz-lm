@@ -1,11 +1,13 @@
 from fastapi import APIRouter, UploadFile, File, Form, HTTPException, Query, WebSocket, WebSocketDisconnect
-from fastapi.responses import JSONResponse, StreamingResponse
+from fastapi.responses import JSONResponse, StreamingResponse, Response
 from typing import Optional, Dict, List, Any
 import logging
 from app.services.funaudio_service_real import FunAudioLLMService
+from app.services.tts_service import tts_service
 import json
 import base64
 import asyncio
+import os
 from pydantic import BaseModel
 
 # 创建 FunAudioLLM 服务实例
@@ -49,6 +51,13 @@ class VoiceConnectionManager:
         return self.connection_sessions.get(websocket, "default")
 
 voice_manager = VoiceConnectionManager()
+
+# 语音合成请求模型
+class SpeechSynthesizeRequest(BaseModel):
+    text: str
+    voice: Optional[str] = "zh-CN-XiaoxiaoNeural"
+    rate: Optional[float] = 1.0
+    pitch: Optional[float] = 1.0
 
 @router.post("/chat")
 async def voice_chat(
@@ -609,4 +618,56 @@ async def process_voice_chat_audio(websocket: WebSocket, message: Dict):
             "type": "error",
             "error": str(e),
             "timestamp": asyncio.get_event_loop().time()
-        }) 
+        })
+
+@router.post("/speech/synthesize")
+async def speech_synthesize(request: SpeechSynthesizeRequest):
+    """
+    语音合成端点 - 直接返回音频流
+    
+    与/api/tts端点不同，此端点直接返回音频文件内容，而不是文件信息
+    专为前端/api/speech/synthesize路由设计
+    """
+    try:
+        logger.info(f"🔊 语音合成请求: {request.text[:50]}...")
+        
+        # 转换参数格式以匹配TTS服务
+        rate_str = f"+{int((request.rate - 1) * 100)}%" if request.rate >= 1 else f"{int((request.rate - 1) * 100)}%"
+        
+        # 调用TTS服务
+        audio_path, file_size = await tts_service.text_to_speech(
+            text=request.text,
+            voice=request.voice,
+            rate=rate_str,
+            volume="+0%"  # pitch在edge-tts中对应volume参数
+        )
+        
+        # 检查音频文件是否存在
+        if not os.path.exists(audio_path):
+            raise HTTPException(status_code=500, detail="音频文件生成失败")
+        
+        # 读取音频文件内容
+        with open(audio_path, "rb") as audio_file:
+            audio_content = audio_file.read()
+        
+        # 清理临时文件
+        try:
+            os.remove(audio_path)
+        except Exception as e:
+            logger.warning(f"清理临时音频文件失败: {e}")
+        
+        logger.info(f"✅ 语音合成成功，文件大小: {len(audio_content)} 字节")
+        
+        # 直接返回音频内容
+        return Response(
+            content=audio_content,
+            media_type="audio/mpeg",
+            headers={
+                "Content-Length": str(len(audio_content)),
+                "Content-Disposition": "inline; filename=synthesized_speech.mp3"
+            }
+        )
+        
+    except Exception as e:
+        logger.error(f"❌ 语音合成失败: {e}")
+        raise HTTPException(status_code=500, detail=f"语音合成失败: {str(e)}")

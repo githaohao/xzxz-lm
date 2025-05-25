@@ -46,7 +46,6 @@ export default function VoiceChatPage() {
   const [isAIPlaying, setIsAIPlaying] = useState(false)
   const [currentTranscript, setCurrentTranscript] = useState('')
   const [audioLevel, setAudioLevel] = useState(0)
-  const [speechRecognitionAvailable, setSpeechRecognitionAvailable] = useState(false)
   const [funAudioAvailable, setFunAudioAvailable] = useState(false)
   const [sessionId, setSessionId] = useState('default')
   const [conversationRounds, setConversationRounds] = useState(0)
@@ -67,7 +66,6 @@ export default function VoiceChatPage() {
   const analyserRef = useRef<AnalyserNode | null>(null)
   const audioChunksRef = useRef<Blob[]>([])
   const currentAudioRef = useRef<HTMLAudioElement | null>(null)
-  const recognitionRef = useRef<any>(null)
   const silenceTimerRef = useRef<NodeJS.Timeout | null>(null)
   const messagesEndRef = useRef<HTMLDivElement>(null)
 
@@ -103,35 +101,6 @@ export default function VoiceChatPage() {
     } catch (error) {
       console.error('❌ 检查服务状态失败:', error)
       setFunAudioAvailable(false)
-    }
-  }, [])
-
-  // 检查语音识别支持
-  const checkSpeechRecognitionSupport = useCallback(() => {
-    console.log('🔍 检查浏览器语音识别支持...')
-    
-    // 检查Web Speech API支持
-    const hasWebkitSpeechRecognition = 'webkitSpeechRecognition' in window
-    const hasSpeechRecognition = 'SpeechRecognition' in window
-    const hasSpeechSynthesis = 'speechSynthesis' in window
-    
-    console.log('🎤 webkitSpeechRecognition:', hasWebkitSpeechRecognition)
-    console.log('🎤 SpeechRecognition:', hasSpeechRecognition)
-    console.log('🔊 speechSynthesis:', hasSpeechSynthesis)
-    
-    if (hasWebkitSpeechRecognition || hasSpeechRecognition) {
-      setSpeechRecognitionAvailable(true)
-      console.log('✅ 浏览器支持语音识别')
-    } else {
-      setSpeechRecognitionAvailable(false)
-      console.warn('⚠️ 浏览器不支持语音识别')
-    }
-    
-    // 检查语音合成
-    if (!hasSpeechSynthesis) {
-      console.warn('⚠️ 浏览器不支持语音合成')
-    } else {
-      console.log('✅ 浏览器支持语音合成')
     }
   }, [])
 
@@ -176,20 +145,17 @@ export default function VoiceChatPage() {
       // 1. 检查服务状态
       await checkFunAudioStatus()
       
-      // 2. 检查浏览器支持
-      checkSpeechRecognitionSupport()
-      
-      // 3. 请求麦克风权限
+      // 2. 请求麦克风权限
       await requestMicrophonePermission()
       
-      // 5. 生成唯一的会话ID
+      // 3. 生成唯一的会话ID
       setSessionId(`voice-chat-${Date.now()}`)
       
       console.log('✅ 语音功能初始化完成')
     }
     
     initializeVoiceFeatures()
-  }, [checkFunAudioStatus, checkSpeechRecognitionSupport, requestMicrophonePermission])
+  }, [checkFunAudioStatus, requestMicrophonePermission])
 
   // 处理用户语音输入
   const handleUserSpeech = useCallback(async (transcript: string, audioBlob?: Blob) => {
@@ -369,136 +335,6 @@ export default function VoiceChatPage() {
     
     setCallState('connected')
   }, [funAudioAvailable, sessionId])
-
-  // 初始化语音识别
-  const initSpeechRecognition = useCallback(() => {
-    if (!speechRecognitionAvailable) {
-      console.error('❌ 语音识别不可用')
-      return
-    }
-
-    if ('webkitSpeechRecognition' in window || 'SpeechRecognition' in window) {
-      const SpeechRecognition = (window as any).webkitSpeechRecognition || (window as any).SpeechRecognition
-      const recognition = new SpeechRecognition()
-      
-      recognition.continuous = true
-      recognition.interimResults = true
-      recognition.maxAlternatives = 1
-      
-      // 不设置语言，使用浏览器默认设置
-      console.log('🎤 初始化Web Speech API，使用浏览器默认语言')
-      
-      recognition.onstart = () => {
-        console.log('✅ 语音识别开始监听')
-        setCallState('listening')
-      }
-      
-      recognition.onresult = (event: any) => {
-        let finalTranscript = ''
-        let interimTranscript = ''
-        
-        for (let i = event.resultIndex; i < event.results.length; i++) {
-          const transcript = event.results[i][0].transcript
-          if (event.results[i].isFinal) {
-            finalTranscript += transcript
-          } else {
-            interimTranscript += transcript
-          }
-        }
-        
-        if (finalTranscript.trim()) {
-          console.log('📝 最终识别结果:', finalTranscript)
-          handleUserSpeech(finalTranscript.trim())
-        } else if (interimTranscript.trim()) {
-          console.log('📝 临时识别结果:', interimTranscript)
-          setCurrentTranscript(interimTranscript)
-        }
-      }
-      
-      recognition.onerror = (event: any) => {
-        console.error('❌ 语音识别错误:', event.error)
-        
-        // 处理不同类型的错误
-        switch (event.error) {
-          case 'language-not-supported':
-            console.log('🌐 语言不支持，尝试设置为英文')
-            recognition.lang = 'en-US'
-            setTimeout(() => {
-              if (callState === 'connected' || callState === 'listening') {
-                try {
-                  recognition.start()
-                  console.log('🔄 重新启动语音识别（英文）')
-                } catch (e) {
-                  console.error('重启语音识别失败:', e)
-                  alert('语音识别启动失败，请检查麦克风权限或刷新页面重试')
-                  setCallState('connected')
-                }
-              }
-            }, 1000)
-            return
-          case 'not-allowed':
-            console.error('❌ 麦克风权限被拒绝')
-            alert('请允许麦克风权限以使用语音功能。请在浏览器地址栏左侧点击麦克风图标，选择"允许"。')
-            setCallState('idle')
-            break
-          case 'no-speech':
-            console.log('⚠️ 未检测到语音，继续监听...')
-            // 不需要特殊处理，会自动重启
-            break
-          case 'network':
-            console.log('⚠️ 网络错误，2秒后重试...')
-            setTimeout(() => {
-              if (callState === 'connected' || callState === 'listening') {
-                try {
-                  recognition.start()
-                } catch (e) {
-                  console.error('重启语音识别失败:', e)
-                }
-              }
-            }, 2000)
-            break
-          case 'audio-capture':
-            console.error('❌ 音频捕获失败')
-            alert('音频捕获失败，请检查麦克风是否正常工作')
-            setCallState('idle')
-            break
-          default:
-            console.log('⚠️ 语音识别错误，1秒后重试...')
-            setTimeout(() => {
-              if (callState === 'connected' || callState === 'listening') {
-                try {
-                  recognition.start()
-                } catch (e) {
-                  console.error('重启语音识别失败:', e)
-                }
-              }
-            }, 1000)
-        }
-      }
-      
-      recognition.onend = () => {
-        console.log('🔇 语音识别结束')
-        setCurrentTranscript('')
-        
-        // 如果通话还在进行且AI没在说话，重新开始监听
-        if ((callState === 'connected' || callState === 'listening') && !isAIPlaying) {
-          setTimeout(() => {
-            if ((callState === 'connected' || callState === 'listening') && !isAIPlaying) {
-              try {
-                console.log('🔄 重新启动语音识别')
-                recognition.start()
-              } catch (e) {
-                console.error('重启语音识别失败:', e)
-              }
-            }
-          }, 100)
-        }
-      }
-      
-      recognitionRef.current = recognition
-      console.log('✅ 语音识别初始化完成')
-    }
-  }, [callState, isAIPlaying, speechRecognitionAvailable, handleUserSpeech])
 
   // 初始化录音（用于FunAudioLLM）
   const initRecording = useCallback(async () => {
@@ -690,92 +526,64 @@ export default function VoiceChatPage() {
       setIsAIPlaying(true)
       setCallState('speaking')
       
-      // 使用Web Speech API的语音合成
-      if ('speechSynthesis' in window) {
-        // 先停止之前的语音
-        speechSynthesis.cancel()
+      try {
+        // 使用后端TTS API进行语音合成
+        const response = await fetch('/api/voice/speech/synthesize', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            text: cleanedText,
+            voice: 'zh-CN-XiaoxiaoNeural',
+            rate: 0.9,
+            pitch: 1.1
+          })
+        })
         
-        // 等待一下确保之前的语音已停止
-        await new Promise(resolve => setTimeout(resolve, 100))
-        
-        const utterance = new SpeechSynthesisUtterance(cleanedText)
-        
-        // 根据语音内容设置语音参数
-        utterance.lang = 'zh-CN'  // 默认使用中文
-        utterance.rate = 0.9
-        utterance.pitch = 1.1
-        
-        utterance.volume = isMuted ? 0 : 0.8  // 提高音量
-        
-        utterance.onstart = () => {
-          console.log('✅ AI语音播放开始')
-        }
-        
-        utterance.onend = () => {
-          console.log('✅ AI语音播放结束')
-          setIsAIPlaying(false)
-          setCallState('connected')
+        if (response.ok) {
+          const audioBuffer = await response.arrayBuffer()
+          const audioBlob = new Blob([audioBuffer], { type: 'audio/wav' })
+          const audioUrl = URL.createObjectURL(audioBlob)
           
-          // 语音播放结束后，重新开始监听
-          setTimeout(() => {
-            if (funAudioAvailable) {
-              startRecording()
-            } else if (recognitionRef.current) {
-              try {
-                recognitionRef.current.start()
-              } catch (e) {
-                console.error('重启语音识别失败:', e)
+          const audio = new Audio(audioUrl)
+          audio.volume = isMuted ? 0 : 0.8
+          
+          audio.onplay = () => {
+            console.log('✅ AI语音播放开始')
+          }
+          
+          audio.onended = () => {
+            console.log('✅ AI语音播放结束')
+            setIsAIPlaying(false)
+            setCallState('connected')
+            URL.revokeObjectURL(audioUrl)
+            
+            // 语音播放结束后，重新开始录音
+            setTimeout(() => {
+              if (funAudioAvailable) {
+                startRecording()
               }
-            }
-          }, 500)
-        }
-        
-        utterance.onerror = (event) => {
-          console.error('❌ 语音合成错误:', event)
+            }, 500)
+          }
+          
+          audio.onerror = (event) => {
+            console.error('❌ 音频播放错误:', event)
+            setIsAIPlaying(false)
+            setCallState('connected')
+            URL.revokeObjectURL(audioUrl)
+          }
+          
+          await audio.play()
+          
+        } else {
+          console.warn('⚠️ 后端TTS服务不可用，跳过语音合成')
           setIsAIPlaying(false)
           setCallState('connected')
         }
         
-        // 检查语音列表是否已加载
-        let voices = speechSynthesis.getVoices()
-        if (voices.length === 0) {
-          console.log('⏳ 等待语音列表加载...')
-          // 等待语音列表加载
-          speechSynthesis.onvoiceschanged = () => {
-            voices = speechSynthesis.getVoices()
-            console.log('🎵 语音列表已加载:', voices.length, '个语音')
-            
-            // 选择合适的语音 - 默认中文
-            const preferredVoice = voices.find(voice => 
-              voice.lang.startsWith('zh')
-            ) || voices.find(voice => 
-              voice.lang.startsWith('en')
-            )
-            if (preferredVoice) {
-              utterance.voice = preferredVoice
-              console.log('🎵 选择语音:', preferredVoice.name, preferredVoice.lang)
-            }
-            
-            speechSynthesis.speak(utterance)
-          }
-        } else {
-          console.log('🎵 使用现有语音列表:', voices.length, '个语音')
-          
-          // 选择合适的语音 - 默认中文
-          const preferredVoice = voices.find(voice => 
-            voice.lang.startsWith('zh')
-          ) || voices.find(voice => 
-            voice.lang.startsWith('en')
-          )
-          if (preferredVoice) {
-            utterance.voice = preferredVoice
-            console.log('🎵 选择语音:', preferredVoice.name, preferredVoice.lang)
-          }
-          
-          speechSynthesis.speak(utterance)
-        }
-      } else {
-        console.warn('⚠️ 浏览器不支持语音合成')
+      } catch (error) {
+        console.error('❌ TTS API调用失败:', error)
         setIsAIPlaying(false)
         setCallState('connected')
       }
@@ -789,9 +597,9 @@ export default function VoiceChatPage() {
 
   // 开始通话
   const startCall = async () => {
-    // 检查语音功能可用性
-    if (!funAudioAvailable && !speechRecognitionAvailable) {
-      console.log('⚠️ 检测到语音服务不可用，尝试重新检查状态...')
+    // 检查FunAudioLLM语音功能可用性
+    if (!funAudioAvailable) {
+      console.log('⚠️ 检测到FunAudioLLM服务不可用，尝试重新检查状态...')
       
       // 重新检查服务状态
       await refreshServiceStatus()
@@ -805,36 +613,16 @@ export default function VoiceChatPage() {
       
       await initAudioAnalyser()
       
-      // 优先使用FunAudioLLM录音模式
-      if (funAudioAvailable) {
-        console.log('🎤 启动FunAudioLLM录音模式')
-        await initRecording()
-      } else if (speechRecognitionAvailable) {
-        // 备选：Web Speech API模式
-        console.log('🎤 启动Web Speech API模式')
-        initSpeechRecognition()
-      }
+      // 使用FunAudioLLM录音模式
+      console.log('🎤 启动FunAudioLLM录音模式')
+      await initRecording()
       
       setCallState('connected')
       
-              // 开始语音识别或录音
-        if (funAudioAvailable) {
-          // FunAudioLLM模式：开始录音
-        setTimeout(() => {
-          startRecording()
-        }, 1000)
-      } else if (speechRecognitionAvailable && recognitionRef.current) {
-        // Web Speech API模式
-        try {
-          console.log('🎤 启动Web Speech API语音识别')
-          recognitionRef.current.start()
-        } catch (e) {
-          console.error('启动语音识别失败:', e)
-          alert('启动语音识别失败，请检查麦克风权限并重试')
-          setCallState('idle')
-          return
-        }
-      }
+      // 开始录音
+      setTimeout(() => {
+        startRecording()
+      }, 1000)
       
       // 不添加欢迎消息，直接开始监听
       setMessages([])
@@ -852,16 +640,6 @@ export default function VoiceChatPage() {
     setIsRecording(false)
     setIsAIPlaying(false)
     setCurrentTranscript('')
-    
-    // 停止语音识别
-    if (recognitionRef.current) {
-      recognitionRef.current.stop()
-    }
-    
-    // 停止语音合成
-    if ('speechSynthesis' in window) {
-      speechSynthesis.cancel()
-    }
     
     // 停止音频流
     if (audioStreamRef.current) {
@@ -909,16 +687,19 @@ export default function VoiceChatPage() {
   // 切换静音
   const toggleMute = () => {
     setIsMuted(!isMuted)
-    if ('speechSynthesis' in window) {
-      speechSynthesis.cancel() // 停止当前播放
+    // 如果正在播放，停止当前音频
+    if (currentAudioRef.current) {
+      currentAudioRef.current.pause()
+      setIsAIPlaying(false)
     }
   }
 
   // 中断AI说话
   const interruptAI = () => {
     if (isAIPlaying) {
-      if ('speechSynthesis' in window) {
-        speechSynthesis.cancel()
+      // 停止当前音频播放
+      if (currentAudioRef.current) {
+        currentAudioRef.current.pause()
       }
       setIsAIPlaying(false)
       setCallState('connected')
@@ -927,11 +708,7 @@ export default function VoiceChatPage() {
       if (funAudioAvailable) {
         setTimeout(() => {
           startRecording()
-        }, 100)
-      } else if (recognitionRef.current && callState === 'connected') {
-        setTimeout(() => {
-          recognitionRef.current.start()
-        }, 100)
+        }, 500)
       }
     }
   }
@@ -964,10 +741,9 @@ export default function VoiceChatPage() {
 
   // 刷新服务状态
   const refreshServiceStatus = useCallback(async () => {
-    console.log('🔄 刷新服务状态...')
+    console.log('🔄 刷新FunAudioLLM服务状态...')
     await checkFunAudioStatus()
-    checkSpeechRecognitionSupport()
-  }, [checkFunAudioStatus, checkSpeechRecognitionSupport])
+  }, [checkFunAudioStatus])
 
   // 处理唤醒词检测
   const handleWakeWordDetected = useCallback(async (detectedWord: string, confidence: number) => {
@@ -975,14 +751,25 @@ export default function VoiceChatPage() {
     setWakeWordDetected(true)
     setLastWakeWord(detectedWord)
     
-    // 播放确认音效
-    if ('speechSynthesis' in window) {
-      const utterance = new SpeechSynthesisUtterance('我在，请说话')
-      utterance.lang = 'zh-CN'
-      utterance.rate = 1.0
-      utterance.pitch = 1.2
-      utterance.volume = 0.8
-      speechSynthesis.speak(utterance)
+    // 播放确认音效（简单的beep音）
+    try {
+      const audioContext = new AudioContext()
+      const oscillator = audioContext.createOscillator()
+      const gainNode = audioContext.createGain()
+      
+      oscillator.connect(gainNode)
+      gainNode.connect(audioContext.destination)
+      
+      oscillator.frequency.setValueAtTime(800, audioContext.currentTime)
+      oscillator.frequency.setValueAtTime(1000, audioContext.currentTime + 0.1)
+      
+      gainNode.gain.setValueAtTime(0.3, audioContext.currentTime)
+      gainNode.gain.exponentialRampToValueAtTime(0.01, audioContext.currentTime + 0.3)
+      
+      oscillator.start(audioContext.currentTime)
+      oscillator.stop(audioContext.currentTime + 0.3)
+    } catch (error) {
+      console.warn('播放唤醒音效失败:', error)
     }
     
     // 自动开始语音通话
@@ -1096,7 +883,7 @@ export default function VoiceChatPage() {
                       FunAudioLLM
                     </Badge>
                   )}
-                  {!speechRecognitionAvailable && !funAudioAvailable && (
+                  {!funAudioAvailable && (
                     <Badge variant="destructive" className="text-xs">
                       语音不可用
                     </Badge>
@@ -1117,7 +904,7 @@ export default function VoiceChatPage() {
                         onClick={startCall}
                         size="lg"
                         className="rounded-full w-16 h-16 bg-green-600 hover:bg-green-700"
-                        disabled={!speechRecognitionAvailable && !funAudioAvailable}
+                        disabled={!funAudioAvailable}
                       >
                         <Phone className="h-6 w-6" />
                       </Button>
@@ -1326,7 +1113,7 @@ export default function VoiceChatPage() {
               </Card>
 
               {/* 语音功能不可用提示 */}
-              {!funAudioAvailable && !speechRecognitionAvailable && (
+              {!funAudioAvailable && (
                 <Card className="bg-red-50 dark:bg-red-950/20 border-red-200 dark:border-red-800">
                   <CardContent className="p-4">
                     <div className="flex items-center gap-2 text-red-800 dark:text-red-200">
