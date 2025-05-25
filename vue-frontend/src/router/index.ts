@@ -25,11 +25,11 @@ const router = createRouter({
       component: () => import('../views/SimpleVoiceChatView.vue')
     },
     {
-      path: '/style-showcase',
-      name: 'style-showcase',
-      component: () => import('../views/StyleShowcaseView.vue')
+      path: '/components',
+      name: 'components',
+      component: () => import('../views/ComponentShowcaseView.vue')
     }
   ]
 })
 
-export default router 
+export default router
