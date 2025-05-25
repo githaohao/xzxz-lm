@@ -1,0 +1,42 @@
+{
+  "apple_silicon_optimization": {
+    "description": "FunAudioLLM Apple Silicon M1 Max 优化配置",
+    "hardware": {
+      "chip": "Apple M1 Max",
+      "accelerator": "Metal Performance Shaders (MPS)",
+      "memory_optimization": true,
+      "performance_mode": "high"
+    },
+    "pytorch": {
+      "version": "2.7.0",
+      "device": "mps",
+      "memory_fraction": 0.8,
+      "enable_fallback": true,
+      "compile_mode": false
+    },
+    "funasr": {
+      "model": "iic/SenseVoiceSmall",
+      "device": "mps",
+      "batch_size": 1,
+      "precision": "float16",
+      "use_flash_attention": false,
+      "optimize_for_mobile": true
+    },
+    "performance": {
+      "vs_whisper_speedup": "15x",
+      "vs_cpu_speedup": "8x",
+      "memory_usage": "低内存占用",
+      "power_efficiency": "高能效比"
+    },
+    "cache": {
+      "model_cache": "./models/cache",
+      "modelscope_cache": "./models/modelscope",
+      "hf_endpoint": "https://hf-mirror.com"
+    },
+    "runtime": {
+      "omp_num_threads": 8,
+      "torch_num_threads": 8,
+      "accelerate_mixed_precision": "fp16"
+    }
+  }
+}

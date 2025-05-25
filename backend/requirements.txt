@@ -1,0 +1,19 @@
+
+# FunAudioLLM 依赖 - Apple Silicon 优化版本
+funasr>=1.2.6
+modelscope>=1.9.0
+soundfile>=0.12.1
+librosa>=0.10.0
+torch>=2.0.0
+transformers>=4.30.0
+accelerate>=0.20.0
+pydub>=0.25.1
+scipy>=1.9.0
+ffmpeg-python>=0.2.0
+webrtcvad>=2.0.10
+aiohttp>=3.8.0
+             
+# Apple Silicon 特定依赖
+onnxruntime>=1.15.0
+tensorflow-macos>=2.13.0
+tensorflow-metal>=1.0.0
