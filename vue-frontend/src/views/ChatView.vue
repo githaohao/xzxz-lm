@@ -1,5 +1,5 @@
 <template>
-  <div class="flex flex-col h-screen bg-gradient-to-br from-slate-50 to-slate-100 dark:from-slate-900 dark:to-slate-800">
+  <div class="flex flex-col h-full bg-gradient-to-br from-slate-50 to-slate-100 dark:from-slate-900 dark:to-slate-800">
     <!-- 主要内容区域 -->
     <div class="flex-1 container mx-auto px-4 py-6 max-w-4xl flex flex-col">
       <!-- 文件处理状态 -->

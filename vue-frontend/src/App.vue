@@ -1,5 +1,5 @@
 <template>
-  <div id="app" class="min-h-screen bg-background">
+  <div id="app" class="h-screen flex flex-col bg-background">
     <nav class="border-b border-border bg-card">
       <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         <div class="flex justify-between h-16">
@@ -42,7 +42,7 @@
       </div>
     </nav>
     
-    <main class="flex-1">
+    <main class="flex-1 overflow-hidden">
       <router-view />
     </main>
   </div>
