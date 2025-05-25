@@ -26,6 +26,19 @@ export const useVoiceStore = defineStore('voice', () => {
   const audioStream = ref<MediaStream | null>(null)
   const audioContext = ref<AudioContext | null>(null)
   const currentAudio = ref<HTMLAudioElement | null>(null)
+  const analyserNode = ref<AnalyserNode | null>(null)
+  const mediaRecorder = ref<MediaRecorder | null>(null)
+  
+  // 智能静音检测配置
+  const silenceThreshold = ref(30) // 静音阈值 (0-255)
+  const silenceTimeout = ref(2000) // 静音超时时间 (毫秒)
+  const minRecordingTime = ref(1000) // 最小录音时间 (毫秒)
+  const maxRecordingTime = ref(30000) // 最大录音时间 (毫秒)
+  
+  // 静音检测状态
+  const lastSoundTime = ref(0)
+  const recordingStartTime = ref(0)
+  const silenceDetectionActive = ref(false)
 
   // 计算属性
   const hasMessages = computed(() => messages.value.length > 0)
@@ -41,6 +54,74 @@ export const useVoiceStore = defineStore('voice', () => {
     }
     messages.value.push(newMessage)
     return newMessage
+  }
+
+  // 音频监测函数
+  function startAudioMonitoring(): void {
+    if (!audioContext.value || !analyserNode.value) return
+
+    const bufferLength = analyserNode.value.frequencyBinCount
+    const dataArray = new Uint8Array(bufferLength)
+    
+    silenceDetectionActive.value = true
+    lastSoundTime.value = Date.now()
+    recordingStartTime.value = Date.now()
+
+    function checkAudioLevel(): void {
+      if (!silenceDetectionActive.value || !analyserNode.value) return
+
+      analyserNode.value.getByteFrequencyData(dataArray)
+      
+      // 计算平均音量
+      let sum = 0
+      for (let i = 0; i < bufferLength; i++) {
+        sum += dataArray[i]
+      }
+      const averageVolume = sum / bufferLength
+
+      const currentTime = Date.now()
+      const recordingDuration = currentTime - recordingStartTime.value
+      const silenceDuration = currentTime - lastSoundTime.value
+
+      // 如果检测到声音，更新最后声音时间
+      if (averageVolume > silenceThreshold.value) {
+        lastSoundTime.value = currentTime
+      }
+
+      // 检查是否应该停止录音
+      const shouldStop = (
+        // 静音时间超过阈值且已录音最小时间
+        (silenceDuration > silenceTimeout.value && recordingDuration > minRecordingTime.value) ||
+        // 录音时间超过最大时间
+        recordingDuration > maxRecordingTime.value
+      )
+
+      if (shouldStop) {
+        console.log(`🔇 智能静音检测: 平均音量=${averageVolume.toFixed(1)}, 静音时长=${silenceDuration}ms, 录音时长=${recordingDuration}ms`)
+        stopRecording()
+        return
+      }
+
+      // 继续监测
+      requestAnimationFrame(checkAudioLevel)
+    }
+
+    checkAudioLevel()
+  }
+
+  // 停止音频监测
+  function stopAudioMonitoring(): void {
+    silenceDetectionActive.value = false
+  }
+
+  // 停止录音
+  function stopRecording(): void {
+    if (mediaRecorder.value && mediaRecorder.value.state === 'recording') {
+      mediaRecorder.value.stop()
+      isRecording.value = false
+      stopAudioMonitoring()
+      console.log('🎤 录音已停止')
+    }
   }
 
   // 检查服务状态
@@ -77,7 +158,14 @@ export const useVoiceStore = defineStore('voice', () => {
       audioStream.value = stream
       audioContext.value = new AudioContext()
       
-      console.log('✅ 录音初始化成功')
+      // 创建音频分析器用于智能静音检测
+      const source = audioContext.value.createMediaStreamSource(stream)
+      analyserNode.value = audioContext.value.createAnalyser()
+      analyserNode.value.fftSize = 256
+      analyserNode.value.smoothingTimeConstant = 0.8
+      source.connect(analyserNode.value)
+      
+      console.log('✅ 录音初始化成功，智能静音检测已启用')
     } catch (error) {
       console.error('❌ 录音初始化失败:', error)
       throw new Error('无法访问麦克风，请检查权限设置')
@@ -95,36 +183,31 @@ export const useVoiceStore = defineStore('voice', () => {
     }
 
     try {
-      const mediaRecorder = new MediaRecorder(audioStream.value, {
+      mediaRecorder.value = new MediaRecorder(audioStream.value, {
         mimeType: 'audio/webm;codecs=opus'
       })
 
       const audioChunks: Blob[] = []
       
-      mediaRecorder.ondataavailable = (event) => {
+      mediaRecorder.value.ondataavailable = (event) => {
         if (event.data.size > 0) {
           audioChunks.push(event.data)
         }
       }
 
-      mediaRecorder.onstop = async () => {
+      mediaRecorder.value.onstop = async () => {
         const audioBlob = new Blob(audioChunks, { type: 'audio/webm' })
         await handleUserSpeech('', audioBlob)
       }
 
-      mediaRecorder.start()
+      mediaRecorder.value.start()
       isRecording.value = true
       callState.value = 'listening'
       
-      // 10秒后自动停止录音
-      setTimeout(() => {
-        if (mediaRecorder.state === 'recording') {
-          mediaRecorder.stop()
-          isRecording.value = false
-        }
-      }, 10000)
+      // 启动智能静音检测
+      startAudioMonitoring()
 
-      console.log('🎤 开始录音')
+      console.log('🎤 开始录音 (智能静音检测已启用)')
     } catch (error) {
       console.error('❌ 开始录音失败:', error)
       throw error
@@ -300,6 +383,15 @@ export const useVoiceStore = defineStore('voice', () => {
     isAIPlaying.value = false
     currentTranscript.value = ''
 
+    // 停止智能静音检测
+    stopAudioMonitoring()
+
+    // 停止录音
+    if (mediaRecorder.value && mediaRecorder.value.state === 'recording') {
+      mediaRecorder.value.stop()
+    }
+    mediaRecorder.value = null
+
     // 停止音频流
     if (audioStream.value) {
       audioStream.value.getTracks().forEach(track => track.stop())
@@ -311,12 +403,15 @@ export const useVoiceStore = defineStore('voice', () => {
       audioContext.value.close()
       audioContext.value = null
     }
+    analyserNode.value = null
 
     // 停止当前播放的音频
     if (currentAudio.value) {
       currentAudio.value.pause()
       currentAudio.value = null
     }
+
+    console.log('📞 通话已结束，所有资源已清理')
   }
 
   // 切换静音
@@ -389,6 +484,34 @@ export const useVoiceStore = defineStore('voice', () => {
     }
   }
 
+  // 配置智能静音检测参数
+  function configureSilenceDetection(config: {
+    threshold?: number
+    timeout?: number
+    minRecordingTime?: number
+    maxRecordingTime?: number
+  }): void {
+    if (config.threshold !== undefined) {
+      silenceThreshold.value = Math.max(0, Math.min(255, config.threshold))
+    }
+    if (config.timeout !== undefined) {
+      silenceTimeout.value = Math.max(500, config.timeout)
+    }
+    if (config.minRecordingTime !== undefined) {
+      minRecordingTime.value = Math.max(500, config.minRecordingTime)
+    }
+    if (config.maxRecordingTime !== undefined) {
+      maxRecordingTime.value = Math.max(5000, config.maxRecordingTime)
+    }
+    
+    console.log('🔧 智能静音检测配置已更新:', {
+      threshold: silenceThreshold.value,
+      timeout: silenceTimeout.value,
+      minRecordingTime: minRecordingTime.value,
+      maxRecordingTime: maxRecordingTime.value
+    })
+  }
+
   return {
     // 状态
     messages,
@@ -401,6 +524,13 @@ export const useVoiceStore = defineStore('voice', () => {
     currentTranscript,
     funAudioAvailable,
     speechRecognitionAvailable,
+    silenceDetectionActive,
+    
+    // 智能静音检测配置
+    silenceThreshold,
+    silenceTimeout,
+    minRecordingTime,
+    maxRecordingTime,
     
     // 计算属性
     hasMessages,
@@ -413,10 +543,12 @@ export const useVoiceStore = defineStore('voice', () => {
     startCall,
     endCall,
     startRecording,
+    stopRecording,
     toggleMute,
     interruptAI,
     clearHistory,
     restartSession,
-    getStatusText
+    getStatusText,
+    configureSilenceDetection
   }
 }) 

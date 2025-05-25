@@ -86,7 +86,7 @@
                   variant="destructive"
                   class="rounded-full w-16 h-16 shadow-lg transition-all duration-200 hover:scale-105"
                 >
-                  <PhoneOff class="h-6 w-6" />
+                  <Phone class="h-8 w-8 text-white" />
                 </Button>
 
                 <!-- 静音控制 -->
