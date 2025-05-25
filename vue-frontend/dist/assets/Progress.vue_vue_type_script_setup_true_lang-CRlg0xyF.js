@@ -1,2 +1,0 @@
-import{d as a,s,G as l,u as r,H as n,v as t,i as o,j as i}from"./index-CSZ9edpw.js";const m=a({inheritAttrs:!1,__name:"Progress",props:{value:{}},setup(u){return(e,f)=>(i(),s("div",{class:l(r(n)("relative h-2 w-full overflow-hidden rounded-full bg-primary/20",e.$attrs.class))},[t("div",{class:"h-full w-full flex-1 bg-primary transition-all",style:o({transform:`translateX(-${100-(e.value||0)}%)`})},null,4)],2))}});export{m as _};
-//# sourceMappingURL=Progress.vue_vue_type_script_setup_true_lang-CRlg0xyF.js.map

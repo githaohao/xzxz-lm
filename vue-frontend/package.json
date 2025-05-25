@@ -21,6 +21,7 @@
   "license": "MIT",
   "packageManager": "pnpm@10.9.0",
   "dependencies": {
+    "@internationalized/date": "^3.8.1",
     "@unovis/ts": "^1.5.2",
     "@unovis/vue": "^1.5.2",
     "@vee-validate/zod": "^4.15.0",
