@@ -1287,33 +1287,6 @@ export default function VoiceChatPage() {
               <Card className="bg-muted/50">
                 <CardContent className="p-4">
                   <h4 className="font-semibold mb-2">使用说明：</h4>
-                  <div className="space-y-3">
-                    <div>
-                      <h5 className="font-medium text-sm mb-1 text-blue-600">🎯 统一语音功能：</h5>
-                      <ul className="list-disc list-inside space-y-1 text-sm ml-4">
-                        <li>🗣️ 说出"小智小智"来唤醒AI助手</li>
-                        <li>💬 支持连续语音对话，无需重复唤醒</li>
-                        <li>⚡ WebSocket实时连接，响应更快</li>
-                        <li>🔊 唤醒成功后会播放确认音效</li>
-                        <li>🎤 支持连续监听，随时可以对话</li>
-                      </ul>
-                    </div>
-                    
-                    <div>
-                      <h5 className="font-medium text-sm mb-1">📞 语音通话：</h5>
-                      <ul className="list-disc list-inside space-y-1 text-sm ml-4">
-                        <li>📞 点击绿色按钮手动开始语音通话</li>
-                        <li>🎤 直接说话，系统会自动识别您的语音</li>
-                        <li>⏸️ 可以随时中断AI的回复</li>
-                        <li>🔇 点击静音按钮控制音量</li>
-                        <li>🌐 支持中文和英文语音识别</li>
-                        <li>💭 支持连续对话，AI会记住上下文</li>
-                        <li>🗑️ 可以清除对话历史或开始新会话</li>
-                        <li>🔴 点击红色按钮结束通话</li>
-                      </ul>
-                    </div>
-                  </div>
-                  
                   {funAudioAvailable && serviceStatus && (
                     <div className="mt-4 p-3 bg-blue-50 dark:bg-blue-950/20 rounded-lg">
                       <h5 className="font-semibold text-sm mb-2 flex items-center gap-2">

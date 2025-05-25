@@ -34,7 +34,7 @@ interface VoiceListenerWSProps {
   enabled?: boolean
 }
 
-type ListeningState = 'idle' | 'connecting' | 'connected' | 'listening' | 'processing' | 'detected' | 'error'
+type ListeningState = 'idle' | 'connecting' | 'connected' | 'listening' | 'detected' | 'error'
 type ConnectionState = 'disconnected' | 'connecting' | 'connected' | 'error'
 
 export default function VoiceListenerWS({
@@ -209,8 +209,6 @@ export default function VoiceListenerWS({
           console.log('✅ 唤醒词WebSocket服务器确认连接')
         } else if (message.status === 'listening') {
           setListeningState('listening')
-        } else if (message.status === 'processing') {
-          setListeningState('processing')
         }
         break
         
@@ -492,7 +490,6 @@ export default function VoiceListenerWS({
     switch (listeningState) {
       case 'listening': return 'bg-green-500'
       case 'detected': return 'bg-yellow-500'
-      case 'processing': return 'bg-blue-500'
       case 'connecting': return 'bg-orange-500'
       case 'error': return 'bg-red-500'
       default: return 'bg-gray-500'
@@ -504,7 +501,6 @@ export default function VoiceListenerWS({
       case 'connecting': return '正在连接...'
       case 'listening': return '正在监听唤醒词...'
       case 'detected': return '检测到唤醒词！'
-      case 'processing': return '处理中...'
       case 'error': return '检测异常'
       default: return '待机中'
     }
@@ -634,15 +630,6 @@ export default function VoiceListenerWS({
             )}
           </div>
         )}
-
-        {/* WebSocket特性说明 */}
-        <div className="text-xs text-gray-500 space-y-1">
-          <p>• 🚀 WebSocket实时连接，延迟更低</p>
-          <p>• 🔄 自动重连机制，连接更稳定</p>
-          <p>• 💡 心跳检测，实时监控连接状态</p>
-          <p>• ⚡ 基于FunAudioLLM高性能识别引擎</p>
-          <p>• 🎯 专注唤醒词检测，精准快速</p>
-        </div>
       </CardContent>
     </Card>
   )
