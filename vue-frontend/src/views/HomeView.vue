@@ -168,11 +168,8 @@ import {
   Volume2, 
   Smartphone 
 } from 'lucide-vue-next'
-import Card from '@/components/ui/Card.vue'
-import CardHeader from '@/components/ui/CardHeader.vue'
-import CardTitle from '@/components/ui/CardTitle.vue'
-import CardContent from '@/components/ui/CardContent.vue'
-import Badge from '@/components/ui/Badge.vue'
+import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card'
+import { Badge } from '@/components/ui/badge'
 import { healthCheck, checkFunAudioStatus } from '@/utils/api'
 
 const backendStatus = ref(false)

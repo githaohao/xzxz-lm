@@ -99,61 +99,6 @@
           </Alert>
         </div>
 
-        <!-- 最近对话 -->
-        <div v-if="recentMessages.length > 0" class="space-y-3">
-          <h3 class="text-lg font-semibold text-center text-gray-700 dark:text-gray-300">
-            最近对话
-          </h3>
-          <div class="space-y-3 max-h-64 overflow-y-auto">
-            <div
-              v-for="message in recentMessages"
-              :key="message.id"
-              :class="[
-                'flex gap-3',
-                message.isUser ? 'justify-end' : 'justify-start'
-              ]"
-            >
-              <div class="flex items-start gap-2 max-w-[80%]">
-                <!-- 头像 -->
-                <Avatar 
-                  v-if="!message.isUser" 
-                  class="w-8 h-8 flex-shrink-0"
-                >
-                  <AvatarFallback class="bg-blue-600 text-white">
-                    <Bot class="h-4 w-4" />
-                  </AvatarFallback>
-                </Avatar>
-                
-                <!-- 消息内容 -->
-                <Card
-                  :class="[
-                    'transition-all duration-200 hover:shadow-md',
-                    message.isUser 
-                      ? 'bg-blue-500 text-white border-blue-500' 
-                      : 'bg-white dark:bg-gray-700 text-gray-800 dark:text-white'
-                  ]"
-                >
-                  <CardContent class="p-3">
-                    <p class="text-sm">{{ message.content }}</p>
-                    <p class="text-xs opacity-70 mt-1">
-                      {{ formatTime(message.timestamp) }}
-                    </p>
-                  </CardContent>
-                </Card>
-                
-                <!-- 用户头像 -->
-                <Avatar 
-                  v-if="message.isUser" 
-                  class="w-8 h-8 flex-shrink-0"
-                >
-                  <AvatarFallback class="bg-blue-500 text-white">
-                    <User class="h-4 w-4" />
-                  </AvatarFallback>
-                </Avatar>
-              </div>
-            </div>
-          </div>
-        </div>
 
         <!-- 使用提示 -->
         <Card v-if="callState === 'idle'" class="bg-white/80 dark:bg-gray-800/80 backdrop-blur border-0 shadow-lg">
@@ -225,12 +170,10 @@ import {
   Globe,
   Shield
 } from 'lucide-vue-next'
-import Card from '@/components/ui/Card.vue'
-import CardContent from '@/components/ui/CardContent.vue'
-import Button from '@/components/ui/Button.vue'
-import Badge from '@/components/ui/Badge.vue'
-import Avatar from '@/components/ui/Avatar.vue'
-import AvatarFallback from '@/components/ui/AvatarFallback.vue'
+import { Card, CardContent } from '@/components/ui/card'
+import { Button } from '@/components/ui/button'
+import { Badge } from '@/components/ui/badge'
+import { Avatar, AvatarFallback } from '@/components/ui/avatar'
 import Progress from '@/components/ui/Progress.vue'
 import Alert from '@/components/ui/Alert.vue'
 import AlertDescription from '@/components/ui/AlertDescription.vue'

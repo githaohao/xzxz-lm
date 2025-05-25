@@ -45,18 +45,34 @@ export function cleanTextForSpeech(text: string): string {
   return cleaned
 }
 
-// 检查文本是否包含思考标签
+// 检查文本是否包含思考标签（包括不完整的标签）
 export function hasThinkTags(text: string): boolean {
-  return /<think>[\s\S]*?<\/think>/.test(text)
+  // 检查是否包含完整的think标签对，或者只有开始标签
+  return /<think>[\s\S]*?<\/think>/.test(text) || /<think>/.test(text)
 }
 
 // 提取思考内容
 export function extractThinkContent(text: string): { think: string; content: string } {
-  const thinkMatch = text.match(/<think>([\s\S]*?)<\/think>/)
-  const think = thinkMatch ? thinkMatch[1].trim() : ''
-  const content = text.replace(/<think>[\s\S]*?<\/think>/g, '').trim()
+  // 首先尝试匹配完整的think标签对
+  const completeThinkMatch = text.match(/<think>([\s\S]*?)<\/think>/)
   
-  return { think, content }
+  if (completeThinkMatch) {
+    // 如果有完整的标签对，正常处理
+    const think = completeThinkMatch[1].trim()
+    const content = text.replace(/<think>[\s\S]*?<\/think>/g, '').trim()
+    return { think, content }
+  } else {
+    // 如果只有开始标签，提取从<think>到文本结尾的内容作为思考内容
+    const incompleteThinkMatch = text.match(/<think>([\s\S]*)/)
+    if (incompleteThinkMatch) {
+      const think = incompleteThinkMatch[1].trim()
+      const content = '' // 还没有实际回复内容
+      return { think, content }
+    }
+  }
+  
+  // 如果没有think标签，返回空的思考内容和原文本
+  return { think: '', content: text.trim() }
 }
 
 // 生成唯一ID
@@ -69,7 +85,7 @@ export function debounce<T extends (...args: any[]) => any>(
   func: T,
   wait: number
 ): (...args: Parameters<T>) => void {
-  let timeout: NodeJS.Timeout | null = null
+  let timeout: number | null = null
   
   return (...args: Parameters<T>) => {
     if (timeout) clearTimeout(timeout)

@@ -67,7 +67,7 @@ export async function sendMultimodalMessage(
   maxTokens: number = 2048,
   signal?: AbortSignal
 ): Promise<Response> {
-  const response = await fetch('/api/chat/multimodal/stream', {
+  const response = await fetch('/api/chat/multimodal/stream/processed', {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json'
@@ -155,17 +155,41 @@ export async function uploadFile(file: File): Promise<ProcessedFile> {
   const formData = new FormData()
   formData.append('file', file)
 
-  const response = await api.post('/chat/upload', formData, {
+  // 1. 先上传文件
+  const uploadResponse = await api.post('/upload', formData, {
     headers: {
       'Content-Type': 'multipart/form-data'
     }
   })
 
+  const uploadResult = uploadResponse.data
+  let ocrText: string | undefined = undefined
+
+  // 2. 如果是支持OCR的文件类型，进行OCR处理
+  const fileExt = file.name.toLowerCase().split('.').pop()
+  if (fileExt && ['pdf', 'png', 'jpg', 'jpeg'].includes(fileExt)) {
+    try {
+      const ocrFormData = new FormData()
+      ocrFormData.append('file_path', uploadResult.file_path)
+
+      const ocrResponse = await api.post('/ocr', ocrFormData, {
+        headers: {
+          'Content-Type': 'multipart/form-data'
+        }
+      })
+
+      ocrText = ocrResponse.data.text
+    } catch (ocrError) {
+      console.warn('OCR处理失败:', ocrError)
+      // OCR失败不影响文件上传，继续处理
+    }
+  }
+
   return {
     name: file.name,
     size: file.size,
     type: file.type,
-    ocrText: response.data.ocr_text,
+    ocrText,
     processing: false
   }
 }
