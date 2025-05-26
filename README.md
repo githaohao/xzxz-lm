@@ -30,6 +30,16 @@
 - **shadcn-ui**: 现代化 UI 组件库（Vue 版本）
 - **Lucide Vue**: 精美的图标库
 - **Pinia**: Vue 3 状态管理库
+  
+
+### 界面示例
+![image](https://github.com/githaohao/xzxz-lm/blob/main/docs/%E6%88%AA%E5%B1%8F2025-05-26%20%E4%B8%8A%E5%8D%889.36.01.png)
+![image](https://github.com/githaohao/xzxz-lm/blob/main/docs/%E6%88%AA%E5%B1%8F2025-05-26%20%E4%B8%8A%E5%8D%889.36.30.png)
+![image](https://github.com/githaohao/xzxz-lm/blob/main/docs/%E6%88%AA%E5%B1%8F2025-05-26%20%E4%B8%8A%E5%8D%889.36.45.png)
+![image](https://github.com/githaohao/xzxz-lm/blob/main/docs/%E6%88%AA%E5%B1%8F2025-05-26%20%E4%B8%8A%E5%8D%889.36.53.png)
+![image](https://github.com/githaohao/xzxz-lm/blob/main/docs/%E6%88%AA%E5%B1%8F2025-05-26%20%E4%B8%8A%E5%8D%889.37.13.png)
+![image](https://github.com/githaohao/xzxz-lm/blob/main/docs/%E6%88%AA%E5%B1%8F2025-05-26%20%E4%B8%8A%E5%8D%889.37.22.png)
+
 
 ## 快速开始
 
