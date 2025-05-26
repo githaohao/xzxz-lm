@@ -5,6 +5,47 @@
     <link rel="icon" type="image/svg+xml" href="/vite.svg" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>小智小智 多模态聊天系统</title>
+    <script>
+      // 防止主题闪烁的初始化脚本
+      (function() {
+        const savedTheme = localStorage.getItem('theme') || 'system'
+        const root = document.documentElement
+        
+        function getSystemTheme() {
+          return window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light'
+        }
+        
+        function applyTheme(theme) {
+          if (theme === 'system') {
+            const systemTheme = getSystemTheme()
+            if (systemTheme === 'dark') {
+              root.classList.add('dark')
+              root.classList.remove('light')
+            } else {
+              root.classList.add('light')
+              root.classList.remove('dark')
+            }
+          } else {
+            if (theme === 'dark') {
+              root.classList.add('dark')
+              root.classList.remove('light')
+            } else {
+              root.classList.add('light')
+              root.classList.remove('dark')
+            }
+          }
+        }
+        
+        applyTheme(savedTheme)
+        
+        // 监听系统主题变化
+        if (savedTheme === 'system') {
+          window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', function() {
+            applyTheme('system')
+          })
+        }
+      })()
+    </script>
   </head>
   <body>
     <div id="app"></div>

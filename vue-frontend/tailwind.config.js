@@ -1,6 +1,6 @@
 /** @type {import('tailwindcss').Config} */
 export default {
-    darkMode: ["class"],
+    darkMode: "class",
     content: [
     "./index.html",
     "./src/**/*.{vue,js,ts,jsx,tsx}",
@@ -80,11 +80,32 @@ export default {
   				to: {
   					height: '0'
   				}
+  			},
+  			'fadeIn': {
+  				from: {
+  					opacity: '0',
+  					transform: 'translateY(10px)'
+  				},
+  				to: {
+  					opacity: '1',
+  					transform: 'translateY(0)'
+  				}
+  			},
+  			'glow': {
+  				from: {
+  					boxShadow: '0 0 20px rgba(59, 130, 246, 0.15)'
+  				},
+  				to: {
+  					boxShadow: '0 0 30px rgba(59, 130, 246, 0.3)'
+  				}
   			}
   		},
   		animation: {
   			'accordion-down': 'accordion-down 0.2s ease-out',
-  			'accordion-up': 'accordion-up 0.2s ease-out'
+  			'accordion-up': 'accordion-up 0.2s ease-out',
+  			'pulse-slow': 'pulse 3s ease-in-out infinite',
+  			'fade-in': 'fadeIn 0.3s ease-in-out',
+  			'glow': 'glow 2s ease-in-out infinite alternate'
   		}
   	}
   },

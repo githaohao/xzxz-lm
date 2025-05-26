@@ -37,6 +37,14 @@
             >
               简洁语音
             </router-link>
+            <router-link
+              to="/components"
+              class="text-foreground hover:text-primary px-3 py-2 rounded-md text-sm font-medium"
+              :class="{ 'text-primary': $route.name === 'components' }"
+            >
+              组件展示
+            </router-link>
+            <ThemeSelector />
           </div>
         </div>
       </div>
@@ -49,5 +57,9 @@
 </template>
 
 <script setup lang="ts">
-// 主应用组件
+import { ThemeSelector } from '@/components/ui/theme-selector'
+import { useTheme } from '@/composables/useTheme'
+
+// 初始化主题系统
+useTheme()
 </script> 

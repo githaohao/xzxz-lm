@@ -94,4 +94,87 @@
   body {
     @apply bg-background text-foreground;
   }
+}
+
+/* 自定义滚动条样式 */
+@layer utilities {
+  .scrollbar-thin {
+    scrollbar-width: thin;
+  }
+
+  .scrollbar-thumb-slate-300 {
+    scrollbar-color: rgb(203 213 225) transparent;
+  }
+
+  .scrollbar-thumb-slate-600 {
+    scrollbar-color: rgb(71 85 105) transparent;
+  }
+
+  /* WebKit 滚动条样式 */
+  .scrollbar-thin::-webkit-scrollbar {
+    width: 6px;
+    height: 6px;
+  }
+
+  .scrollbar-thin::-webkit-scrollbar-track {
+    background: transparent;
+  }
+
+  .scrollbar-thin::-webkit-scrollbar-thumb {
+    @apply bg-slate-300 dark:bg-slate-600 rounded-full;
+  }
+
+  .scrollbar-thin::-webkit-scrollbar-thumb:hover {
+    @apply bg-slate-400 dark:bg-slate-500;
+  }
+
+  /* 输入框特殊样式 */
+  .chat-input {
+    transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  }
+
+  .chat-input:focus-within {
+    transform: translateY(-1px);
+  }
+
+  /* 文件拖拽区域样式 */
+  .drop-zone {
+    transition: all 0.3s ease;
+  }
+
+  .drop-zone.drag-over {
+    @apply border-blue-500 bg-blue-50 dark:bg-blue-950/50 scale-[1.02];
+  }
+
+  /* 键盘快捷键标签样式 */
+  kbd {
+    @apply inline-flex items-center justify-center;
+    box-shadow: 0 1px 2px rgba(0, 0, 0, 0.1);
+    border: 1px solid hsl(var(--border));
+  }
+
+  /* 加载动画优化 */
+  @keyframes spin-slow {
+    from { transform: rotate(0deg); }
+    to { transform: rotate(360deg); }
+  }
+
+  .animate-spin-slow {
+    animation: spin-slow 2s linear infinite;
+  }
+
+  /* 渐变背景 */
+  .bg-gradient-radial {
+    background: radial-gradient(ellipse at center, var(--tw-gradient-stops));
+  }
+
+  /* 玻璃效果 */
+  .glass-effect {
+    backdrop-filter: blur(12px);
+    background: rgba(255, 255, 255, 0.8);
+  }
+
+  .dark .glass-effect {
+    background: rgba(15, 23, 42, 0.8);
+  }
 } 

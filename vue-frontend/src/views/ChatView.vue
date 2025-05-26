@@ -3,28 +3,47 @@
     <!-- 主要内容区域 -->
     <div class="flex-1 container mx-auto px-4 py-6 max-w-4xl flex flex-col">
       <!-- 文件处理状态 -->
-      <div v-if="processedFile" class="mb-4">
-        <Card class="border-dashed border-2 border-blue-200 bg-blue-50/50 dark:border-blue-800 dark:bg-blue-950/50">
-          <CardContent class="p-4">
-            <div class="flex items-center gap-3">
-              <div class="w-10 h-10 rounded-lg bg-blue-100 dark:bg-blue-900 flex items-center justify-center">
-                <Paperclip class="h-5 w-5 text-blue-600 dark:text-blue-400" />
+      <div v-if="processedFile" class="mb-6">
+        <div class="relative max-w-4xl mx-auto px-2">
+          <div class="
+            flex items-center gap-4 p-4
+            bg-gradient-to-r from-blue-50 to-indigo-50 dark:from-blue-950/50 dark:to-indigo-950/50
+            border border-blue-200/50 dark:border-blue-800/50
+            rounded-2xl shadow-lg backdrop-blur-sm
+            transition-all duration-300
+          ">
+            <!-- 文件图标 -->
+            <div class="flex-shrink-0">
+              <div class="w-12 h-12 rounded-xl bg-blue-100 dark:bg-blue-900/50 flex items-center justify-center shadow-sm">
+                <Paperclip class="h-6 w-6 text-blue-600 dark:text-blue-400" />
               </div>
-              <div class="flex-1">
-                <p class="font-medium text-slate-900 dark:text-slate-100">{{ processedFile.name }}</p>
-                <p class="text-sm text-slate-500 dark:text-slate-400">{{ formatFileSize(processedFile.size) }}</p>
-              </div>
-              <Button 
-                variant="ghost" 
-                size="sm" 
-                @click="setProcessedFile(null)"
-                class="text-slate-500 hover:text-slate-700 dark:text-slate-400 dark:hover:text-slate-200"
-              >
-                <X class="h-4 w-4" />
-              </Button>
             </div>
-          </CardContent>
-        </Card>
+            
+            <!-- 文件信息 -->
+            <div class="flex-1 min-w-0">
+              <p class="font-semibold text-slate-900 dark:text-slate-100 truncate">{{ processedFile.name }}</p>
+              <p class="text-sm text-slate-600 dark:text-slate-400">{{ formatFileSize(processedFile.size) }}</p>
+              <div class="flex items-center gap-2 mt-1">
+                <div class="w-2 h-2 rounded-full bg-green-500 animate-pulse"></div>
+                <span class="text-xs text-green-600 dark:text-green-400 font-medium">已准备就绪</span>
+              </div>
+            </div>
+            
+            <!-- 移除按钮 -->
+            <button
+              @click="setProcessedFile(null)"
+              class="
+                flex-shrink-0 p-2 rounded-lg
+                hover:bg-red-50 dark:hover:bg-red-900/20
+                text-slate-500 hover:text-red-600 dark:text-slate-400 dark:hover:text-red-400
+                transition-all duration-200
+                focus:outline-none focus:ring-2 focus:ring-red-500/20
+              "
+            >
+              <X class="h-5 w-5" />
+            </button>
+          </div>
+        </div>
       </div>
 
       <!-- 消息列表 -->
@@ -163,60 +182,159 @@
       </ScrollArea>
 
       <!-- 输入区域 -->
-      <div class="mt-5">
-        <Card class="border-slate-200 dark:border-slate-700 shadow-lg bg-white/80 dark:bg-slate-800/80 backdrop-blur-sm">
-          <CardContent class="p-4">
-            <div class="flex gap-3">
-              <div class="flex-1 relative">
-                <Textarea
-                  v-model="inputMessage"
-                  placeholder="输入消息，支持拖拽文件..."
-                  class="min-h-[60px] max-h-32 resize-none pr-12 border-slate-200 dark:border-slate-700 focus:border-blue-500 dark:focus:border-blue-400 transition-colors"
-                  :disabled="isLoading"
-                  @keydown.enter.exact.prevent="handleSend"
-                  @drop.prevent="handleFileDrop"
-                  @dragover.prevent
-                />
+      <div class="mt-6 px-2">
+        <!-- Grok风格的现代化输入框 -->
+        <div class="relative max-w-4xl mx-auto">
+          <!-- 主输入容器 -->
+          <div 
+            :class="[
+              'relative flex items-end gap-3 p-4 transition-all duration-300 ease-out',
+              'bg-white/90 dark:bg-slate-800/90 backdrop-blur-xl',
+              'border rounded-3xl shadow-2xl shadow-black/5 dark:shadow-black/20',
+              'hover:shadow-2xl hover:shadow-black/10 dark:hover:shadow-black/30',
+              'focus-within:ring-2 focus-within:ring-blue-500/20 focus-within:border-blue-500/30',
+              isDragging 
+                ? 'border-blue-500 bg-blue-50/80 dark:bg-blue-950/80 scale-[1.02] shadow-2xl shadow-blue-500/20' 
+                : 'border-slate-200/50 dark:border-slate-700/50'
+            ]"
+            @drop.prevent="handleFileDrop"
+            @dragover.prevent="handleDragOver"
+            @dragenter.prevent="handleDragEnter"
+            @dragleave.prevent="handleDragLeave"
+          >
+            <!-- 文件附件图标 -->
+            <div class="flex-shrink-0 pb-2">
+              <button
+                @click="fileInput?.click()"
+                :disabled="isLoading"
+                class="
+                  group relative p-2.5 rounded-xl
+                  bg-slate-50 dark:bg-slate-700/50
+                  hover:bg-slate-100 dark:hover:bg-slate-600/50
+                  border border-slate-200 dark:border-slate-600
+                  transition-all duration-200 ease-out
+                  hover:scale-105 hover:shadow-lg
+                  disabled:opacity-50 disabled:cursor-not-allowed
+                  focus:outline-none focus:ring-2 focus:ring-blue-500/20
+                "
+              >
+                <Paperclip class="h-5 w-5 text-slate-600 dark:text-slate-300 group-hover:text-blue-600 dark:group-hover:text-blue-400 transition-colors" />
                 
-                <input
-                  ref="fileInput"
-                  type="file"
-                  accept=".pdf,.png,.jpg,.jpeg,.wav,.mp3"
-                  @change="handleFileSelect"
-                  class="hidden"
-                />
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  class="absolute right-2 top-2 h-8 w-8 text-slate-500 hover:text-slate-700 dark:text-slate-400 dark:hover:text-slate-200"
-                  @click="fileInput?.click()"
-                  :disabled="isLoading"
-                >
-                  <Paperclip class="h-4 w-4" />
-                </Button>
-              </div>
+                <!-- 悬浮提示 -->
+                <div class="
+                  absolute -top-10 left-1/2 transform -translate-x-1/2
+                  px-2 py-1 text-xs text-white bg-slate-900 rounded-md
+                  opacity-0 group-hover:opacity-100 transition-opacity duration-200
+                  pointer-events-none whitespace-nowrap
+                ">
+                  添加文件
+                </div>
+              </button>
+              
+              <input
+                ref="fileInput"
+                type="file"
+                accept=".pdf,.png,.jpg,.jpeg,.wav,.mp3"
+                @change="handleFileSelect"
+                class="hidden"
+              />
+            </div>
 
+            <!-- 输入框区域 -->
+            <div class="flex-1 relative">
+              <Textarea
+                v-model="inputMessage"
+                placeholder="输入你的消息..."
+                class="
+                  w-full min-h-[52px] max-h-36 py-3.5 px-4
+                  bg-transparent border-0 resize-none
+                  text-slate-900 dark:text-slate-100
+                  placeholder:text-slate-500 dark:placeholder:text-slate-400
+                  focus:outline-none focus:ring-0
+                  text-[15px] leading-relaxed
+                  scrollbar-thin scrollbar-thumb-slate-300 dark:scrollbar-thumb-slate-600
+                "
+                :disabled="isLoading"
+                @keydown.enter.exact.prevent="handleSend"
+                @keydown.enter.shift.exact.prevent="inputMessage += '\n'"
+              />
+              
+              <!-- 字符计数（可选） -->
+              <div 
+                v-if="inputMessage.length > 800"
+                class="absolute bottom-1 right-2 text-xs text-slate-400 dark:text-slate-500"
+              >
+                {{ inputMessage.length }}/2000
+              </div>
+            </div>
+
+            <!-- 发送按钮区域 -->
+            <div class="flex-shrink-0 pb-2">
               <Button
                 v-if="isLoading"
-                variant="destructive"
                 @click="cancelRequest"
-                class="px-6"
+                size="lg"
+                class="
+                  h-11 w-11 p-0 rounded-xl
+                  bg-red-500 hover:bg-red-600
+                  border-0 shadow-lg hover:shadow-xl
+                  transition-all duration-200 ease-out
+                  hover:scale-105
+                "
               >
-                <X class="h-4 w-4 mr-2" />
-                取消
+                <X class="h-5 w-5 text-white" />
               </Button>
+              
               <Button
                 v-else
                 @click="handleSend"
                 :disabled="(!inputMessage.trim() && !processedFile) || isLoading"
-                class="px-6 bg-gradient-to-r from-blue-500 to-purple-600 hover:from-blue-600 hover:to-purple-700 text-white border-0"
+                size="lg"
+                class="
+                  h-11 w-11 p-0 rounded-xl
+                  bg-gradient-to-r from-blue-600 to-purple-600 
+                  hover:from-blue-700 hover:to-purple-700
+                  disabled:from-slate-300 disabled:to-slate-400
+                  border-0 shadow-lg hover:shadow-xl
+                  transition-all duration-200 ease-out
+                  hover:scale-105 disabled:hover:scale-100
+                  focus:outline-none focus:ring-2 focus:ring-blue-500/20
+                "
               >
-                <Send class="h-4 w-4 mr-2" />
-                发送
+                <Send class="h-5 w-5 text-white ml-0.5" />
               </Button>
             </div>
-          </CardContent>
-        </Card>
+          </div>
+
+          <!-- 输入提示 -->
+          <div class="flex items-center justify-between mt-3 px-4 text-xs text-slate-500 dark:text-slate-400">
+            <div class="flex items-center gap-4">
+              <span class="flex items-center gap-1">
+                <kbd class="px-1.5 py-0.5 bg-slate-100 dark:bg-slate-700 rounded text-[10px] font-mono">⏎</kbd>
+                发送
+              </span>
+              <span class="flex items-center gap-1">
+                <kbd class="px-1.5 py-0.5 bg-slate-100 dark:bg-slate-700 rounded text-[10px] font-mono">⇧</kbd>
+                <kbd class="px-1.5 py-0.5 bg-slate-100 dark:bg-slate-700 rounded text-[10px] font-mono">⏎</kbd>
+                换行
+              </span>
+            </div>
+            <div class="flex items-center gap-2">
+              <span>支持 PDF、图片拖拽上传</span>
+            </div>
+          </div>
+
+          <!-- 加载状态指示器 -->
+          <div 
+            v-if="isLoading"
+            class="absolute -top-1 left-1/2 transform -translate-x-1/2"
+          >
+            <div class="flex items-center gap-2 px-3 py-1.5 bg-blue-50 dark:bg-blue-900/20 text-blue-600 dark:text-blue-400 rounded-full text-sm shadow-lg">
+              <div class="w-4 h-4 border-2 border-blue-600 border-t-transparent rounded-full animate-spin"></div>
+              <span>AI正在思考...</span>
+            </div>
+          </div>
+        </div>
       </div>
     </div>
   </div>
@@ -257,6 +375,7 @@ const { sendMessage, cancelRequest, setProcessedFile } = chatStore
 
 const inputMessage = ref('')
 const fileInput = ref<HTMLInputElement>()
+const isDragging = ref(false)
 
 // 发送消息
 async function handleSend() {
@@ -278,10 +397,28 @@ async function handleFileSelect(event: Event) {
 
 // 处理文件拖拽
 async function handleFileDrop(event: DragEvent) {
+  isDragging.value = false
   const file = event.dataTransfer?.files[0]
   if (file) {
     await processFile(file)
   }
+}
+
+// 拖拽事件处理
+function handleDragEnter(event: DragEvent) {
+  event.preventDefault()
+  isDragging.value = true
+}
+
+function handleDragLeave(event: DragEvent) {
+  event.preventDefault()
+  if (!event.relatedTarget || !(event.currentTarget as Element).contains(event.relatedTarget as Node)) {
+    isDragging.value = false
+  }
+}
+
+function handleDragOver(event: DragEvent) {
+  event.preventDefault()
 }
 
 // 处理文件
