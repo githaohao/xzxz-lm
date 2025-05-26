@@ -41,7 +41,7 @@ function onKeyDown(event: KeyboardEvent) {
 
 <template>
   <div
-    :class="cn('relative', props.class)"
+    :class="cn('relative rounded-xl bg-background/50 backdrop-blur-sm border border-border/30 shadow-lg overflow-hidden', props.class)"
     role="region"
     aria-roledescription="carousel"
     tabindex="0"

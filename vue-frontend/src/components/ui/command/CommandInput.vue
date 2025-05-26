@@ -22,13 +22,13 @@ const { filterState } = useCommand()
 </script>
 
 <template>
-  <div class="flex items-center border-b px-3" cmdk-input-wrapper>
-    <Search class="mr-2 h-4 w-4 shrink-0 opacity-50" />
+  <div class="flex items-center border-b border-border/30 bg-muted/20 backdrop-blur-sm rounded-t-lg px-4 py-2" cmdk-input-wrapper>
+    <Search class="mr-3 h-4 w-4 shrink-0 opacity-60 text-primary" />
     <ListboxFilter
       v-bind="{ ...forwardedProps, ...$attrs }"
       v-model="filterState.search"
       auto-focus
-      :class="cn('flex h-10 w-full rounded-md bg-transparent py-3 text-sm outline-none placeholder:text-muted-foreground disabled:cursor-not-allowed disabled:opacity-50', props.class)"
+      :class="cn('flex h-10 w-full rounded-md bg-transparent py-3 text-sm outline-none placeholder:text-muted-foreground disabled:cursor-not-allowed disabled:opacity-50 focus:outline-none', props.class)"
     />
   </div>
 </template>

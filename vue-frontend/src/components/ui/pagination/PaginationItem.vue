@@ -25,6 +25,8 @@ const delegatedProps = reactiveOmit(props, 'class', 'size', 'isActive')
         variant: isActive ? 'outline' : 'ghost',
         size,
       }),
+      'hover:scale-105 transition-all duration-300',
+      isActive && 'bg-gradient-to-br from-primary to-primary/80 text-primary-foreground shadow-lg',
       props.class)"
   >
     <slot />

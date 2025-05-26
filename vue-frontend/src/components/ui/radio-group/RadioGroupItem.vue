@@ -23,13 +23,13 @@ const forwardedProps = useForwardProps(delegatedProps)
     v-bind="forwardedProps"
     :class="
       cn(
-        'peer aspect-square h-4 w-4 rounded-full border border-primary text-primary shadow focus:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50',
+        'peer aspect-square h-5 w-5 rounded-full border-2 border-primary/30 text-primary backdrop-blur-sm bg-white/10 shadow-lg hover:shadow-xl focus:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50 hover:scale-105 transition-all duration-300 ease-out data-[state=checked]:border-primary data-[state=checked]:bg-gradient-to-br data-[state=checked]:from-primary data-[state=checked]:to-primary/80',
         props.class,
       )
     "
   >
     <RadioGroupIndicator class="flex items-center justify-center">
-      <Check class="h-3.5 w-3.5 text-primary" />
+      <Check class="h-3 w-3 text-primary-foreground drop-shadow-sm" />
     </RadioGroupIndicator>
   </RadioGroupItem>
 </template>
