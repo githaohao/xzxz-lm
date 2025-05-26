@@ -309,69 +309,6 @@ async def clear_conversation_history(session_id: str):
             }
         )
 
-@router.post("/wake-word")
-async def wake_word_detection(
-    audio: UploadFile = File(...),
-    wake_words: Optional[str] = Form(None)
-):
-    """
-    唤醒词检测接口 - 检测音频中是否包含唤醒词（如"小智小智"）
-    
-    特性:
-    - 高性能唤醒词检测
-    - 支持自定义唤醒词
-    - 模糊匹配提高准确性
-    - 基于FunAudioLLM SenseVoice
-    """
-    try:
-        logger.info(f"🎯 FunAudioLLM唤醒词检测请求")
-        
-        # 读取音频数据
-        audio_data = await audio.read()
-        
-        if len(audio_data) == 0:
-            raise HTTPException(status_code=400, detail="音频数据为空")
-        
-        # 解析自定义唤醒词
-        wake_word_list = None
-        if wake_words:
-            try:
-                wake_word_list = json.loads(wake_words)
-            except:
-                # 如果不是JSON格式，按逗号分割
-                wake_word_list = [w.strip() for w in wake_words.split(',') if w.strip()]
-        
-        # 调用FunAudioLLM服务进行唤醒词检测
-        result = await funaudio_service.wake_word_detection(
-            audio_data=audio_data,
-            wake_words=wake_word_list
-        )
-        
-        if result["success"]:
-            if result["wake_word_detected"]:
-                logger.info(f"✅ 检测到唤醒词: {result['detected_word']}")
-            else:
-                logger.info(f"🔍 未检测到唤醒词，识别文本: {result.get('recognized_text', '')}")
-            return JSONResponse(content=result)
-        else:
-            logger.error(f"❌ FunAudioLLM唤醒词检测失败: {result.get('error', '未知错误')}")
-            return JSONResponse(
-                status_code=500,
-                content=result
-            )
-            
-    except Exception as e:
-        logger.error(f"❌ FunAudioLLM唤醒词检测异常: {e}")
-        return JSONResponse(
-            status_code=500,
-            content={
-                "success": False,
-                "wake_word_detected": False,
-                "error": str(e),
-                "confidence": 0.0,
-                "engine": "FunAudioLLM-SenseVoice"
-            }
-        )
 
 @router.websocket("/ws/voice")
 async def voice_websocket(websocket: WebSocket):
@@ -418,11 +355,7 @@ async def voice_websocket(websocket: WebSocket):
     finally:
         voice_manager.disconnect(websocket)
 
-# 保持向后兼容性
-@router.websocket("/ws/wake-word")
-async def wake_word_websocket_legacy(websocket: WebSocket):
-    """向后兼容的唤醒词WebSocket端点，重定向到统一端点"""
-    await voice_websocket(websocket)
+
 
 async def handle_voice_message(websocket: WebSocket, message: Dict):
     """处理统一语音WebSocket消息"""

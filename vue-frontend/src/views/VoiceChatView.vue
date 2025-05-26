@@ -1,15 +1,16 @@
 <template>
-  <div class="container mx-auto p-4 max-w-4xl">
-    <div class="space-y-6">
-      <!-- 页面标题 -->
-      <div class="text-center">
-        <h1 class="text-3xl font-bold text-gray-900 dark:text-white mb-2">
-          语音聊天控制台
-        </h1>
-        <p class="text-gray-600 dark:text-gray-400">
-          基于 FunAudioLLM 的高性能语音对话系统
-        </p>
-      </div>
+  <div class="min-h-full overflow-y-auto">
+    <div class="container mx-auto p-4 max-w-4xl">
+      <div class="space-y-6">
+        <!-- 页面标题 -->
+        <div class="text-center">
+          <h1 class="text-3xl font-bold text-gray-900 dark:text-white mb-2">
+            语音聊天控制台
+          </h1>
+          <p class="text-gray-600 dark:text-gray-400">
+            基于 FunAudioLLM 的高性能语音对话系统
+          </p>
+        </div>
 
       <!-- 状态显示 -->
       <Card class="border-0 shadow-lg">
@@ -66,16 +67,16 @@
           <div class="flex justify-center">
             <div class="flex items-center gap-6">
               <div v-if="callState === 'idle'">
-                <div class="relative">
+                  <div class="relative">
                   <Button
                     @click="handleStartCall"
                     size="lg"
-                    class="rounded-full w-20 h-20 bg-gradient-to-r from-green-500 to-green-600 hover:from-green-600 hover:to-green-700 shadow-xl transition-all duration-300 hover:scale-110"
+                    class="rounded-full w-20 h-20 bg-gradient-to-r from-green-500 to-green-600 hover:from-green-600 hover:to-green-700 shadow-xl transition-all duration-300 hover:scale-110 relative z-10"
                     :disabled="!canStartCall"
                   >
                     <Phone class="h-8 w-8" />
                   </Button>
-                  <div class="absolute -inset-2 bg-green-400 rounded-full opacity-20 animate-ping"></div>
+                  <div class="absolute -inset-2 bg-green-400 rounded-full opacity-20 animate-ping pointer-events-none"></div>
                 </div>
               </div>
               <div v-else class="flex items-center gap-6">
@@ -272,9 +273,10 @@
               </div>
             </div>
           </div>
-        </CardContent>
+          </CardContent>
       </Card>
     </div>
+  </div>
   </div>
 </template>
 
@@ -367,4 +369,4 @@ function getStatusColor() {
 onMounted(() => {
   checkServiceStatus()
 })
-</script> 
+</script>

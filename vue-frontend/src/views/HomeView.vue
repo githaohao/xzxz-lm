@@ -1,13 +1,14 @@
 <template>
-  <div class="container mx-auto p-4 max-w-4xl">
-    <div class="text-center mb-8">
-      <h1 class="text-4xl font-bold text-primary mb-4">
-        小智小智 多模态聊天系统
-      </h1>
-      <p class="text-lg text-muted-foreground mb-8">
-        基于 Vue 3.5 + TypeScript 构建的智能对话平台
-      </p>
-    </div>
+  <div class="min-h-full overflow-y-auto">
+    <div class="container mx-auto p-4 max-w-4xl">
+      <div class="text-center mb-8">
+        <h1 class="text-4xl font-bold text-primary mb-4">
+          小智小智 多模态聊天系统
+        </h1>
+        <p class="text-lg text-muted-foreground mb-8">
+          基于 Vue 3.5 + TypeScript 构建的智能对话平台
+        </p>
+      </div>
 
     <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 mb-8">
       <!-- 文本聊天卡片 -->
@@ -154,6 +155,7 @@
       </div>
     </div>
   </div>
+  </div>  
 </template>
 
 <script setup lang="ts">
