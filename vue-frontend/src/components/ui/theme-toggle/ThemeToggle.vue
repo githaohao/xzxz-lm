@@ -34,13 +34,13 @@ const themeText = computed(() => {
 
 <template>
   <Button
-    variant="ghost"
+    variant="glass"
     size="sm"
     @click="toggleTheme"
-    class="flex items-center gap-2 px-3 py-2 transition-all duration-200"
+    class="flex items-center gap-2 px-4 py-2 transition-all duration-300 hover:scale-105 hover:shadow-lg group"
     :title="`当前主题: ${themeText}`"
   >
-    <span class="text-base">{{ themeIcon }}</span>
-    <span class="text-xs hidden sm:inline">{{ themeText }}</span>
+    <span class="text-base transition-transform duration-300 group-hover:scale-110">{{ themeIcon }}</span>
+    <span class="text-xs hidden sm:inline font-medium">{{ themeText }}</span>
   </Button>
 </template> 
