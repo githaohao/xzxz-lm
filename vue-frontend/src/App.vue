@@ -5,7 +5,7 @@
         <div class="flex justify-between h-16">
           <div class="flex items-center">
             <router-link to="/" class="text-xl font-bold text-primary">
-              TZ-LM 多模态聊天系统
+              小智小智 多模态聊天系统
             </router-link>
           </div>
           <div class="flex items-center space-x-4">

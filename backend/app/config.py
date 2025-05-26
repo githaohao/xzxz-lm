@@ -4,7 +4,7 @@ from typing import List
 
 class Settings(BaseSettings):
     # 应用基础配置
-    app_name: str = "TZ-LM 多模态聊天系统"
+    app_name: str = "小智小智 多模态聊天系统"
     app_version: str = "1.0.0"
     debug: bool = True
     

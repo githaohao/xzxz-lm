@@ -1,4 +1,4 @@
-# TZ-LM 多模态聊天系统
+# 小智小智 多模态聊天系统
 
 基于 LM Studio 的智能多模态聊天助手，支持 PDF 扫描识别、图片文字提取、语音对话等功能。
 
@@ -171,11 +171,11 @@ export default defineConfig({
 ```bash
 # 构建后端镜像
 cd backend
-docker build -t tz-lm-backend .
+docker build -t xzxz-lm-backend .
 
 # 构建前端镜像
 cd vue-frontend
-docker build -t tz-lm-frontend .
+docker build -t xzxz-lm-frontend .
 
 # 使用 docker-compose 启动
 docker-compose up -d
@@ -274,8 +274,8 @@ pnpm dev  # 开发模式下查看控制台
 
 ## 联系方式
 
-- 项目地址: [GitHub](https://github.com/your-username/tz-lm)
-- 问题反馈: [Issues](https://github.com/your-username/tz-lm/issues)
+- 项目地址: [GitHub](https://github.com/your-username/xzxz-lm)
+- 问题反馈: [Issues](https://github.com/your-username/xzxz-lm/issues)
 
 ## 致谢
 

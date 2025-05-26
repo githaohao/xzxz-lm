@@ -99,7 +99,7 @@ async def shutdown_event():
 async def root():
     """根路径"""
     return {
-        "message": "欢迎使用TZ-LM高性能语音对话系统",
+        "message": "欢迎使用小智小智高性能语音对话系统",
         "version": settings.app_version,
         "engine": "FunAudioLLM",
         "features": [
