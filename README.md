@@ -284,8 +284,9 @@ pnpm dev  # 开发模式下查看控制台
 
 ## 联系方式
 
-- 项目地址: [GitHub](https://github.com/your-username/xzxz-lm)
-- 问题反馈: [Issues](https://github.com/your-username/xzxz-lm/issues)
+- 项目地址: [GitHub](https://github.com/githaohao/xzxz-lm)
+- 项目地址: [Gitee](https://gitee.com/githaohao/xzxz-lm)
+- 问题反馈: [Issues](https://gitee.com/githaohao/xzxz-lm/issues)
 
 ## 致谢
 
