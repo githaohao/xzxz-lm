@@ -15,11 +15,13 @@
         <!-- 导航标签 -->
         <div class="flex justify-center">
           <Tabs v-model="activeTab" class="w-full max-w-4xl">
-            <TabsList class="grid w-full grid-cols-4">
+            <TabsList class="grid w-full grid-cols-6">
               <TabsTrigger value="basic">基础组件</TabsTrigger>
               <TabsTrigger value="form">表单组件</TabsTrigger>
               <TabsTrigger value="layout">布局组件</TabsTrigger>
               <TabsTrigger value="feedback">反馈组件</TabsTrigger>
+              <TabsTrigger value="navigation">导航组件</TabsTrigger>
+              <TabsTrigger value="advanced">高级组件</TabsTrigger>
             </TabsList>
 
             <!-- 基础组件 -->
@@ -713,6 +715,496 @@
                 </Card>
               </div>
             </TabsContent>
+
+            <!-- 导航组件 -->
+            <TabsContent value="navigation" class="space-y-6">
+              <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                <!-- 导航菜单 -->
+                <Card class="shadow-lg hover:shadow-xl transition-shadow">
+                  <CardHeader>
+                    <CardTitle class="flex items-center gap-2">
+                      <Navigation class="h-5 w-5 text-blue-500" />
+                      NavigationMenu 导航菜单
+                    </CardTitle>
+                    <CardDescription>响应式导航菜单组件</CardDescription>
+                  </CardHeader>
+                  <CardContent>
+                    <NavigationMenu>
+                      <NavigationMenuList>
+                        <NavigationMenuItem>
+                          <NavigationMenuTrigger>产品</NavigationMenuTrigger>
+                          <NavigationMenuContent>
+                            <NavigationMenuLink href="/products">
+                              所有产品
+                            </NavigationMenuLink>
+                          </NavigationMenuContent>
+                        </NavigationMenuItem>
+                        <NavigationMenuItem>
+                          <NavigationMenuLink href="/about">
+                            关于我们
+                          </NavigationMenuLink>
+                        </NavigationMenuItem>
+                      </NavigationMenuList>
+                    </NavigationMenu>
+                  </CardContent>
+                </Card>
+
+                <!-- 菜单栏 -->
+                <Card class="shadow-lg hover:shadow-xl transition-shadow">
+                  <CardHeader>
+                    <CardTitle class="flex items-center gap-2">
+                      <Settings class="h-5 w-5 text-green-500" />
+                      Menubar 菜单栏
+                    </CardTitle>
+                    <CardDescription>应用程序菜单栏</CardDescription>
+                  </CardHeader>
+                  <CardContent>
+                    <Menubar>
+                      <MenubarMenu>
+                        <MenubarTrigger>文件</MenubarTrigger>
+                        <MenubarContent>
+                          <MenubarItem>新建文件</MenubarItem>
+                          <MenubarItem>打开文件</MenubarItem>
+                          <MenubarSeparator />
+                          <MenubarItem>保存</MenubarItem>
+                        </MenubarContent>
+                      </MenubarMenu>
+                      <MenubarMenu>
+                        <MenubarTrigger>编辑</MenubarTrigger>
+                        <MenubarContent>
+                          <MenubarItem>撤销</MenubarItem>
+                          <MenubarItem>重做</MenubarItem>
+                        </MenubarContent>
+                      </MenubarMenu>
+                    </Menubar>
+                  </CardContent>
+                </Card>
+
+                <!-- 下拉菜单 -->
+                <Card class="shadow-lg hover:shadow-xl transition-shadow">
+                  <CardHeader>
+                    <CardTitle class="flex items-center gap-2">
+                      <ChevronDown class="h-5 w-5 text-purple-500" />
+                      DropdownMenu 下拉菜单
+                    </CardTitle>
+                    <CardDescription>可定制的下拉菜单</CardDescription>
+                  </CardHeader>
+                  <CardContent>
+                    <DropdownMenu>
+                      <DropdownMenuTrigger as-child>
+                        <Button variant="outline">
+                          打开菜单
+                          <ChevronDown class="ml-2 h-4 w-4" />
+                        </Button>
+                      </DropdownMenuTrigger>
+                      <DropdownMenuContent class="w-56">
+                        <DropdownMenuItem>
+                          <User class="mr-2 h-4 w-4" />
+                          个人资料
+                        </DropdownMenuItem>
+                        <DropdownMenuItem>
+                          <Settings class="mr-2 h-4 w-4" />
+                          设置
+                        </DropdownMenuItem>
+                        <DropdownMenuSeparator />
+                        <DropdownMenuItem>
+                          退出登录
+                        </DropdownMenuItem>
+                      </DropdownMenuContent>
+                    </DropdownMenu>
+                  </CardContent>
+                </Card>
+
+                <!-- 上下文菜单 -->
+                <Card class="shadow-lg hover:shadow-xl transition-shadow">
+                  <CardHeader>
+                    <CardTitle class="flex items-center gap-2">
+                      <MousePointer class="h-5 w-5 text-orange-500" />
+                      ContextMenu 上下文菜单
+                    </CardTitle>
+                    <CardDescription>右键上下文菜单</CardDescription>
+                  </CardHeader>
+                  <CardContent>
+                    <ContextMenu>
+                      <ContextMenuTrigger class="flex h-20 w-full items-center justify-center rounded-md border border-dashed text-sm">
+                        右键点击这里
+                      </ContextMenuTrigger>
+                      <ContextMenuContent class="w-64">
+                        <ContextMenuItem>复制</ContextMenuItem>
+                        <ContextMenuItem>粘贴</ContextMenuItem>
+                        <ContextMenuSeparator />
+                        <ContextMenuItem>删除</ContextMenuItem>
+                      </ContextMenuContent>
+                    </ContextMenu>
+                  </CardContent>
+                </Card>
+
+                <!-- 分页 -->
+                <Card class="shadow-lg hover:shadow-xl transition-shadow">
+                  <CardHeader>
+                    <CardTitle class="flex items-center gap-2">
+                      <ChevronDown class="h-5 w-5 text-teal-500" />
+                      Pagination 分页
+                    </CardTitle>
+                    <CardDescription>数据分页导航</CardDescription>
+                  </CardHeader>
+                  <CardContent>
+                    <Pagination :total="100" :page="currentPage" :items-per-page="10" @update:page="handlePageChange">
+                      <PaginationContent>
+                        <PaginationItem :value="1">
+                          <PaginationPrevious href="#" />
+                        </PaginationItem>
+                        <PaginationItem :value="1">
+                          <span class="px-3 py-2 text-sm font-medium text-blue-600 bg-blue-50 rounded-md">1</span>
+                        </PaginationItem>
+                        <PaginationItem :value="2">
+                          <span class="px-3 py-2 text-sm font-medium text-gray-500 hover:text-gray-700 rounded-md cursor-pointer">2</span>
+                        </PaginationItem>
+                        <PaginationItem :value="3">
+                          <PaginationEllipsis />
+                        </PaginationItem>
+                        <PaginationItem :value="10">
+                          <PaginationNext href="#" />
+                        </PaginationItem>
+                      </PaginationContent>
+                    </Pagination>
+                  </CardContent>
+                </Card>
+
+                <!-- 指令组件 -->
+                <Card class="shadow-lg hover:shadow-xl transition-shadow">
+                  <CardHeader>
+                    <CardTitle class="flex items-center gap-2">
+                      <Settings class="h-5 w-5 text-pink-500" />
+                      Command 指令
+                    </CardTitle>
+                    <CardDescription>快速搜索指令面板</CardDescription>
+                  </CardHeader>
+                  <CardContent>
+                    <Command class="rounded-lg border shadow-md">
+                      <CommandInput placeholder="输入搜索..." />
+                      <CommandList>
+                        <CommandEmpty>没有找到结果。</CommandEmpty>
+                        <CommandGroup heading="建议">
+                          <CommandItem value="calendar">
+                            <Calendar class="mr-2 h-4 w-4" />
+                            <span>日历</span>
+                          </CommandItem>
+                          <CommandItem value="user">
+                            <User class="mr-2 h-4 w-4" />
+                            <span>用户设置</span>
+                          </CommandItem>
+                        </CommandGroup>
+                      </CommandList>
+                    </Command>
+                  </CardContent>
+                </Card>
+              </div>
+            </TabsContent>
+
+            <!-- 高级组件 -->
+            <TabsContent value="advanced" class="space-y-6">
+              <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                <!-- 表格 -->
+                <Card class="shadow-lg hover:shadow-xl transition-shadow">
+                  <CardHeader>
+                    <CardTitle class="flex items-center gap-2">
+                      <Square class="h-5 w-5 text-blue-500" />
+                      Table 表格
+                    </CardTitle>
+                    <CardDescription>数据表格展示</CardDescription>
+                  </CardHeader>
+                  <CardContent>
+                    <Table>
+                      <TableCaption>用户列表</TableCaption>
+                      <TableHeader>
+                        <TableRow>
+                          <TableHead>姓名</TableHead>
+                          <TableHead>状态</TableHead>
+                          <TableHead>操作</TableHead>
+                        </TableRow>
+                      </TableHeader>
+                      <TableBody>
+                        <TableRow>
+                          <TableCell class="font-medium">张三</TableCell>
+                          <TableCell>
+                            <Badge variant="default">在线</Badge>
+                          </TableCell>
+                          <TableCell>
+                            <Button variant="ghost" size="sm">编辑</Button>
+                          </TableCell>
+                        </TableRow>
+                        <TableRow>
+                          <TableCell class="font-medium">李四</TableCell>
+                          <TableCell>
+                            <Badge variant="secondary">离线</Badge>
+                          </TableCell>
+                          <TableCell>
+                            <Button variant="ghost" size="sm">编辑</Button>
+                          </TableCell>
+                        </TableRow>
+                      </TableBody>
+                    </Table>
+                  </CardContent>
+                </Card>
+
+                <!-- 日历 -->
+                <Card class="shadow-lg hover:shadow-xl transition-shadow">
+                  <CardHeader>
+                    <CardTitle class="flex items-center gap-2">
+                      <Calendar class="h-5 w-5 text-green-500" />
+                      Calendar 日历
+                    </CardTitle>
+                    <CardDescription>日期选择组件</CardDescription>
+                  </CardHeader>
+                  <CardContent>
+                    <CalendarComponent v-model="selectedDate" mode="single" />
+                  </CardContent>
+                </Card>
+
+                <!-- 轮播图 -->
+                <Card class="shadow-lg hover:shadow-xl transition-shadow">
+                  <CardHeader>
+                    <CardTitle class="flex items-center gap-2">
+                      <MousePointer class="h-5 w-5 text-purple-500" />
+                      Carousel 轮播图
+                    </CardTitle>
+                    <CardDescription>图片轮播组件</CardDescription>
+                  </CardHeader>
+                  <CardContent>
+                    <Carousel class="w-full max-w-xs">
+                      <CarouselContent>
+                        <CarouselItem v-for="i in 5" :key="i">
+                          <Card>
+                            <CardContent class="flex aspect-square items-center justify-center p-6">
+                              <span class="text-4xl font-semibold">{{ i }}</span>
+                            </CardContent>
+                          </Card>
+                        </CarouselItem>
+                      </CarouselContent>
+                      <CarouselPrevious />
+                      <CarouselNext />
+                    </Carousel>
+                  </CardContent>
+                </Card>
+
+                <!-- 折叠面板 -->
+                <Card class="shadow-lg hover:shadow-xl transition-shadow">
+                  <CardHeader>
+                    <CardTitle class="flex items-center gap-2">
+                      <ChevronDown class="h-5 w-5 text-orange-500" />
+                      Collapsible 折叠面板
+                    </CardTitle>
+                    <CardDescription>可折叠内容区域</CardDescription>
+                  </CardHeader>
+                  <CardContent>
+                    <Collapsible v-model:open="isCollapsibleOpen">
+                      <div class="flex items-center justify-between space-x-4 px-4">
+                        <h4 class="text-sm font-semibold">
+                          设置选项
+                        </h4>
+                        <CollapsibleTrigger as-child>
+                          <Button variant="ghost" size="sm">
+                            <ChevronDown class="h-4 w-4" />
+                          </Button>
+                        </CollapsibleTrigger>
+                      </div>
+                      <CollapsibleContent class="space-y-2">
+                        <div class="rounded-md border px-4 py-2 text-sm">
+                          选项 1
+                        </div>
+                        <div class="rounded-md border px-4 py-2 text-sm">
+                          选项 2
+                        </div>
+                      </CollapsibleContent>
+                    </Collapsible>
+                  </CardContent>
+                </Card>
+
+                <!-- 组合框 -->
+                <Card class="shadow-lg hover:shadow-xl transition-shadow">
+                  <CardHeader>
+                    <CardTitle class="flex items-center gap-2">
+                      <ChevronDown class="h-5 w-5 text-teal-500" />
+                      Combobox 组合框
+                    </CardTitle>
+                    <CardDescription>搜索选择组件</CardDescription>
+                  </CardHeader>
+                  <CardContent>
+                    <Combobox v-model="comboboxValue">
+                      <ComboboxInput placeholder="搜索选项..." />
+                      <ComboboxList>
+                        <ComboboxItem v-for="option in comboboxOptions" :key="option.value" :value="option.value">
+                          {{ option.label }}
+                        </ComboboxItem>
+                      </ComboboxList>
+                    </Combobox>
+                  </CardContent>
+                </Card>
+
+                <!-- 侧边栏 -->
+                <Card class="shadow-lg hover:shadow-xl transition-shadow">
+                  <CardHeader>
+                    <CardTitle class="flex items-center gap-2">
+                      <Layers class="h-5 w-5 text-pink-500" />
+                      Sheet 侧边栏
+                    </CardTitle>
+                    <CardDescription>抽屉式侧边栏</CardDescription>
+                  </CardHeader>
+                  <CardContent>
+                    <Sheet v-model:open="sheetOpen">
+                      <SheetTrigger as-child>
+                        <Button variant="outline">打开侧边栏</Button>
+                      </SheetTrigger>
+                      <SheetContent>
+                        <SheetHeader>
+                          <SheetTitle>侧边栏标题</SheetTitle>
+                          <SheetDescription>
+                            这里是侧边栏的内容描述。
+                          </SheetDescription>
+                        </SheetHeader>
+                        <div class="grid gap-4 py-4">
+                          <div class="space-y-2">
+                            <Label for="name">姓名</Label>
+                            <Input id="name" value="张三" />
+                          </div>
+                          <div class="space-y-2">
+                            <Label for="email">邮箱</Label>
+                            <Input id="email" value="zhang@example.com" />
+                          </div>
+                        </div>
+                        <SheetFooter>
+                          <SheetClose as-child>
+                            <Button type="submit">保存更改</Button>
+                          </SheetClose>
+                        </SheetFooter>
+                      </SheetContent>
+                    </Sheet>
+                  </CardContent>
+                </Card>
+
+                <!-- 抽屉 -->
+                <Card class="shadow-lg hover:shadow-xl transition-shadow">
+                  <CardHeader>
+                    <CardTitle class="flex items-center gap-2">
+                      <Square class="h-5 w-5 text-indigo-500" />
+                      Drawer 抽屉
+                    </CardTitle>
+                    <CardDescription>底部弹出抽屉</CardDescription>
+                  </CardHeader>
+                  <CardContent>
+                    <Drawer v-model:open="drawerOpen">
+                      <DrawerTrigger as-child>
+                        <Button variant="outline">打开抽屉</Button>
+                      </DrawerTrigger>
+                      <DrawerContent>
+                        <div class="mx-auto w-full max-w-sm">
+                          <DrawerHeader>
+                            <DrawerTitle>抽屉标题</DrawerTitle>
+                            <DrawerDescription>这里是抽屉的内容。</DrawerDescription>
+                          </DrawerHeader>
+                          <div class="p-4 pb-0">
+                            <div class="flex items-center justify-center space-x-2">
+                              <Button variant="outline" size="icon" @click="count > 0 && count--">
+                                <Minus class="h-4 w-4" />
+                              </Button>
+                              <div class="flex-1 text-center">
+                                <div class="text-7xl font-bold tracking-tighter">
+                                  {{ count }}
+                                </div>
+                                <div class="text-[0.70rem] uppercase text-muted-foreground">
+                                  计数器
+                                </div>
+                              </div>
+                              <Button variant="outline" size="icon" @click="count++">
+                                <Plus class="h-4 w-4" />
+                              </Button>
+                            </div>
+                          </div>
+                          <DrawerFooter>
+                            <Button>确认</Button>
+                            <DrawerClose as-child>
+                              <Button variant="outline">取消</Button>
+                            </DrawerClose>
+                          </DrawerFooter>
+                        </div>
+                      </DrawerContent>
+                    </Drawer>
+                  </CardContent>
+                </Card>
+
+                <!-- 可调整大小 -->
+                <Card class="shadow-lg hover:shadow-xl transition-shadow">
+                  <CardHeader>
+                    <CardTitle class="flex items-center gap-2">
+                      <SlidersHorizontal class="h-5 w-5 text-green-500" />
+                      Resizable 可调整大小
+                    </CardTitle>
+                    <CardDescription>可调整大小的面板</CardDescription>
+                  </CardHeader>
+                  <CardContent>
+                    <ResizablePanelGroup direction="horizontal" class="max-w-md rounded-lg border">
+                      <ResizablePanel :default-size="50">
+                        <div class="flex h-[200px] items-center justify-center p-6">
+                          <span class="font-semibold">面板 1</span>
+                        </div>
+                      </ResizablePanel>
+                      <ResizableHandle />
+                      <ResizablePanel :default-size="50">
+                        <div class="flex h-[200px] items-center justify-center p-6">
+                          <span class="font-semibold">面板 2</span>
+                        </div>
+                      </ResizablePanel>
+                    </ResizablePanelGroup>
+                  </CardContent>
+                </Card>
+
+                <!-- 步骤器 -->
+                <Card class="shadow-lg hover:shadow-xl transition-shadow">
+                  <CardHeader>
+                    <CardTitle class="flex items-center gap-2">
+                      <Circle class="h-5 w-5 text-purple-500" />
+                      Stepper 步骤器
+                    </CardTitle>
+                    <CardDescription>引导步骤组件</CardDescription>
+                  </CardHeader>
+                  <CardContent>
+                    <Stepper v-model="currentStep" class="w-full">
+                      <StepperItem :step="1">
+                        <StepperTrigger>
+                          <StepperIndicator />
+                          步骤 1
+                        </StepperTrigger>
+                        <div class="mt-2">
+                          <StepperTitle>基本信息</StepperTitle>
+                          <StepperDescription>填写您的基本信息</StepperDescription>
+                        </div>
+                      </StepperItem>
+                      <StepperItem :step="2">
+                        <StepperTrigger>
+                          <StepperIndicator />
+                          步骤 2
+                        </StepperTrigger>
+                        <div class="mt-2">
+                          <StepperTitle>详细设置</StepperTitle>
+                          <StepperDescription>配置详细设置</StepperDescription>
+                        </div>
+                      </StepperItem>
+                      <StepperItem :step="3">
+                        <StepperTrigger>
+                          <StepperIndicator />
+                          步骤 3
+                        </StepperTrigger>
+                        <div class="mt-2">
+                          <StepperTitle>完成</StepperTitle>
+                          <StepperDescription>确认并完成设置</StepperDescription>
+                        </div>
+                      </StepperItem>
+                    </Stepper>
+                  </CardContent>
+                </Card>
+              </div>
+            </TabsContent>
           </Tabs>
         </div>
 
@@ -769,6 +1261,25 @@ import Progress from '@/components/ui/Progress.vue'
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
 import Skeleton from '@/components/ui/Skeleton.vue'
 
+// Navigation Components
+import { NavigationMenu, NavigationMenuContent, NavigationMenuItem, NavigationMenuLink, NavigationMenuList, NavigationMenuTrigger } from '@/components/ui/navigation-menu'
+import { Menubar, MenubarContent, MenubarItem, MenubarMenu, MenubarSeparator, MenubarTrigger } from '@/components/ui/menubar'
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from '@/components/ui/dropdown-menu'
+import { ContextMenu, ContextMenuContent, ContextMenuItem, ContextMenuSeparator, ContextMenuTrigger } from '@/components/ui/context-menu'
+import { Pagination, PaginationContent, PaginationEllipsis, PaginationItem, PaginationNext, PaginationPrevious } from '@/components/ui/pagination'
+import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from '@/components/ui/command'
+
+// Advanced Components
+import { Table, TableBody, TableCaption, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
+import { Calendar as CalendarComponent } from '@/components/ui/calendar'
+import { Carousel, CarouselContent, CarouselItem, CarouselNext, CarouselPrevious } from '@/components/ui/carousel'
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible'
+import { Combobox, ComboboxInput, ComboboxItem, ComboboxList } from '@/components/ui/combobox'
+import { Sheet, SheetClose, SheetContent, SheetDescription, SheetFooter, SheetHeader, SheetTitle, SheetTrigger } from '@/components/ui/sheet'
+import { Drawer, DrawerClose, DrawerContent, DrawerDescription, DrawerFooter, DrawerHeader, DrawerTitle, DrawerTrigger } from '@/components/ui/drawer'
+import { ResizableHandle, ResizablePanel, ResizablePanelGroup } from '@/components/ui/resizable'
+import { Stepper, StepperIndicator, StepperItem, StepperTrigger, StepperTitle, StepperDescription } from '@/components/ui/stepper'
+
 // State
 const activeTab = ref('basic')
 const demoTabValue = ref('tab1')
@@ -793,12 +1304,31 @@ const checkbox2 = ref(true)
 const checkbox3 = ref(false)
 const radioValue = ref('option1')
 
-// Dialog state
+// Dialog and modal states
 const dialogOpen = ref(false)
+const sheetOpen = ref(false)
+const drawerOpen = ref(false)
 
 // Progress state
 const progressValue = ref(33)
 
+// Navigation states
+const currentPage = ref(1)
+
+// Advanced component states
+const selectedDate = ref()
+const isCollapsibleOpen = ref(false)
+const comboboxValue = ref('')
+const comboboxOptions = [
+  { value: 'react', label: 'React' },
+  { value: 'vue', label: 'Vue' },
+  { value: 'angular', label: 'Angular' },
+  { value: 'svelte', label: 'Svelte' }
+]
+const currentStep = ref(1)
+const count = ref(0)
+
+// Functions
 const simulateProgress = () => {
   progressValue.value = 0
   const interval = setInterval(() => {
@@ -808,5 +1338,9 @@ const simulateProgress = () => {
       clearInterval(interval)
     }
   }, 200)
+}
+
+const handlePageChange = (page: number) => {
+  currentPage.value = page
 }
 </script>
