@@ -5,7 +5,7 @@
         <!-- 页面标题 -->
         <div class="text-center">
           <h1 class="text-5xl font-bold bg-gradient-to-r from-blue-600 to-purple-600 bg-clip-text text-transparent mb-4">
-            Shadcn-Vue 组件库
+            小智小智 -Vue 组件库
           </h1>
           <p class="text-xl text-gray-600 dark:text-gray-400 max-w-2xl mx-auto">
             完整的现代化UI组件展示，用于构建美观、交互丰富的Vue应用程序
@@ -14,7 +14,7 @@
 
         <!-- 导航标签 -->
         <div class="flex justify-center">
-          <Tabs v-model="activeTab" class="w-full max-w-4xl">
+          <Tabs v-model="activeTab" class="w-full max-w-7xl">
             <TabsList class="grid w-full grid-cols-6">
               <TabsTrigger value="basic">基础组件</TabsTrigger>
               <TabsTrigger value="form">表单组件</TabsTrigger>
@@ -566,13 +566,12 @@
                             任何拥有此链接的人都可以查看此内容。
                           </DialogDescription>
                         </DialogHeader>
-                        <div class="flex items-center space-x-2">
-                          <div class="grid flex-1 gap-2">
+                        <div class="flex items-center space-x-2 white">
+                          <div class="grid flex-1 gap-2 white">
                             <Label for="link" class="sr-only">链接</Label>
                             <Input
                               id="link"
                               value="https://shadcn-vue.com/docs/installation"
-                              readonly
                             />
                           </div>
                           <Button type="submit" size="sm" class="px-3">

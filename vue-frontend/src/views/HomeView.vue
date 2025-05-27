@@ -1,6 +1,6 @@
 <template>
   <div class="min-h-full overflow-y-auto">
-    <div class="container mx-auto p-4 max-w-4xl">
+    <div class="container mx-auto p-4 max-w-7xl">
       <div class="text-center mb-8">
         <h1 class="text-4xl font-bold text-primary mb-4">
           小智小智 多模态聊天系统

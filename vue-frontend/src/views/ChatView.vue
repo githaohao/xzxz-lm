@@ -1,10 +1,10 @@
 <template>
   <div class="flex flex-col h-full bg-gradient-to-br from-slate-50 to-slate-100 dark:from-slate-900 dark:to-slate-800">
     <!-- 主要内容区域 -->
-    <div class="flex-1 container mx-auto px-4 py-6 max-w-4xl flex flex-col">
+    <div class="flex-1 container mx-auto px-4 py-6 max-w-7xl flex flex-col">
       <!-- 文件处理状态 -->
       <div v-if="processedFile" class="mb-6">
-        <div class="relative max-w-4xl mx-auto px-2">
+        <div class="relative max-w-7xl mx-auto px-2">
           <div class="
             flex items-center gap-4 p-4
             bg-gradient-to-r from-blue-50 to-indigo-50 dark:from-blue-950/50 dark:to-indigo-950/50
@@ -24,8 +24,10 @@
               <p class="font-semibold text-slate-900 dark:text-slate-100 truncate">{{ processedFile.name }}</p>
               <p class="text-sm text-slate-600 dark:text-slate-400">{{ formatFileSize(processedFile.size) }}</p>
               <div class="flex items-center gap-2 mt-1">
-                <div class="w-2 h-2 rounded-full bg-green-500 animate-pulse"></div>
-                <span class="text-xs text-green-600 dark:text-green-400 font-medium">已准备就绪</span>
+                <div v-if="processedFile.processing" class="w-2 h-2 rounded-full bg-yellow-500 animate-pulse"></div>
+                <div v-else class="w-2 h-2 rounded-full bg-green-500 animate-pulse"></div>
+                <span v-if="processedFile.processing" class="text-xs text-yellow-600 dark:text-yellow-400 font-medium">处理中...</span>
+                <span v-else class="text-xs text-green-600 dark:text-green-400 font-medium">已准备就绪</span>
               </div>
             </div>
             
@@ -102,7 +104,7 @@
                     <details class="group">
                       <summary class="cursor-pointer text-sm text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 flex items-center gap-2">
                         <span class="text-base">🤔</span>
-                        <span>查看思考过程</span>
+                        <span>思考过程</span>
                         <span class="text-xs opacity-60 group-open:hidden">(点击展开)</span>
                       </summary>
                       <div class="mt-3 p-3 bg-slate-50 dark:bg-slate-900 rounded-lg border border-slate-200 dark:border-slate-700">
@@ -148,7 +150,7 @@
                 <CardContent class="p-4">
                   <div v-if="hasThinkTags(currentStreamingMessage.content)" class="space-y-3">
                     <!-- 思考内容（可折叠） -->
-                    <details class="group">
+                    <details class="group" :open="currentStreamingMessage.isStreaming && !extractThinkContent(currentStreamingMessage.content).content">
                       <summary class="cursor-pointer text-sm text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 flex items-center gap-2">
                         <span class="text-base">🤔</span>
                         <span>查看思考过程</span>
@@ -184,7 +186,7 @@
       <!-- 输入区域 -->
       <div class="mt-6 px-2">
         <!-- Grok风格的现代化输入框 -->
-        <div class="relative max-w-4xl mx-auto">
+        <div class="relative max-w-7xl mx-auto">
           <!-- 主输入容器 -->
           <div 
             :class="[
@@ -436,9 +438,15 @@ async function processFile(file: File) {
 
     // 上传并处理文件
     const result = await uploadFile(file)
+    
+    // 设置文件状态（uploadFile函数已经处理了ocrCompleted和processing状态）
     setProcessedFile(result)
     
-    console.log('✅ 文件处理完成:', result)
+    if (result.ocrCompleted) {
+      console.log('✅ OCR处理完成，文件已准备就绪:', result)
+    } else {
+      console.log('⏳ 文件上传成功，OCR处理中:', result)
+    }
   } catch (error: any) {
     console.error('❌ 文件处理失败:', error)
     setProcessedFile(null)

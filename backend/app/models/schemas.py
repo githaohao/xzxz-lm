@@ -30,7 +30,7 @@ class FileData(BaseModel):
     name: str
     type: str
     size: int
-    ocr_text: Optional[str] = None
+    content: Optional[str] = None
 
 class MultimodalStreamRequest(BaseModel):
     message: str

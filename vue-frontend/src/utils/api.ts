@@ -79,7 +79,8 @@ export async function sendMultimodalMessage(
         name: fileData.name,
         type: fileData.type,
         size: fileData.size,
-        ocr_text: fileData.ocrText || null
+        content: fileData.content || null,
+        ocr_completed: fileData.ocrCompleted || false
       },
       temperature,
       max_tokens: maxTokens
@@ -163,7 +164,8 @@ export async function uploadFile(file: File): Promise<ProcessedFile> {
   })
 
   const uploadResult = uploadResponse.data
-  let ocrText: string | undefined = undefined
+  let ocrCompleted = false
+  let content: string | undefined = undefined
 
   // 2. 如果是支持OCR的文件类型，进行OCR处理
   const fileExt = file.name.toLowerCase().split('.').pop()
@@ -178,19 +180,25 @@ export async function uploadFile(file: File): Promise<ProcessedFile> {
         }
       })
 
-      ocrText = ocrResponse.data.text
+      content = ocrResponse.data.text // 保存OCR文本用于RAG
+      ocrCompleted = true // OCR处理完成
     } catch (ocrError) {
       console.warn('OCR处理失败:', ocrError)
       // OCR失败不影响文件上传，继续处理
+      ocrCompleted = false
     }
+  } else {
+    // 非OCR文件类型，直接标记为完成
+    ocrCompleted = true
   }
 
   return {
     name: file.name,
     size: file.size,
     type: file.type,
-    ocrText,
-    processing: false
+    content,
+    ocrCompleted,
+    processing: !ocrCompleted // 如果OCR未完成，则仍处于处理中状态
   }
 }
 

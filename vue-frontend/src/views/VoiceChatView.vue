@@ -1,6 +1,6 @@
 <template>
   <div class="min-h-full overflow-y-auto">
-    <div class="container mx-auto p-4 max-w-4xl">
+    <div class="container mx-auto p-4 max-w-7xl">
       <div class="space-y-6">
         <!-- 页面标题 -->
         <div class="text-center">

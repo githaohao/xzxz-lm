@@ -36,8 +36,9 @@ export interface ProcessedFile {
   name: string
   size: number
   type: string
-  ocrText?: string
   processing?: boolean
+  ocrCompleted?: boolean
+  content?: string  // OCR处理后的内容，用于RAG
 }
 
 // 通话状态
