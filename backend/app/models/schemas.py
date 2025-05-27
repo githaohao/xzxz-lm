@@ -33,6 +33,7 @@ class FileData(BaseModel):
     content: Optional[str] = None
     doc_id: Optional[str] = None  # RAG文档ID
     ocr_completed: Optional[bool] = False
+    rag_enabled: Optional[bool] = False  # 是否启用RAG功能
 
 class DocumentChunk(BaseModel):
     """文档分块"""
