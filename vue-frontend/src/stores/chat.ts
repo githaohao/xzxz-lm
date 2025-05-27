@@ -1,8 +1,8 @@
 import { defineStore } from 'pinia'
 import { ref, computed } from 'vue'
-import type { Message, ProcessedFile, StreamEvent } from '@/types'
+import type { Message, ProcessedFile, StreamEvent, RAGSearchRequest } from '@/types'
 import { generateId } from '@/utils'
-import { sendTextMessage, sendMultimodalMessage } from '@/utils/api'
+import { sendTextMessage, sendMultimodalMessage, searchDocuments } from '@/utils/api'
 
 export const useChatStore = defineStore('chat', () => {
   // 状态
@@ -218,6 +218,24 @@ export const useChatStore = defineStore('chat', () => {
     processedFile.value = file
   }
 
+  // RAG文档检索
+  async function searchInDocuments(query: string, docIds?: string[]) {
+    try {
+      const request: RAGSearchRequest = {
+        query,
+        doc_ids: docIds,
+        top_k: 5,
+        min_similarity: 0.6
+      }
+      
+      const response = await searchDocuments(request)
+      return response
+    } catch (error) {
+      console.error('RAG检索失败:', error)
+      throw error
+    }
+  }
+
   return {
     // 状态
     messages,
@@ -235,6 +253,7 @@ export const useChatStore = defineStore('chat', () => {
     sendMessage,
     cancelRequest,
     clearMessages,
-    setProcessedFile
+    setProcessedFile,
+    searchInDocuments
   }
 }) 

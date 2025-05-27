@@ -39,6 +39,31 @@ export interface ProcessedFile {
   processing?: boolean
   ocrCompleted?: boolean
   content?: string  // OCR处理后的内容，用于RAG
+  doc_id?: string   // RAG文档ID
+  rag_enabled?: boolean  // 是否启用RAG
+}
+
+// RAG文档块
+export interface DocumentChunk {
+  chunk_id: string
+  content: string
+  similarity: number
+  metadata: Record<string, any>
+}
+
+// RAG检索请求
+export interface RAGSearchRequest {
+  query: string
+  doc_ids?: string[]
+  top_k?: number
+  min_similarity?: number
+}
+
+// RAG检索响应
+export interface RAGSearchResponse {
+  chunks: DocumentChunk[]
+  total_found: number
+  search_time: number
 }
 
 // 通话状态

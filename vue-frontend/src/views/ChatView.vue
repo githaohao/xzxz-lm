@@ -443,7 +443,7 @@ async function processFile(file: File) {
     setProcessedFile(result)
     
     if (result.ocrCompleted) {
-      console.log('✅ OCR处理完成，文件已准备就绪:', result)
+      console.log('✅ OCR处理完成，文件已准备就绪（支持RAG智能检索）:', result)
     } else {
       console.log('⏳ 文件上传成功，OCR处理中:', result)
     }

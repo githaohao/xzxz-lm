@@ -31,6 +31,36 @@ class FileData(BaseModel):
     type: str
     size: int
     content: Optional[str] = None
+    doc_id: Optional[str] = None  # RAG文档ID
+    ocr_completed: Optional[bool] = False
+
+class DocumentChunk(BaseModel):
+    """文档分块"""
+    chunk_id: str
+    content: str
+    similarity: float
+    metadata: dict
+
+class RAGSearchRequest(BaseModel):
+    """RAG检索请求"""
+    query: str
+    doc_ids: Optional[List[str]] = None
+    top_k: int = Field(default=5, ge=1, le=20)
+    min_similarity: float = Field(default=0.6, ge=0.0, le=1.0)
+
+class RAGSearchResponse(BaseModel):
+    """RAG检索响应"""
+    chunks: List[DocumentChunk]
+    total_found: int
+    search_time: float
+
+class DocumentInfo(BaseModel):
+    """文档信息"""
+    doc_id: str
+    filename: str
+    file_type: str
+    chunk_count: int
+    created_at: str
 
 class MultimodalStreamRequest(BaseModel):
     message: str

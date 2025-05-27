@@ -13,11 +13,13 @@ import json
 from app.models.schemas import (
     ChatRequest, ChatResponse, FileUploadResponse, 
     OCRRequest, OCRResponse, TTSRequest, TTSResponse,
-    MessageType, MultimodalStreamRequest
+    MessageType, MultimodalStreamRequest, RAGSearchRequest, 
+    RAGSearchResponse, DocumentInfo
 )
 from app.services.lm_studio_service import lm_studio_service
 from app.services.ocr_service import ocr_service
 from app.services.tts_service import tts_service
+from app.services.rag_service import rag_service
 from app.config import settings
 
 logger = logging.getLogger(__name__)
@@ -199,15 +201,50 @@ async def multimodal_chat_stream_with_processed_data(
             # 构建完整消息
             full_message = request.message
             
-            # 如果有已处理的文件数据，直接使用OCR文本
+            # 如果有已处理的文件数据，使用RAG检索相关内容
             if request.file_data and request.file_data.content:
                 logger.info(f"使用已处理的文件数据: {request.file_data.name}")
-                file_content = f"\n\n[文件内容: {request.file_data.name}]\n{request.file_data.content}"
-                full_message = request.message + file_content
                 
-                # 发送文件处理完成状态
-                file_message = f"使用已处理文件: {request.file_data.name}"
-                yield f"data: {json.dumps({'type': 'file_processing', 'message': file_message})}\n\n"
+                # 如果文件还没有进行RAG处理，先进行处理
+                if not request.file_data.doc_id:
+                    logger.info("开始RAG文档处理...")
+                    yield f"data: {json.dumps({'type': 'file_processing', 'message': '正在对文档进行智能索引...'})}\n\n"
+                    
+                    # 处理文档并生成doc_id
+                    doc_id = await rag_service.process_document(
+                        content=request.file_data.content,
+                        filename=request.file_data.name,
+                        file_type=request.file_data.type
+                    )
+                    request.file_data.doc_id = doc_id
+                    yield f"data: {json.dumps({'type': 'file_processing', 'message': f'文档索引完成: {request.file_data.name}'})}\n\n"
+                
+                # 使用RAG检索相关内容
+                logger.info("开始RAG检索相关内容...")
+                yield f"data: {json.dumps({'type': 'file_processing', 'message': '正在检索相关文档片段...'})}\n\n"
+                
+                relevant_chunks = await rag_service.search_relevant_chunks(
+                    query=request.message,
+                    doc_ids=[request.file_data.doc_id],
+                    top_k=5,
+                    min_similarity=0.6
+                )
+                
+                if relevant_chunks:
+                    # 构建RAG上下文
+                    rag_context = "\n\n[相关文档内容]\n"
+                    for i, chunk in enumerate(relevant_chunks, 1):
+                        rag_context += f"片段{i} (相似度: {chunk['similarity']:.2f}):\n{chunk['content']}\n\n"
+                    
+                    full_message = request.message + rag_context
+                    
+                    chunk_count = len(relevant_chunks)
+                    yield f"data: {json.dumps({'type': 'file_processing', 'message': f'检索到 {chunk_count} 个相关片段'})}\n\n"
+                else:
+                    # 如果没有找到相关内容，使用原始文档内容
+                    file_content = f"\n\n[文件内容: {request.file_data.name}]\n{request.file_data.content}"
+                    full_message = request.message + file_content
+                    yield f"data: {json.dumps({'type': 'file_processing', 'message': '未找到相关片段，使用完整文档'})}\n\n"
             
 
             
@@ -246,3 +283,63 @@ async def multimodal_chat_stream_with_processed_data(
             "X-Accel-Buffering": "no"
         }
     )
+
+@router.post("/rag/search", response_model=RAGSearchResponse)
+async def search_documents(request: RAGSearchRequest):
+    """RAG文档检索接口"""
+    try:
+        start_time = time.time()
+        
+        # 执行检索
+        chunks = await rag_service.search_relevant_chunks(
+            query=request.query,
+            doc_ids=request.doc_ids,
+            top_k=request.top_k,
+            min_similarity=request.min_similarity
+        )
+        
+        search_time = time.time() - start_time
+        
+        return RAGSearchResponse(
+            chunks=chunks,
+            total_found=len(chunks),
+            search_time=search_time
+        )
+        
+    except Exception as e:
+        logger.error(f"RAG检索失败: {e}")
+        raise HTTPException(status_code=500, detail=f"检索失败: {str(e)}")
+
+@router.get("/rag/documents/{doc_id}", response_model=DocumentInfo)
+async def get_document_info(doc_id: str):
+    """获取文档信息"""
+    try:
+        doc_info = await rag_service.get_document_info(doc_id)
+        
+        if not doc_info:
+            raise HTTPException(status_code=404, detail="文档不存在")
+        
+        return DocumentInfo(**doc_info)
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"获取文档信息失败: {e}")
+        raise HTTPException(status_code=500, detail=f"获取文档信息失败: {str(e)}")
+
+@router.delete("/rag/documents/{doc_id}")
+async def delete_document(doc_id: str):
+    """删除文档及其索引"""
+    try:
+        success = await rag_service.delete_document(doc_id)
+        
+        if not success:
+            raise HTTPException(status_code=404, detail="文档不存在")
+        
+        return {"message": "文档删除成功", "doc_id": doc_id}
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"删除文档失败: {e}")
+        raise HTTPException(status_code=500, detail=f"删除文档失败: {str(e)}")
