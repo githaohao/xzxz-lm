@@ -113,7 +113,8 @@ export async function sendVoiceMessage(
   const response = await api.post<VoiceRecognitionResponse>('/voice/chat', formData, {
     headers: {
       'Content-Type': 'multipart/form-data'
-    }
+    },
+    timeout: 60000  // 语音处理增加到1分钟超时
   })
 
   return response.data
@@ -122,7 +123,8 @@ export async function sendVoiceMessage(
 // TTS语音合成API
 export async function synthesizeSpeech(params: TTSRequest): Promise<ArrayBuffer> {
   const response = await api.post('/voice/speech/synthesize', params, {
-    responseType: 'arraybuffer'
+    responseType: 'arraybuffer',
+    timeout: 60000  // TTS合成增加到1分钟超时
   })
 
   return response.data
@@ -164,7 +166,8 @@ export async function uploadFile(file: File): Promise<ProcessedFile> {
   const uploadResponse = await api.post('/upload', formData, {
     headers: {
       'Content-Type': 'multipart/form-data'
-    }
+    },
+    timeout: 60000  // 文件上传增加到1分钟超时
   })
 
   const uploadResult = uploadResponse.data
@@ -183,7 +186,8 @@ export async function uploadFile(file: File): Promise<ProcessedFile> {
       const ocrResponse = await api.post('/ocr', ocrFormData, {
         headers: {
           'Content-Type': 'multipart/form-data'
-        }
+        },
+        timeout: 120000  // OCR处理增加到2分钟超时
       })
 
       content = ocrResponse.data.text // 保存OCR文本用于RAG
@@ -265,7 +269,8 @@ export async function processDocumentForRAG(
   const response = await api.post('/rag/process', formData, {
     headers: {
       'Content-Type': 'multipart/form-data'
-    }
+    },
+    timeout: 180000  // RAG处理增加到3分钟超时
   })
   return response.data.doc_id
 }
