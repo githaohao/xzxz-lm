@@ -33,216 +33,241 @@
         </div>
       </div>
 
-      <div class="flex-1 container mx-auto px-4 py-6 max-w-7xl flex flex-col">
-      <!-- 文件处理状态 -->
-      <div v-if="processedFile" class="mb-6">
-        <div class="relative max-w-7xl mx-auto px-2">
-          <div class="
-            flex items-center gap-4 p-4
-            bg-gradient-to-r from-blue-50 to-indigo-50 dark:from-blue-950/50 dark:to-indigo-950/50
-            border border-blue-200/50 dark:border-blue-800/50
-            rounded-2xl shadow-lg backdrop-blur-sm
-            transition-all duration-300
-          ">
-            <!-- 文件图标 -->
-            <div class="flex-shrink-0">
-              <div class="w-12 h-12 rounded-xl bg-blue-100 dark:bg-blue-900/50 flex items-center justify-center shadow-sm">
-                <Paperclip class="h-6 w-6 text-blue-600 dark:text-blue-400" />
-              </div>
-            </div>
-            
-            <!-- 文件信息 -->
-            <div class="flex-1 min-w-0">
-              <p class="font-semibold text-slate-900 dark:text-slate-100 truncate">{{ processedFile.name }}</p>
-              <p class="text-sm text-slate-600 dark:text-slate-400">{{ formatFileSize(processedFile.size) }}</p>
-              <div class="flex items-center gap-2 mt-1">
-                <div v-if="processedFile.processing" class="w-2 h-2 rounded-full bg-yellow-500 animate-pulse"></div>
-                <div v-else class="w-2 h-2 rounded-full bg-green-500 animate-pulse"></div>
-                <span v-if="processedFile.processing" class="text-xs text-yellow-600 dark:text-yellow-400 font-medium">处理中...</span>
-                <span v-else class="text-xs text-green-600 dark:text-green-400 font-medium">已准备就绪</span>
+      <div class="flex-1 container mx-auto px-4 py-4 max-w-7xl flex flex-col min-h-0">
+        <!-- 文件处理状态 -->
+        <div v-if="processedFile" class="flex-shrink-0 mb-4">
+          <div class="relative max-w-7xl mx-auto px-2">
+            <div class="
+              flex items-center gap-4 p-3
+              bg-gradient-to-r from-blue-50 to-indigo-50 dark:from-blue-950/50 dark:to-indigo-950/50
+              border border-blue-200/50 dark:border-blue-800/50
+              rounded-xl shadow-lg backdrop-blur-sm
+              transition-all duration-300
+            ">
+              <!-- 文件图标 -->
+              <div class="flex-shrink-0">
+                <div class="w-10 h-10 rounded-lg bg-blue-100 dark:bg-blue-900/50 flex items-center justify-center shadow-sm">
+                  <Paperclip class="h-5 w-5 text-blue-600 dark:text-blue-400" />
+                </div>
               </div>
               
-              <!-- RAG状态显示 -->
-              <div v-if="processedFile.rag_enabled" class="flex items-center gap-2 mt-1">
-                <div class="w-2 h-2 rounded-full bg-purple-500"></div>
-                <span class="text-xs text-purple-600 dark:text-purple-400 font-medium">
-                  🧠 智能检索已启用
-                </span>
-                <Badge variant="secondary" class="text-xs px-1.5 py-0.5">
-                  RAG
-                </Badge>
+              <!-- 文件信息 -->
+              <div class="flex-1 min-w-0">
+                <p class="font-semibold text-sm text-slate-900 dark:text-slate-100 truncate">{{ processedFile.name }}</p>
+                <p class="text-xs text-slate-600 dark:text-slate-400">{{ formatFileSize(processedFile.size) }}</p>
+                <div class="flex items-center gap-2 mt-1">
+                  <div v-if="processedFile.processing" class="w-1.5 h-1.5 rounded-full bg-yellow-500 animate-pulse"></div>
+                  <div v-else class="w-1.5 h-1.5 rounded-full bg-green-500 animate-pulse"></div>
+                  <span v-if="processedFile.processing" class="text-xs text-yellow-600 dark:text-yellow-400 font-medium">处理中...</span>
+                  <span v-else class="text-xs text-green-600 dark:text-green-400 font-medium">已准备就绪</span>
+                </div>
+                
+                <!-- RAG状态显示 -->
+                <div v-if="processedFile.rag_enabled" class="flex items-center gap-2 mt-1">
+                  <div class="w-1.5 h-1.5 rounded-full bg-purple-500"></div>
+                  <span class="text-xs text-purple-600 dark:text-purple-400 font-medium">
+                    🧠 智能检索已启用
+                  </span>
+                  <Badge variant="secondary" class="text-xs px-1.5 py-0.5">
+                    RAG
+                  </Badge>
+                </div>
+                <div v-else-if="processedFile.ocrCompleted && processedFile.content" class="flex items-center gap-2 mt-1">
+                  <div class="w-1.5 h-1.5 rounded-full bg-gray-400"></div>
+                  <span class="text-xs text-gray-500 dark:text-gray-400 font-medium">
+                    📄 常规文本模式
+                  </span>
+                </div>
               </div>
-              <div v-else-if="processedFile.ocrCompleted && processedFile.content" class="flex items-center gap-2 mt-1">
-                <div class="w-2 h-2 rounded-full bg-gray-400"></div>
-                <span class="text-xs text-gray-500 dark:text-gray-400 font-medium">
-                  📄 常规文本模式
-                </span>
-              </div>
+              
+              <!-- 移除按钮 -->
+              <button
+                @click="setProcessedFile(null)"
+                class="
+                  flex-shrink-0 p-1.5 rounded-lg
+                  hover:bg-red-50 dark:hover:bg-red-900/20
+                  text-slate-500 hover:text-red-600 dark:text-slate-400 dark:hover:text-red-400
+                  transition-all duration-200
+                  focus:outline-none focus:ring-2 focus:ring-red-500/20
+                "
+              >
+                <X class="h-4 w-4" />
+              </button>
             </div>
-            
-            <!-- 移除按钮 -->
-            <button
-              @click="setProcessedFile(null)"
-              class="
-                flex-shrink-0 p-2 rounded-lg
-                hover:bg-red-50 dark:hover:bg-red-900/20
-                text-slate-500 hover:text-red-600 dark:text-slate-400 dark:hover:text-red-400
-                transition-all duration-200
-                focus:outline-none focus:ring-2 focus:ring-red-500/20
-              "
-            >
-              <X class="h-5 w-5" />
-            </button>
           </div>
         </div>
-      </div>
 
-      <!-- 消息列表 -->
-      <ScrollArea class="flex-1 pr-4">
-        <div class="space-y-6 pb-4">
-          <!-- 历史消息 -->
-          <div
-            v-for="message in messages"
-            :key="message.id"
-            :class="[
-              'flex gap-4 max-w-full',
-              message.isUser ? 'flex-row-reverse' : ''
-            ]"
-          >
-            <!-- 头像 -->
-            <Avatar class="w-10 h-10 flex-shrink-0">
-              <AvatarFallback 
-                :class="[
-                  'text-white font-medium',
-                  message.isUser 
-                    ? 'bg-gradient-to-br from-green-500 to-emerald-600' 
-                    : 'bg-gradient-to-br from-blue-500 to-purple-600'
-                ]"
-              >
-                <User v-if="message.isUser" class="h-5 w-5" />
-                <Bot v-else class="h-5 w-5" />
-              </AvatarFallback>
-            </Avatar>
+        <!-- 消息列表 -->
+        <ScrollArea 
+          ref="scrollAreaRef"
+          class="flex-1 min-h-0 pr-2" 
+          style="height: calc(100vh - 280px);"
+        >
+          <div class="space-y-4 pb-4">
+            <!-- 历史消息 -->
+            <div
+              v-for="message in messages"
+              :key="message.id"
+              :class="[
+                'flex gap-3 max-w-full',
+                message.isUser ? 'flex-row-reverse' : ''
+              ]"
+            >
+              <!-- 头像 -->
+              <Avatar class="w-8 h-8 flex-shrink-0 mt-1">
+                <AvatarFallback 
+                  :class="[
+                    'text-white font-medium text-sm',
+                    message.isUser 
+                      ? 'bg-gradient-to-br from-green-500 to-emerald-600' 
+                      : 'bg-gradient-to-br from-blue-500 to-purple-600'
+                  ]"
+                >
+                  <User v-if="message.isUser" class="h-4 w-4" />
+                  <Bot v-else class="h-4 w-4" />
+                </AvatarFallback>
+              </Avatar>
 
-            <div :class="['flex flex-col gap-2 max-w-[75%]', message.isUser ? 'items-end' : 'items-start']">
-              <!-- 文件信息 -->
-              <Card v-if="message.fileInfo" class="border-slate-200 dark:border-slate-700">
-                <CardContent class="p-3">
-                  <div class="flex items-center gap-2 text-sm">
-                    <Paperclip class="h-4 w-4 text-slate-500" />
-                    <span class="text-slate-700 dark:text-slate-300">{{ message.fileInfo.name }}</span>
-                    <Badge variant="secondary" class="text-xs">
-                      {{ formatFileSize(message.fileInfo.size) }}
-                    </Badge>
-                    <!-- RAG指示器 -->
-                    <Badge v-if="message.fileInfo.rag_enabled" variant="outline" class="text-xs text-purple-600 border-purple-300">
-                      🧠 RAG
-                    </Badge>
-                  </div>
-                </CardContent>
-              </Card>
-
-              <!-- 消息内容 -->
-              <Card 
-                :class="[
-                  'shadow-sm transition-all duration-200 hover:shadow-md',
-                  message.isUser 
-                    ? 'bg-gradient-to-br from-green-500 to-emerald-600 text-white border-green-200' 
-                    : 'bg-white dark:bg-slate-800 border-slate-200 dark:border-slate-700'
-                ]"
-              >
-                <CardContent class="p-4">
-                  <div v-if="!message.isUser && hasThinkTags(message.content)" class="space-y-3">
-                    <!-- 思考内容（可折叠） -->
-                    <details class="group">
-                      <summary class="cursor-pointer text-sm text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 flex items-center gap-2">
-                        <span class="text-base">🤔</span>
-                        <span>思考过程</span>
-                        <span class="text-xs opacity-60 group-open:hidden">(点击展开)</span>
-                      </summary>
-                      <div class="mt-3 p-3 bg-slate-50 dark:bg-slate-900 rounded-lg border border-slate-200 dark:border-slate-700">
-                        <div class="text-sm text-slate-600 dark:text-slate-300 whitespace-pre-wrap leading-relaxed">
-                          {{ extractThinkContent(message.content).think }}
-                        </div>
-                      </div>
-                    </details>
-                    
-                    <Separator class="my-3" />
-                    
-                    <!-- 实际回复内容 -->
-                    <div class="text-slate-800 dark:text-slate-200 whitespace-pre-wrap leading-relaxed">
-                      {{ extractThinkContent(message.content).content }}
+              <div :class="['flex flex-col gap-2 max-w-[80%]', message.isUser ? 'items-end' : 'items-start']">
+                <!-- 文件信息 -->
+                <Card v-if="message.fileInfo" class="border-slate-200 dark:border-slate-700">
+                  <CardContent class="p-2">
+                    <div class="flex items-center gap-2 text-xs">
+                      <Paperclip class="h-3 w-3 text-slate-500" />
+                      <span class="text-slate-700 dark:text-slate-300 truncate max-w-40">{{ message.fileInfo.name }}</span>
+                      <Badge variant="secondary" class="text-xs px-1 py-0">
+                        {{ formatFileSize(message.fileInfo.size) }}
+                      </Badge>
+                      <!-- RAG指示器 -->
+                      <Badge v-if="message.fileInfo.rag_enabled" variant="outline" class="text-xs text-purple-600 border-purple-300 px-1 py-0">
+                        🧠 RAG
+                      </Badge>
                     </div>
-                  </div>
-                  <div v-else class="whitespace-pre-wrap leading-relaxed break-words">
-                    {{ message.content }}
-                  </div>
-                </CardContent>
-              </Card>
+                  </CardContent>
+                </Card>
 
-              <!-- 时间戳 -->
-              <div class="text-xs text-slate-400 dark:text-slate-500 px-1">
-                {{ formatTime(message.timestamp) }}
+                <!-- 消息内容 -->
+                <Card 
+                  :class="[
+                    'shadow-sm transition-all duration-200 hover:shadow-md max-w-full',
+                    message.isUser 
+                      ? 'bg-gradient-to-br from-green-500 to-emerald-600 text-white border-green-200' 
+                      : 'bg-white dark:bg-slate-800 border-slate-200 dark:border-slate-700'
+                  ]"
+                >
+                  <CardContent class="p-3">
+                    <div v-if="!message.isUser && hasThinkTags(message.content)" class="space-y-2">
+                      <!-- 思考内容（可折叠） -->
+                      <details class="group">
+                        <summary class="cursor-pointer text-xs text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 flex items-center gap-1">
+                          <span class="text-sm">🤔</span>
+                          <span>思考过程</span>
+                          <span class="text-xs opacity-60 group-open:hidden">(展开)</span>
+                        </summary>
+                        <div class="mt-2 p-2 bg-slate-50 dark:bg-slate-900 rounded-lg border border-slate-200 dark:border-slate-700">
+                          <div class="text-xs text-slate-600 dark:text-slate-300 whitespace-pre-wrap leading-relaxed max-h-32 overflow-y-auto">
+                            {{ extractThinkContent(message.content).think }}
+                          </div>
+                        </div>
+                      </details>
+                      
+                      <Separator class="my-2" />
+                      
+                      <!-- 实际回复内容 -->
+                      <div class="text-sm text-slate-800 dark:text-slate-200 whitespace-pre-wrap leading-relaxed">
+                        {{ extractThinkContent(message.content).content }}
+                      </div>
+                    </div>
+                    <div v-else class="text-sm whitespace-pre-wrap leading-relaxed break-words">
+                      {{ message.content }}
+                    </div>
+                  </CardContent>
+                </Card>
+
+                <!-- 时间戳 -->
+                <div class="text-xs text-slate-400 dark:text-slate-500 px-1">
+                  {{ formatTime(message.timestamp) }}
+                </div>
               </div>
             </div>
-          </div>
 
           <!-- 当前流式消息 -->
           <div
             v-if="currentStreamingMessage"
-            class="flex gap-4 max-w-full"
+            class="flex gap-3 max-w-full"
           >
-            <Avatar class="w-10 h-10 flex-shrink-0">
-              <AvatarFallback class="bg-gradient-to-br from-blue-500 to-purple-600 text-white">
-                <Bot class="h-5 w-5" />
+            <Avatar class="w-8 h-8 flex-shrink-0 mt-1">
+              <AvatarFallback class="bg-gradient-to-br from-blue-500 to-purple-600 text-white text-sm">
+                <Bot class="h-4 w-4" />
               </AvatarFallback>
             </Avatar>
 
-            <div class="flex flex-col gap-2 max-w-[75%] items-start">
-              <Card class="bg-white dark:bg-slate-800 border-slate-200 dark:border-slate-700 shadow-sm">
-                <CardContent class="p-4">
-                  <div v-if="hasThinkTags(currentStreamingMessage.content)" class="space-y-3">
+            <div class="flex flex-col gap-2 max-w-[80%] items-start">
+              <Card class="bg-white dark:bg-slate-800 border-slate-200 dark:border-slate-700 shadow-sm max-w-full">
+                <CardContent class="p-3">
+                  <div v-if="hasThinkTags(currentStreamingMessage.content)" class="space-y-2">
                     <!-- 思考内容（可折叠） -->
                     <details class="group" :open="currentStreamingMessage.isStreaming && !extractThinkContent(currentStreamingMessage.content).content">
-                      <summary class="cursor-pointer text-sm text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 flex items-center gap-2">
-                        <span class="text-base">🤔</span>
+                      <summary class="cursor-pointer text-xs text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 flex items-center gap-1">
+                        <span class="text-sm">🤔</span>
                         <span>查看思考过程</span>
-                        <span class="text-xs opacity-60 group-open:hidden">(点击展开)</span>
+                        <span class="text-xs opacity-60 group-open:hidden">(展开)</span>
                       </summary>
-                      <div class="mt-3 p-3 bg-slate-50 dark:bg-slate-900 rounded-lg border border-slate-200 dark:border-slate-700">
-                        <div class="text-sm text-slate-600 dark:text-slate-300 whitespace-pre-wrap leading-relaxed">
+                      <div class="mt-2 p-2 bg-slate-50 dark:bg-slate-900 rounded-lg border border-slate-200 dark:border-slate-700">
+                        <div class="text-xs text-slate-600 dark:text-slate-300 whitespace-pre-wrap leading-relaxed max-h-32 overflow-y-auto">
                           {{ extractThinkContent(currentStreamingMessage.content).think }}
-                          <span v-if="currentStreamingMessage.isStreaming && !extractThinkContent(currentStreamingMessage.content).content" class="inline-block w-2 h-5 bg-blue-500 animate-pulse ml-1">▋</span>
+                          <span v-if="currentStreamingMessage.isStreaming && !extractThinkContent(currentStreamingMessage.content).content" class="inline-block w-1.5 h-4 bg-blue-500 animate-pulse ml-1">▋</span>
                         </div>
                       </div>
                     </details>
                     
-                    <Separator v-if="extractThinkContent(currentStreamingMessage.content).content" class="my-3" />
+                    <Separator v-if="extractThinkContent(currentStreamingMessage.content).content" class="my-2" />
                     
                     <!-- 实际回复内容 -->
-                    <div v-if="extractThinkContent(currentStreamingMessage.content).content" class="text-slate-800 dark:text-slate-200 whitespace-pre-wrap leading-relaxed">
+                    <div v-if="extractThinkContent(currentStreamingMessage.content).content" class="text-sm text-slate-800 dark:text-slate-200 whitespace-pre-wrap leading-relaxed">
                       {{ extractThinkContent(currentStreamingMessage.content).content }}
-                      <span v-if="currentStreamingMessage.isStreaming" class="inline-block w-2 h-5 bg-blue-500 animate-pulse ml-1">▋</span>
+                      <span v-if="currentStreamingMessage.isStreaming" class="inline-block w-1.5 h-4 bg-blue-500 animate-pulse ml-1">▋</span>
                     </div>
                   </div>
-                  <div v-else class="text-slate-800 dark:text-slate-200 whitespace-pre-wrap leading-relaxed break-words">
+                  <div v-else class="text-sm text-slate-800 dark:text-slate-200 whitespace-pre-wrap leading-relaxed break-words">
                     {{ currentStreamingMessage.content }}
-                    <span v-if="currentStreamingMessage.isStreaming" class="inline-block w-2 h-5 bg-blue-500 animate-pulse ml-1">▋</span>
+                    <span v-if="currentStreamingMessage.isStreaming" class="inline-block w-1.5 h-4 bg-blue-500 animate-pulse ml-1">▋</span>
                   </div>
                 </CardContent>
               </Card>
             </div>
+          </div>
+          
+          <!-- 滚动状态指示器 -->
+          <div 
+            v-if="!isAtBottom && messages.length > 0"
+            class="flex justify-center py-2"
+          >
+            <button
+              @click="scrollToBottom"
+              class="
+                flex items-center gap-2 px-3 py-1.5 
+                bg-blue-500/90 hover:bg-blue-600/90 
+                text-white text-xs rounded-full 
+                shadow-lg backdrop-blur-sm
+                transition-all duration-200 hover:scale-105
+                animate-pulse
+              "
+            >
+              <span>↓</span>
+              <span>滚动到底部</span>
+            </button>
           </div>
         </div>
       </ScrollArea>
 
       <!-- 输入区域 -->
-      <div class="mt-6 px-2">
+      <div class="flex-shrink-0 mt-4 px-2">
         <!-- RAG智能建议 -->
-        <div v-if="ragSuggestion" class="max-w-7xl mx-auto mb-3">
-          <div class="flex items-center gap-2 p-3 bg-gradient-to-r from-purple-50 to-blue-50 dark:from-purple-950/30 dark:to-blue-950/30 border border-purple-200 dark:border-purple-800 rounded-xl">
+        <div v-if="ragSuggestion" class="max-w-7xl mx-auto mb-2">
+          <div class="flex items-center gap-2 p-2 bg-gradient-to-r from-purple-50 to-blue-50 dark:from-purple-950/30 dark:to-blue-950/30 border border-purple-200 dark:border-purple-800 rounded-lg">
             <div class="text-purple-600 dark:text-purple-400">💡</div>
-            <span class="text-sm text-purple-700 dark:text-purple-300">{{ ragSuggestion }}</span>
+            <span class="text-xs text-purple-700 dark:text-purple-300">{{ ragSuggestion }}</span>
             <button 
               v-if="!ragEnabled"
               @click="ragEnabled = true"
@@ -273,12 +298,12 @@
             @dragleave.prevent="handleDragLeave"
           >
             <!-- 文件附件图标 -->
-            <div class="flex-shrink-0 pb-2">
+            <div class="flex-shrink-0 pb-1">
               <button
                 @click="fileInput?.click()"
                 :disabled="isLoading"
                 class="
-                  group relative p-2.5 rounded-xl
+                  group relative p-2 rounded-lg
                   bg-slate-50 dark:bg-slate-700/50
                   hover:bg-slate-100 dark:hover:bg-slate-600/50
                   border border-slate-200 dark:border-slate-600
@@ -288,11 +313,11 @@
                   focus:outline-none focus:ring-2 focus:ring-blue-500/20
                 "
               >
-                <Paperclip class="h-5 w-5 text-slate-600 dark:text-slate-300 group-hover:text-blue-600 dark:group-hover:text-blue-400 transition-colors" />
+                <Paperclip class="h-4 w-4 text-slate-600 dark:text-slate-300 group-hover:text-blue-600 dark:group-hover:text-blue-400 transition-colors" />
                 
                 <!-- 悬浮提示 -->
                 <div class="
-                  absolute -top-10 left-1/2 transform -translate-x-1/2
+                  absolute -top-8 left-1/2 transform -translate-x-1/2
                   px-2 py-1 text-xs text-white bg-slate-900 rounded-md
                   opacity-0 group-hover:opacity-100 transition-opacity duration-200
                   pointer-events-none whitespace-nowrap
@@ -316,12 +341,12 @@
                 v-model="inputMessage"
                 placeholder="输入你的消息..."
                 class="
-                  w-full min-h-[52px] max-h-36 py-3.5 px-4
+                  w-full min-h-[44px] max-h-32 py-3 px-4
                   bg-transparent border-0 resize-none
                   text-slate-900 dark:text-slate-100
                   placeholder:text-slate-500 dark:placeholder:text-slate-400
                   focus:outline-none focus:ring-0
-                  text-[15px] leading-relaxed
+                  text-sm leading-relaxed
                   scrollbar-thin scrollbar-thumb-slate-300 dark:scrollbar-thumb-slate-600
                 "
                 :disabled="isLoading"
@@ -339,20 +364,20 @@
             </div>
 
             <!-- 发送按钮区域 -->
-            <div class="flex-shrink-0 pb-2">
+            <div class="flex-shrink-0 pb-1">
               <Button
                 v-if="isLoading"
                 @click="cancelRequest"
                 size="lg"
                 class="
-                  h-11 w-11 p-0 rounded-xl
+                  h-9 w-9 p-0 rounded-lg
                   bg-red-500 hover:bg-red-600
                   border-0 shadow-lg hover:shadow-xl
                   transition-all duration-200 ease-out
                   hover:scale-105
                 "
               >
-                <X class="h-5 w-5 text-white" />
+                <X class="h-4 w-4 text-white" />
               </Button>
               
               <Button
@@ -361,7 +386,7 @@
                 :disabled="(!inputMessage.trim() && !processedFile) || isLoading"
                 size="lg"
                 class="
-                  h-11 w-11 p-0 rounded-xl
+                  h-9 w-9 p-0 rounded-lg
                   bg-gradient-to-r from-blue-600 to-purple-600 
                   hover:from-blue-700 hover:to-purple-700
                   disabled:from-slate-300 disabled:to-slate-400
@@ -371,26 +396,26 @@
                   focus:outline-none focus:ring-2 focus:ring-blue-500/20
                 "
               >
-                <Send class="h-5 w-5 text-white ml-0.5" />
+                <Send class="h-4 w-4 text-white ml-0.5" />
               </Button>
             </div>
           </div>
 
           <!-- 输入提示 -->
-          <div class="flex items-center justify-between mt-3 px-4 text-xs text-slate-500 dark:text-slate-400">
-            <div class="flex items-center gap-4">
+          <div class="flex items-center justify-between mt-2 px-4 text-xs text-slate-500 dark:text-slate-400">
+            <div class="flex items-center gap-3">
               <span class="flex items-center gap-1">
-                <kbd class="px-1.5 py-0.5 bg-slate-100 dark:bg-slate-700 rounded text-[10px] font-mono">⏎</kbd>
+                <kbd class="px-1 py-0.5 bg-slate-100 dark:bg-slate-700 rounded text-[10px] font-mono">⏎</kbd>
                 发送
               </span>
               <span class="flex items-center gap-1">
-                <kbd class="px-1.5 py-0.5 bg-slate-100 dark:bg-slate-700 rounded text-[10px] font-mono">⇧</kbd>
-                <kbd class="px-1.5 py-0.5 bg-slate-100 dark:bg-slate-700 rounded text-[10px] font-mono">⏎</kbd>
+                <kbd class="px-1 py-0.5 bg-slate-100 dark:bg-slate-700 rounded text-[10px] font-mono">⇧</kbd>
+                <kbd class="px-1 py-0.5 bg-slate-100 dark:bg-slate-700 rounded text-[10px] font-mono">⏎</kbd>
                 换行
               </span>
               
               <!-- RAG模式切换 -->
-              <div v-if="processedFile?.rag_enabled" class="flex items-center gap-2 ml-4">
+              <div v-if="processedFile?.rag_enabled" class="flex items-center gap-1 ml-2">
                 <input 
                   id="rag-toggle"
                   v-model="ragEnabled"
@@ -425,7 +450,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed } from 'vue'
+import { ref, computed, watch, nextTick, onMounted, onUnmounted } from 'vue'
 import { storeToRefs } from 'pinia'
 import { 
   Send, 
@@ -472,6 +497,14 @@ const showDocumentPanel = ref(true) // 显示文档面板
 const ragStore = useRAGStore()
 const { selectedCount: selectedDocumentCount } = storeToRefs(ragStore)
 
+// 新增：滚动区域引用
+const scrollAreaRef = ref<InstanceType<typeof ScrollArea>>()
+
+// 新增：智能滚动控制
+const isUserScrolling = ref(false)
+const scrollTimeout = ref<number | null>(null)
+const isAtBottom = ref(true)
+
 // 切换文档面板显示
 function toggleDocumentPanel() {
   showDocumentPanel.value = !showDocumentPanel.value
@@ -482,6 +515,110 @@ const ragSuggestion = computed(() => {
   if (!processedFile.value?.content || !inputMessage.value) return null
   return getRagSuggestion(inputMessage.value, processedFile.value.content)
 })
+
+// 新增：检测是否在底部的函数
+function checkIfAtBottom(viewport: Element) {
+  const threshold = 50 // 允许50px的误差
+  const isBottom = viewport.scrollTop + viewport.clientHeight >= viewport.scrollHeight - threshold
+  isAtBottom.value = isBottom
+  return isBottom
+}
+
+// 新增：处理用户滚动事件
+function handleUserScroll(event: Event) {
+  const viewport = event.target as Element
+  
+  // 检测是否在底部
+  checkIfAtBottom(viewport)
+  
+  // 标记用户正在滚动
+  isUserScrolling.value = true
+  
+  // 清除之前的超时
+  if (scrollTimeout.value) {
+    clearTimeout(scrollTimeout.value)
+  }
+  
+  // 1秒后重置用户滚动状态
+  scrollTimeout.value = setTimeout(() => {
+    isUserScrolling.value = false
+    // 如果在底部，重新启用自动滚动
+    if (isAtBottom.value) {
+      scrollToBottom()
+    }
+  }, 1000)
+}
+
+// 新增：自动滚动到底部函数
+function scrollToBottom() {
+  // 如果用户正在滚动，不执行自动滚动
+  if (isUserScrolling.value) return
+  
+  nextTick(() => {
+    if (scrollAreaRef.value) {
+      const viewport = scrollAreaRef.value.$el.querySelector('[data-reka-scroll-area-viewport]')
+      if (viewport) {
+        viewport.scrollTop = viewport.scrollHeight
+        isAtBottom.value = true
+      }
+    }
+  })
+}
+
+// 新增：初始化滚动监听
+function initScrollListener() {
+  nextTick(() => {
+    if (scrollAreaRef.value) {
+      const viewport = scrollAreaRef.value.$el.querySelector('[data-reka-scroll-area-viewport]')
+      if (viewport) {
+        viewport.addEventListener('scroll', handleUserScroll, { passive: true })
+      }
+    }
+  })
+}
+
+// 新增：清理滚动监听
+function cleanupScrollListener() {
+  if (scrollAreaRef.value) {
+    const viewport = scrollAreaRef.value.$el.querySelector('[data-reka-scroll-area-viewport]')
+    if (viewport) {
+      viewport.removeEventListener('scroll', handleUserScroll)
+    }
+  }
+  if (scrollTimeout.value) {
+    clearTimeout(scrollTimeout.value)
+  }
+}
+
+// 生命周期钩子
+onMounted(() => {
+  initScrollListener()
+})
+
+onUnmounted(() => {
+  cleanupScrollListener()
+})
+
+// 监听消息变化，智能自动滚动到底部
+watch(
+  () => messages.value.length,
+  () => {
+    // 只有在底部或者不是用户滚动时才自动滚动
+    if (isAtBottom.value || !isUserScrolling.value) {
+      scrollToBottom()
+    }
+  }
+)
+
+// 监听流式消息内容变化，智能自动滚动到底部  
+watch(
+  () => currentStreamingMessage.value?.content,
+  () => {
+    if (currentStreamingMessage.value && (isAtBottom.value || !isUserScrolling.value)) {
+      scrollToBottom()
+    }
+  }
+)
 
 // 发送消息
 async function handleSend() {
@@ -586,4 +723,4 @@ async function processFile(file: File) {
     alert(`文件处理失败: ${error.message}`)
   }
 }
-</script> 
+</script>
