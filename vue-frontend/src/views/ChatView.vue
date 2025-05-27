@@ -1,7 +1,39 @@
 <template>
-  <div class="flex flex-col h-full bg-gradient-to-br from-slate-50 to-slate-100 dark:from-slate-900 dark:to-slate-800">
+  <div class="flex h-full bg-gradient-to-br from-slate-50 to-slate-100 dark:from-slate-900 dark:to-slate-800">
+    <!-- RAG文档管理面板 -->
+    <div 
+      :class="[
+        'transition-all duration-300 ease-in-out flex-shrink-0',
+        showDocumentPanel ? 'w-80' : 'w-0'
+      ]"
+    >
+      <RAGDocumentPanel v-show="showDocumentPanel" />
+    </div>
+
     <!-- 主要内容区域 -->
-    <div class="flex-1 container mx-auto px-4 py-6 max-w-7xl flex flex-col">
+    <div class="flex-1 flex flex-col">
+      <!-- 顶部工具栏 -->
+      <div class="flex items-center justify-between p-4 border-b border-slate-200 dark:border-slate-700 bg-white/80 dark:bg-slate-900/80 backdrop-blur-sm">
+        <div class="flex items-center gap-3">
+          <button
+            @click="toggleDocumentPanel"
+            class="p-2 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
+            :title="showDocumentPanel ? '隐藏文档面板' : '显示文档面板'"
+          >
+            <PanelLeftOpen v-if="!showDocumentPanel" class="h-5 w-5 text-slate-600 dark:text-slate-400" />
+            <PanelLeftClose v-else class="h-5 w-5 text-slate-600 dark:text-slate-400" />
+          </button>
+          <h1 class="text-lg font-semibold text-slate-900 dark:text-slate-100">智能对话</h1>
+        </div>
+        
+        <div class="flex items-center gap-2">
+          <Badge v-if="selectedDocumentCount > 0" variant="outline" class="text-purple-600 border-purple-300">
+            📚 已选 {{ selectedDocumentCount }} 个文档
+          </Badge>
+        </div>
+      </div>
+
+      <div class="flex-1 container mx-auto px-4 py-6 max-w-7xl flex flex-col">
       <!-- 文件处理状态 -->
       <div v-if="processedFile" class="mb-6">
         <div class="relative max-w-7xl mx-auto px-2">
@@ -387,6 +419,7 @@
           </div>
         </div>
       </div>
+      </div>
     </div>
   </div>
 </template>
@@ -400,7 +433,9 @@ import {
   Bot, 
   User, 
   Loader2,
-  X
+  X,
+  PanelLeftOpen,
+  PanelLeftClose
 } from 'lucide-vue-next'
 import { Card, CardContent } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
@@ -410,9 +445,11 @@ import { ScrollArea } from '@/components/ui/scroll-area'
 import { Separator } from '@/components/ui/separator'
 import { Avatar, AvatarFallback } from '@/components/ui/avatar'
 import { useChatStore } from '@/stores/chat'
+import { useRAGStore } from '@/stores/rag'
 import { formatTime, formatFileSize, hasThinkTags, extractThinkContent } from '@/utils'
 import { uploadFile } from '@/utils/api'
 import { getRagSuggestion, isFileRagSuitable } from '@/utils/rag-utils'
+import RAGDocumentPanel from '@/components/RAGDocumentPanel.vue'
 
 const chatStore = useChatStore()
 const {
@@ -429,6 +466,16 @@ const inputMessage = ref('')
 const fileInput = ref<HTMLInputElement>()
 const isDragging = ref(false)
 const ragEnabled = ref(true) // 默认启用RAG
+const showDocumentPanel = ref(true) // 显示文档面板
+
+// RAG Store
+const ragStore = useRAGStore()
+const { selectedCount: selectedDocumentCount } = storeToRefs(ragStore)
+
+// 切换文档面板显示
+function toggleDocumentPanel() {
+  showDocumentPanel.value = !showDocumentPanel.value
+}
 
 // 计算智能建议
 const ragSuggestion = computed(() => {
@@ -438,10 +485,29 @@ const ragSuggestion = computed(() => {
 
 // 发送消息
 async function handleSend() {
-  if (!inputMessage.value.trim() && !processedFile.value) return
+  if (!inputMessage.value.trim() && !processedFile.value && selectedDocumentCount.value === 0) return
 
-  // 如果用户关闭了RAG，创建一个不带RAG功能的文件副本
+  // 优先使用选中的文档
   let fileToSend = processedFile.value
+  
+  // 如果有选中的文档，使用第一个选中的文档（或者可以扩展为多文档支持）
+  if (selectedDocumentCount.value > 0) {
+    const selectedDocs = ragStore.selectedDocumentsList
+    if (selectedDocs.length > 0) {
+      const firstDoc = selectedDocs[0]
+              fileToSend = {
+          name: firstDoc.filename,
+          type: firstDoc.file_type,
+          size: firstDoc.total_length,
+          content: '', // 内容会在后端检索时获取
+          doc_id: firstDoc.doc_id,
+          ocrCompleted: true,
+          rag_enabled: ragEnabled.value
+        }
+    }
+  }
+  
+  // 如果用户关闭了RAG，创建一个不带RAG功能的文件副本
   if (fileToSend && !ragEnabled.value) {
     fileToSend = {
       ...fileToSend,

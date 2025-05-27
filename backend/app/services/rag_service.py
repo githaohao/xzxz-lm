@@ -207,6 +207,72 @@ class RAGService:
             logger.error(f"获取文档信息失败 {doc_id}: {e}")
             return None
     
+    async def get_all_documents(self) -> List[Dict]:
+        """获取所有文档列表"""
+        try:
+            # 获取所有文档块
+            results = self.collection.get()
+            
+            # 按doc_id分组统计
+            doc_stats = {}
+            
+            if results['ids']:
+                for i, chunk_id in enumerate(results['ids']):
+                    metadata = results['metadatas'][i]
+                    doc_id = metadata.get('doc_id')
+                    
+                    if doc_id not in doc_stats:
+                        doc_stats[doc_id] = {
+                            'doc_id': doc_id,
+                            'filename': metadata.get('filename', 'Unknown'),
+                            'file_type': metadata.get('file_type', 'Unknown'),
+                            'created_at': metadata.get('created_at', ''),
+                            'chunk_count': 0,
+                            'total_length': 0
+                        }
+                    
+                    doc_stats[doc_id]['chunk_count'] += 1
+                    doc_stats[doc_id]['total_length'] += metadata.get('chunk_length', 0)
+            
+            # 转换为列表并按创建时间排序
+            documents = list(doc_stats.values())
+            documents.sort(key=lambda x: x['created_at'], reverse=True)
+            
+            logger.info(f"获取到 {len(documents)} 个文档")
+            return documents
+            
+        except Exception as e:
+            logger.error(f"获取文档列表失败: {e}")
+            return []
+
+    async def get_document_chunks(self, doc_id: str) -> List[Dict]:
+        """获取指定文档的所有分块"""
+        try:
+            # 获取所有相关分块
+            results = self.collection.get(
+                where={"doc_id": doc_id}
+            )
+            
+            chunks = []
+            if results['ids']:
+                for i, chunk_id in enumerate(results['ids']):
+                    chunks.append({
+                        'chunk_id': chunk_id,
+                        'content': results['documents'][i],
+                        'metadata': results['metadatas'][i],
+                        'similarity': 1.0  # 完整文档时相似度设为1.0
+                    })
+                
+                # 按chunk_index排序
+                chunks.sort(key=lambda x: x['metadata'].get('chunk_index', 0))
+            
+            logger.info(f"获取文档 {doc_id} 的 {len(chunks)} 个分块")
+            return chunks
+            
+        except Exception as e:
+            logger.error(f"获取文档分块失败 {doc_id}: {e}")
+            return []
+
     async def delete_document(self, doc_id: str) -> bool:
         """删除文档及其所有分块"""
         try:

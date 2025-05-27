@@ -228,6 +228,23 @@ export async function healthCheck(): Promise<any> {
   return response.data
 }
 
+// 获取所有RAG文档列表
+export async function getAllDocuments(): Promise<any> {
+  const response = await api.get('/rag/documents')
+  return response.data
+}
+
+// 删除RAG文档
+export async function deleteDocument(docId: string): Promise<boolean> {
+  try {
+    const response = await api.delete(`/rag/documents/${docId}`)
+    return response.status === 200
+  } catch (error) {
+    console.error('删除文档失败:', error)
+    return false
+  }
+}
+
 // RAG文档检索
 export async function searchDocuments(request: RAGSearchRequest): Promise<RAGSearchResponse> {
   const response = await api.post('/rag/search', request)
@@ -259,10 +276,6 @@ export async function getDocumentInfo(docId: string): Promise<any> {
   return response.data
 }
 
-// 删除文档
-export async function deleteDocument(docId: string): Promise<any> {
-  const response = await api.delete(`/rag/documents/${docId}`)
-  return response.data
-}
+
 
 export default api 

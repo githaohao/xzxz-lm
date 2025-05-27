@@ -67,6 +67,23 @@ export interface RAGSearchResponse {
   search_time: number
 }
 
+// RAG文档项
+export interface RAGDocument {
+  doc_id: string
+  filename: string
+  file_type: string
+  created_at: string
+  chunk_count: number
+  total_length: number
+}
+
+// RAG文档列表响应
+export interface RAGDocumentsResponse {
+  documents: RAGDocument[]
+  total_count: number
+  processing_time: number
+}
+
 // 通话状态
 export type CallState = 'idle' | 'connecting' | 'connected' | 'speaking' | 'listening' | 'processing'
 
