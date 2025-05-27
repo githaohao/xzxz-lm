@@ -232,8 +232,8 @@ async def multimodal_chat_stream_with_processed_data(
                         relevant_chunks = await rag_service.search_relevant_chunks(
                             query=request.message,
                             doc_ids=[request.file_data.doc_id],
-                            top_k=5,
-                            min_similarity=0.6
+                            top_k=settings.rag_default_top_k,
+                            min_similarity=settings.rag_default_min_similarity
                         )
                         
                         if relevant_chunks:

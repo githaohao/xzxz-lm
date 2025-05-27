@@ -61,15 +61,21 @@ class RAGService:
                 metadata={"description": "存储文档分块的向量集合"}
             )
             
-            # 初始化嵌入模型
-            self.embedding_model = SentenceTransformer(
-                'sentence-transformers/all-MiniLM-L6-v2'
-            )
+            # 初始化嵌入模型 (支持中文)
+            model_name = settings.embedding_model
+            logger.info(f"正在加载嵌入模型: {model_name}")
+            
+            try:
+                self.embedding_model = SentenceTransformer(model_name)
+                logger.info(f"嵌入模型加载成功: {model_name}")
+            except Exception as e:
+                logger.warning(f"加载 {model_name} 失败，回退到默认模型: {e}")
+                self.embedding_model = SentenceTransformer('sentence-transformers/all-MiniLM-L6-v2')
             
             # 初始化文本分割器
             self.text_splitter = RecursiveCharacterTextSplitter(
-                chunk_size=1000,  # 每块1000字符
-                chunk_overlap=200,  # 重叠200字符
+                chunk_size=settings.rag_chunk_size,
+                chunk_overlap=settings.rag_chunk_overlap,
                 length_function=len,
                 separators=["\n\n", "\n", "。", "！", "？", "；", " ", ""]
             )
@@ -143,15 +149,28 @@ class RAGService:
         """
         try:
             if not query.strip():
+                logger.warning("查询字符串为空")
                 return []
+            
+            logger.info(f"开始RAG检索: query='{query}', doc_ids={doc_ids}, top_k={top_k}, min_similarity={min_similarity}")
             
             # 生成查询向量
             query_embedding = await self._generate_embedding(query)
+            logger.info(f"查询向量生成成功，维度: {query_embedding.shape}")
             
             # 构建查询条件
             where_clause = None
             if doc_ids:
                 where_clause = {"doc_id": {"$in": doc_ids}}
+                logger.info(f"限定搜索文档: {doc_ids}")
+            
+            # 检查数据库中的文档数量
+            total_docs = len(self.collection.get()['ids'])
+            logger.info(f"数据库中共有 {total_docs} 个文档块")
+            
+            if total_docs == 0:
+                logger.warning("数据库中没有文档块，请先上传并处理文档")
+                return []
             
             # 向量检索
             results = self.collection.query(
@@ -160,13 +179,20 @@ class RAGService:
                 where=where_clause
             )
             
+            logger.info(f"ChromaDB返回 {len(results['ids'][0]) if results['ids'][0] else 0} 个候选结果")
+            
             # 处理结果
             relevant_chunks = []
             
             if results['ids'][0]:  # 如果有结果
+                logger.info("处理检索结果...")
                 for i, chunk_id in enumerate(results['ids'][0]):
                     distance = results['distances'][0][i]
-                    similarity = 1 - distance  # ChromaDB使用余弦距离
+                    # ChromaDB默认使用L2距离，转换为相似度
+                    # 对于normalize的向量，L2距离和余弦距离相关
+                    similarity = max(0, 1 - distance / 2)  # 改进的相似度计算
+                    
+                    logger.debug(f"候选结果 {i+1}: 距离={distance:.4f}, 相似度={similarity:.4f}")
                     
                     if similarity >= min_similarity:
                         relevant_chunks.append({
@@ -175,8 +201,24 @@ class RAGService:
                             'metadata': results['metadatas'][0][i],
                             'similarity': similarity
                         })
+                        logger.debug(f"结果 {i+1} 通过相似度阈值")
+                    else:
+                        logger.debug(f"结果 {i+1} 未通过相似度阈值 ({similarity:.4f} < {min_similarity})")
+            else:
+                logger.warning("ChromaDB没有返回任何结果")
             
-            logger.info(f"检索到 {len(relevant_chunks)} 个相关文档块")
+            logger.info(f"最终检索到 {len(relevant_chunks)} 个相关文档块")
+            
+            # 如果没有结果，降低阈值重试一次
+            if not relevant_chunks and min_similarity > 0.3:
+                logger.info(f"没有找到结果，尝试降低相似度阈值从 {min_similarity} 到 0.3")
+                return await self.search_relevant_chunks(
+                    query=query,
+                    doc_ids=doc_ids,
+                    top_k=top_k,
+                    min_similarity=0.3
+                )
+            
             return relevant_chunks
             
         except Exception as e:
