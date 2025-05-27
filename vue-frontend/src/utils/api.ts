@@ -82,7 +82,9 @@ export async function sendMultimodalMessage(
         type: fileData.type,
         size: fileData.size,
         content: fileData.content || null,
-        ocr_completed: fileData.ocrCompleted || false
+        ocr_completed: fileData.ocrCompleted || false,
+        doc_id: fileData.doc_id || null,
+        rag_enabled: fileData.rag_enabled || false
       },
       temperature,
       max_tokens: maxTokens
@@ -168,6 +170,8 @@ export async function uploadFile(file: File): Promise<ProcessedFile> {
   const uploadResult = uploadResponse.data
   let ocrCompleted = false
   let content: string | undefined = undefined
+  let docId: string | undefined = undefined
+  let ragEnabled = false
 
   // 2. 如果是支持OCR的文件类型，进行OCR处理
   const fileExt = file.name.toLowerCase().split('.').pop()
@@ -184,6 +188,18 @@ export async function uploadFile(file: File): Promise<ProcessedFile> {
 
       content = ocrResponse.data.text // 保存OCR文本用于RAG
       ocrCompleted = true // OCR处理完成
+
+      // 3. 如果OCR成功且有内容，进行RAG文档处理
+      if (content && content.trim().length > 50) {
+        try {
+          docId = await processDocumentForRAG(content, file.name, file.type)
+          ragEnabled = true
+          console.log('✅ RAG文档处理完成，doc_id:', docId)
+        } catch (ragError) {
+          console.warn('⚠️ RAG文档处理失败:', ragError)
+          // RAG处理失败不影响文件使用
+        }
+      }
     } catch (ocrError) {
       console.warn('OCR处理失败:', ocrError)
       // OCR失败不影响文件上传，继续处理
@@ -200,7 +216,9 @@ export async function uploadFile(file: File): Promise<ProcessedFile> {
     type: file.type,
     content,
     ocrCompleted,
-    processing: !ocrCompleted // 如果OCR未完成，则仍处于处理中状态
+    processing: !ocrCompleted, // 如果OCR未完成，则仍处于处理中状态
+    doc_id: docId,
+    rag_enabled: ragEnabled
   }
 }
 
@@ -214,6 +232,25 @@ export async function healthCheck(): Promise<any> {
 export async function searchDocuments(request: RAGSearchRequest): Promise<RAGSearchResponse> {
   const response = await api.post('/rag/search', request)
   return response.data
+}
+
+// 处理文档进行RAG索引
+export async function processDocumentForRAG(
+  content: string,
+  filename: string,
+  fileType: string
+): Promise<string> {
+  const formData = new FormData()
+  formData.append('content', content)
+  formData.append('filename', filename)
+  formData.append('file_type', fileType)
+
+  const response = await api.post('/rag/process', formData, {
+    headers: {
+      'Content-Type': 'multipart/form-data'
+    }
+  })
+  return response.data.doc_id
 }
 
 // 获取文档信息

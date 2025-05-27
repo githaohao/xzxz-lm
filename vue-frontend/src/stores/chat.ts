@@ -136,7 +136,8 @@ export const useChatStore = defineStore('chat', () => {
       fileInfo: file ? {
         name: file.name,
         size: file.size,
-        type: file.type
+        type: file.type,
+        rag_enabled: file.rag_enabled
       } : undefined
     })
 

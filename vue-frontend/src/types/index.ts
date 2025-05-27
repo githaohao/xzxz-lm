@@ -8,6 +8,7 @@ export interface Message {
     name: string
     size: number
     type: string
+    rag_enabled?: boolean
   }
   isStreaming?: boolean
 }

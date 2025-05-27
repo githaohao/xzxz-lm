@@ -29,6 +29,23 @@
                 <span v-if="processedFile.processing" class="text-xs text-yellow-600 dark:text-yellow-400 font-medium">处理中...</span>
                 <span v-else class="text-xs text-green-600 dark:text-green-400 font-medium">已准备就绪</span>
               </div>
+              
+              <!-- RAG状态显示 -->
+              <div v-if="processedFile.rag_enabled" class="flex items-center gap-2 mt-1">
+                <div class="w-2 h-2 rounded-full bg-purple-500"></div>
+                <span class="text-xs text-purple-600 dark:text-purple-400 font-medium">
+                  🧠 智能检索已启用
+                </span>
+                <Badge variant="secondary" class="text-xs px-1.5 py-0.5">
+                  RAG
+                </Badge>
+              </div>
+              <div v-else-if="processedFile.ocrCompleted && processedFile.content" class="flex items-center gap-2 mt-1">
+                <div class="w-2 h-2 rounded-full bg-gray-400"></div>
+                <span class="text-xs text-gray-500 dark:text-gray-400 font-medium">
+                  📄 常规文本模式
+                </span>
+              </div>
             </div>
             
             <!-- 移除按钮 -->
@@ -84,6 +101,10 @@
                     <span class="text-slate-700 dark:text-slate-300">{{ message.fileInfo.name }}</span>
                     <Badge variant="secondary" class="text-xs">
                       {{ formatFileSize(message.fileInfo.size) }}
+                    </Badge>
+                    <!-- RAG指示器 -->
+                    <Badge v-if="message.fileInfo.rag_enabled" variant="outline" class="text-xs text-purple-600 border-purple-300">
+                      🧠 RAG
                     </Badge>
                   </div>
                 </CardContent>
@@ -185,6 +206,21 @@
 
       <!-- 输入区域 -->
       <div class="mt-6 px-2">
+        <!-- RAG智能建议 -->
+        <div v-if="ragSuggestion" class="max-w-7xl mx-auto mb-3">
+          <div class="flex items-center gap-2 p-3 bg-gradient-to-r from-purple-50 to-blue-50 dark:from-purple-950/30 dark:to-blue-950/30 border border-purple-200 dark:border-purple-800 rounded-xl">
+            <div class="text-purple-600 dark:text-purple-400">💡</div>
+            <span class="text-sm text-purple-700 dark:text-purple-300">{{ ragSuggestion }}</span>
+            <button 
+              v-if="!ragEnabled"
+              @click="ragEnabled = true"
+              class="ml-auto text-xs bg-purple-100 hover:bg-purple-200 dark:bg-purple-900 dark:hover:bg-purple-800 text-purple-700 dark:text-purple-300 px-2 py-1 rounded-md transition-colors"
+            >
+              启用RAG
+            </button>
+          </div>
+        </div>
+        
         <!-- Grok风格的现代化输入框 -->
         <div class="relative max-w-7xl mx-auto">
           <!-- 主输入容器 -->
@@ -320,6 +356,19 @@
                 <kbd class="px-1.5 py-0.5 bg-slate-100 dark:bg-slate-700 rounded text-[10px] font-mono">⏎</kbd>
                 换行
               </span>
+              
+              <!-- RAG模式切换 -->
+              <div v-if="processedFile?.rag_enabled" class="flex items-center gap-2 ml-4">
+                <input 
+                  id="rag-toggle"
+                  v-model="ragEnabled"
+                  type="checkbox" 
+                  class="w-3 h-3 text-purple-600 bg-gray-100 border-gray-300 rounded focus:ring-purple-500 dark:focus:ring-purple-600 dark:ring-offset-gray-800 focus:ring-1 dark:bg-gray-700 dark:border-gray-600"
+                />
+                <label for="rag-toggle" class="text-xs text-purple-600 dark:text-purple-400 font-medium cursor-pointer">
+                  🧠 智能检索
+                </label>
+              </div>
             </div>
             <div class="flex items-center gap-2">
               <span>支持 PDF、图片拖拽上传</span>
@@ -333,7 +382,7 @@
           >
             <div class="flex items-center gap-2 px-3 py-1.5 bg-blue-50 dark:bg-blue-900/20 text-blue-600 dark:text-blue-400 rounded-full text-sm shadow-lg">
               <div class="w-4 h-4 border-2 border-blue-600 border-t-transparent rounded-full animate-spin"></div>
-              <span>AI正在思考...</span>
+              <span>{{ processingStatus || 'AI正在思考...' }}</span>
             </div>
           </div>
         </div>
@@ -363,6 +412,7 @@ import { Avatar, AvatarFallback } from '@/components/ui/avatar'
 import { useChatStore } from '@/stores/chat'
 import { formatTime, formatFileSize, hasThinkTags, extractThinkContent } from '@/utils'
 import { uploadFile } from '@/utils/api'
+import { getRagSuggestion, isFileRagSuitable } from '@/utils/rag-utils'
 
 const chatStore = useChatStore()
 const {
@@ -378,12 +428,29 @@ const { sendMessage, cancelRequest, setProcessedFile } = chatStore
 const inputMessage = ref('')
 const fileInput = ref<HTMLInputElement>()
 const isDragging = ref(false)
+const ragEnabled = ref(true) // 默认启用RAG
+
+// 计算智能建议
+const ragSuggestion = computed(() => {
+  if (!processedFile.value?.content || !inputMessage.value) return null
+  return getRagSuggestion(inputMessage.value, processedFile.value.content)
+})
 
 // 发送消息
 async function handleSend() {
   if (!inputMessage.value.trim() && !processedFile.value) return
 
-  await sendMessage(inputMessage.value, processedFile.value || undefined)
+  // 如果用户关闭了RAG，创建一个不带RAG功能的文件副本
+  let fileToSend = processedFile.value
+  if (fileToSend && !ragEnabled.value) {
+    fileToSend = {
+      ...fileToSend,
+      rag_enabled: false,
+      doc_id: undefined
+    }
+  }
+
+  await sendMessage(inputMessage.value, fileToSend || undefined)
   inputMessage.value = ''
 }
 
