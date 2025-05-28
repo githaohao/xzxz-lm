@@ -214,7 +214,7 @@
                         <span class="text-xs opacity-60 group-open:hidden">(展开)</span>
                       </summary>
                       <div class="mt-2 p-2 bg-slate-50 dark:bg-slate-900 rounded-lg border border-slate-200 dark:border-slate-700">
-                        <div class="text-xs text-slate-600 dark:text-slate-300 whitespace-pre-wrap leading-relaxed max-h-32 overflow-y-auto">
+                        <div class="text-xs text-slate-600 dark:text-slate-300 whitespace-pre-wrap leading-relaxed">
                           {{ extractThinkContent(currentStreamingMessage.content).think }}
                           <span v-if="currentStreamingMessage.isStreaming && !extractThinkContent(currentStreamingMessage.content).content" class="inline-block w-1.5 h-4 bg-blue-500 animate-pulse ml-1">▋</span>
                         </div>
