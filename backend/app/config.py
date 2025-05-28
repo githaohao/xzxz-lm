@@ -1,6 +1,6 @@
 import os
 from pydantic_settings import BaseSettings
-from typing import List
+from typing import List, Optional
 
 class Settings(BaseSettings):
     # 应用基础配置
@@ -25,6 +25,26 @@ class Settings(BaseSettings):
     # OCR 配置
     tesseract_path: str = "/usr/local/bin/tesseract"  # macOS 默认路径
     ocr_languages: str = "chi_sim+eng"  # 中文简体 + 英文
+    
+    # OCR 引擎配置 - Apple Silicon 优化
+    ocr_engine: str = "paddleocr"  # paddleocr, tesseract, auto
+    paddleocr_use_gpu: bool = True  # 使用GPU加速
+    paddleocr_use_angle_cls: bool = True  # 文字方向分类
+    paddleocr_lang: str = "ch"  # ch, en, japan, korean等
+    paddleocr_det_model_dir: Optional[str] = None  # 自定义检测模型路径
+    paddleocr_rec_model_dir: Optional[str] = None  # 自定义识别模型路径
+    paddleocr_cls_model_dir: Optional[str] = None  # 自定义分类模型路径
+    
+    # OCR 图像预处理配置
+    ocr_image_dpi: int = 300  # PDF转图片DPI
+    ocr_image_enhance: bool = False  # 图像增强 - 禁用以提升速度
+    ocr_parallel_pages: int = 4  # 并行处理页数
+    ocr_cache_enabled: bool = True  # 启用结果缓存
+    ocr_cache_ttl: int = 3600  # 缓存时间（秒）
+    
+    # OCR 性能优化配置
+    ocr_speed_mode: bool = False  # 速度优先模式
+    ocr_fast_engine: str = "tesseract"  # 快速引擎选择: tesseract, paddleocr
     
     # TTS 配置
     tts_voice: str = "zh-CN-XiaoxiaoNeural"  # Edge TTS 中文女声

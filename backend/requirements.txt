@@ -11,6 +11,16 @@ scipy>=1.9.0
 ffmpeg-python>=0.2.0
 webrtcvad>=2.0.10
 aiohttp>=3.8.0
+
+# OCR 依赖 - Apple Silicon 优化
+paddlepaddle-gpu>=2.5.2  # Apple Silicon GPU支持
+paddleocr>=2.7.0
+pytesseract>=0.3.10
+Pillow>=10.0.0
+pdf2image>=3.1.0
+opencv-python>=4.8.0
+opencv-contrib-python>=4.8.0
+numpy>=1.24.0
              
 # Apple Silicon 特定依赖
 onnxruntime>=1.15.0
@@ -21,4 +31,7 @@ tensorflow-metal>=1.0.0
 chromadb>=0.4.0
 sentence-transformers>=2.2.0
 langchain>=0.0.350
-numpy>=1.24.0
+
+# 并发处理优化
+asyncio-pool>=0.6.0
+aiofiles>=23.0.0
