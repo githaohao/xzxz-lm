@@ -1,7 +1,7 @@
 import { defineStore } from 'pinia'
 import { ref, computed } from 'vue'
 import type { Message, ProcessedFile, StreamEvent, RAGSearchRequest } from '@/types'
-import { generateId } from '@/utils'
+import { generateId } from '@/utils/voice-utils'
 import { sendTextMessage, sendMultimodalMessage, searchDocuments } from '@/utils/api'
 
 export const useChatStore = defineStore('chat', () => {

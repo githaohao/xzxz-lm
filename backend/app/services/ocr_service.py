@@ -7,41 +7,18 @@ from typing import Tuple, List, Optional
 import logging
 from app.config import settings
 
-# 导入 PaddleOCR
-try:
-    import paddleocr
-    PADDLEOCR_AVAILABLE = True
-except ImportError:
-    PADDLEOCR_AVAILABLE = False
-    logging.warning("PaddleOCR 未安装，将使用 Tesseract 作为备选方案")
-
 logger = logging.getLogger(__name__)
 
 class OCRService:
     def __init__(self):
-        self.use_paddleocr = settings.use_paddleocr and PADDLEOCR_AVAILABLE
         self.tesseract_path = settings.tesseract_path
         self.languages = settings.ocr_languages
         
-        # 初始化 PaddleOCR
-        if self.use_paddleocr:
-            try:
-                self.paddle_ocr = paddleocr.PaddleOCR(
-                    use_angle_cls=True,  # 使用角度分类器
-                    lang='ch'  # 中文
-                )
-                logger.info("PaddleOCR 初始化成功，优先使用中文 OCR 引擎")
-            except Exception as e:
-                logger.error(f"PaddleOCR 初始化失败: {e}")
-                self.use_paddleocr = False
-                logger.info("回退到 Tesseract 引擎")
-        
-        # 配置Tesseract路径（作为备选方案）
+        # 配置Tesseract路径
         if os.path.exists(self.tesseract_path):
             pytesseract.pytesseract.tesseract_cmd = self.tesseract_path
         
-        if not self.use_paddleocr:
-            logger.info("OCR服务初始化完成，使用Tesseract引擎")
+        logger.info("OCR服务初始化完成，使用Tesseract引擎")
         
     def pdf_to_images(self, pdf_path: str) -> List[str]:
         """将PDF转换为图片"""
@@ -70,47 +47,7 @@ class OCRService:
         except Exception as e:
             logger.error(f"PDF转换失败: {e}")
             raise Exception(f"PDF转换失败: {str(e)}")
-
-    def extract_text_paddleocr(self, image_path: str) -> Tuple[str, float]:
-        """使用PaddleOCR提取文本"""
-        try:
-            # 使用PaddleOCR进行文本识别 (新版本API)
-            result = self.paddle_ocr.predict(image_path)
-            
-            if not result or len(result) == 0:
-                return "", 0.0
-            
-            # PaddleOCR 3.0 返回结构化结果
-            ocr_result = result[0]  # 第一页结果
-            
-            # 提取文本和置信度
-            texts = []
-            confidences = []
-            
-            # 从结果的 json 属性中提取数据
-            if hasattr(ocr_result, 'json'):
-                json_data = ocr_result.json
-                if 'res' in json_data:
-                    res = json_data['res']
-                    rec_texts = res.get('rec_texts', [])
-                    rec_scores = res.get('rec_scores', [])
-                    
-                    for i, text in enumerate(rec_texts):
-                        if text and text.strip():
-                            texts.append(text.strip())
-                            # 获取对应的置信度
-                            confidence = rec_scores[i] if i < len(rec_scores) else 0.0
-                            confidences.append(confidence)
-            
-            # 合并文本
-            full_text = '\n'.join(texts)
-            avg_confidence = sum(confidences) / len(confidences) if confidences else 0.0
-            
-            return full_text, avg_confidence
-            
-        except Exception as e:
-            logger.error(f"PaddleOCR提取文本失败: {e}")
-            raise Exception(f"PaddleOCR提取失败: {str(e)}")
+    
 
     def extract_text_tesseract(self, image_path: str) -> Tuple[str, float]:
         """使用Tesseract提取文本"""
@@ -146,33 +83,15 @@ class OCRService:
         start_time = time.time()
         
         try:
-            if self.use_paddleocr:
-                text, confidence = self.extract_text_paddleocr(image_path)
-                engine = "PaddleOCR"
-            else:
-                text, confidence = self.extract_text_tesseract(image_path)
-                engine = "Tesseract"
-            
+            text, confidence = self.extract_text_tesseract(image_path)
             processing_time = time.time() - start_time
             
-            logger.info(f"{engine} OCR完成，置信度: {confidence:.2f}, 耗时: {processing_time:.2f}秒")
+            logger.info(f"OCR完成，置信度: {confidence:.2f}, 耗时: {processing_time:.2f}秒")
             return text, confidence, processing_time
             
         except Exception as e:
             processing_time = time.time() - start_time
             logger.error(f"文本提取失败: {e}")
-            
-            # 如果PaddleOCR失败，尝试使用Tesseract作为备选
-            if self.use_paddleocr:
-                logger.info("PaddleOCR失败，尝试使用Tesseract作为备选")
-                try:
-                    text, confidence = self.extract_text_tesseract(image_path)
-                    processing_time = time.time() - start_time
-                    logger.info(f"Tesseract备选OCR完成，置信度: {confidence:.2f}, 耗时: {processing_time:.2f}秒")
-                    return text, confidence, processing_time
-                except Exception as backup_e:
-                    logger.error(f"备选Tesseract也失败: {backup_e}")
-            
             raise Exception(f"文本提取失败: {str(e)}")
     
     async def extract_text_from_pdf(self, pdf_path: str) -> Tuple[str, float, float]:
@@ -206,8 +125,7 @@ class OCRService:
             avg_confidence = sum(all_confidences) / len(all_confidences) if all_confidences else 0.0
             processing_time = time.time() - start_time
             
-            engine = "PaddleOCR" if self.use_paddleocr else "Tesseract"
-            logger.info(f"{engine} PDF OCR完成，共{len(all_texts)}页，平均置信度: {avg_confidence:.2f}")
+            logger.info(f"PDF OCR完成，共{len(all_texts)}页，平均置信度: {avg_confidence:.2f}")
             return full_text, avg_confidence, processing_time
             
         except Exception as e:
@@ -216,4 +134,4 @@ class OCRService:
             raise Exception(f"PDF文本提取失败: {str(e)}")
 
 # 创建全局服务实例
-ocr_service = OCRService()
+ocr_service = OCRService() 

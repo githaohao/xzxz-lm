@@ -187,7 +187,7 @@ export async function uploadFile(file: File): Promise<ProcessedFile> {
         headers: {
           'Content-Type': 'multipart/form-data'
         },
-        timeout: 120000  // OCR处理增加到2分钟超时
+        timeout: 99999999  // OCR处理时间延长
       })
 
       content = ocrResponse.data.text // 保存OCR文本用于RAG

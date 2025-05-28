@@ -39,6 +39,9 @@ export function cleanTextForSpeech(text: string): string {
   cleaned = cleaned.replace(/#{1,6}\s*(.*)/g, '$1') // 标题
   cleaned = cleaned.replace(/\[(.*?)\]\(.*?\)/g, '$1') // 链接
   
+  // 移除表情符号 (简单的范围)
+  cleaned = cleaned.replace(/[\\uD800-\\uDBFF][\\uDC00-\\uDFFF]|[\\u2600-\\u26FF]|[\\u2700-\\u27BF]|[\\uFE00-\\uFE0F]/g, '')
+  
   // 移除多余的空白字符
   cleaned = cleaned.replace(/\s+/g, ' ').trim()
   

@@ -1,3 +1,8 @@
+import os
+
+# 设置 tokenizers 环境变量，避免并行处理警告
+os.environ["TOKENIZERS_PARALLELISM"] = "false"
+
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
@@ -5,7 +10,6 @@ from fastapi.responses import JSONResponse
 import logging
 import sys
 import traceback
-import os
 
 from .config import settings
 from .routes import chat, health, voice

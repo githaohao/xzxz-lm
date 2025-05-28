@@ -25,7 +25,6 @@ class Settings(BaseSettings):
     # OCR 配置
     tesseract_path: str = "/usr/local/bin/tesseract"  # macOS 默认路径
     ocr_languages: str = "chi_sim+eng"  # 中文简体 + 英文
-    use_paddleocr: bool = True  # 优先使用 PaddleOCR
     
     # TTS 配置
     tts_voice: str = "zh-CN-XiaoxiaoNeural"  # Edge TTS 中文女声

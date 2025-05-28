@@ -16,7 +16,6 @@
 
 ### 后端
 - **FastAPI**: 高性能 Python Web 框架
-- **PaddleOCR**: 中文 OCR 识别引擎
 - **FunAudioLLM**: 高性能语音识别引擎（比 Whisper 快 15 倍）
 - **Edge-TTS**: 微软语音合成服务
 - **pdf2image**: PDF 转图片处理
@@ -40,7 +39,23 @@
 ![image](https://gitee.com/githaohao/xzxz-lm/raw/main/docs/%E6%88%AA%E5%B1%8F2025-05-26%20%E4%B8%8A%E5%8D%889.37.13.png)
 ![image](https://gitee.com/githaohao/xzxz-lm/raw/main/docs/%E6%88%AA%E5%B1%8F2025-05-26%20%E4%B8%8A%E5%8D%889.37.22.png)
 
-## 快速开始
+## 🚀 快速启动
+
+### 环境变量设置（推荐）
+
+为了避免 tokenizers 并行处理警告，建议先设置环境变量：
+
+```bash
+# 方法1：使用提供的脚本（推荐）
+source scripts/set_env.sh
+
+# 方法2：手动设置
+export TOKENIZERS_PARALLELISM=false
+export PYTORCH_ENABLE_MPS_FALLBACK=1  # Apple Silicon 用户
+export MPS_MEMORY_FRACTION=0.8        # Apple Silicon 用户
+```
+
+### 启动服务
 
 ### 环境要求
 
@@ -99,7 +114,6 @@ lm_studio_base_url: str = "http://127.0.0.1:1234/v1"
 lm_studio_model: str = "qwen3-14b-mlx"
 
 # OCR 配置
-use_paddleocr: bool = True  # 使用 PaddleOCR
 tesseract_path: str = "/usr/local/bin/tesseract"  # Tesseract 路径
 
 # TTS 配置
@@ -244,9 +258,7 @@ docker-compose up -d
    - 检查防火墙设置
 
 2. **OCR 识别失败**
-   - 确保 PaddleOCR 正确安装
    - 检查图片质量和格式
-   - 尝试切换到 Tesseract
 
 3. **语音功能异常**
    - 检查 FunAudioLLM 服务状态
@@ -290,7 +302,6 @@ pnpm dev  # 开发模式下查看控制台
 ## 致谢
 
 - [LM Studio](https://lmstudio.ai/) - 本地大语言模型服务
-- [PaddleOCR](https://github.com/PaddlePaddle/PaddleOCR) - 中文 OCR 引擎
 - [FunAudioLLM](https://github.com/FunAudioLLM/FunAudioLLM) - 高性能语音识别引擎
 - [shadcn-ui](https://ui.shadcn.com/) - 现代化 UI 组件库
 - [Vue 3](https://vuejs.org/) - 渐进式 JavaScript 框架

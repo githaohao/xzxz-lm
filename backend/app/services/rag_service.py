@@ -43,6 +43,9 @@ class RAGService:
     def _initialize(self):
         """初始化RAG服务"""
         try:
+            # 设置 tokenizers 环境变量，避免并行处理警告
+            os.environ["TOKENIZERS_PARALLELISM"] = "false"
+            
             # 初始化ChromaDB
             chroma_path = os.path.join(settings.upload_dir, "chroma_db")
             os.makedirs(chroma_path, exist_ok=True)

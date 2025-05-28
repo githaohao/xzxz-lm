@@ -1,7 +1,7 @@
 import { defineStore } from 'pinia'
 import { ref, computed } from 'vue'
 import type { VoiceMessage, CallState } from '@/types'
-import { generateId, cleanTextForSpeech } from '@/utils'
+import { generateId, cleanTextForSpeech } from '@/utils/voice-utils'
 import { 
   sendVoiceMessage, 
   synthesizeSpeech, 

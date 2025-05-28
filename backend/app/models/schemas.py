@@ -88,7 +88,6 @@ class FileUploadResponse(BaseModel):
 class OCRRequest(BaseModel):
     file_path: str
     language: str = "chi_sim+eng"
-    use_paddleocr: bool = True
 
 class OCRResponse(BaseModel):
     text: str

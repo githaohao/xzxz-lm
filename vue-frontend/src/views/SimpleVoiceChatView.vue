@@ -178,7 +178,7 @@ import Progress from '@/components/ui/Progress.vue'
 import Alert from '@/components/ui/Alert.vue'
 import AlertDescription from '@/components/ui/AlertDescription.vue'
 import { useVoiceStore } from '@/stores/voice'
-import { formatTime } from '@/utils'
+import { formatTime } from '@/utils/voice-utils'
 
 const voiceStore = useVoiceStore()
 const {

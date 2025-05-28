@@ -146,7 +146,6 @@ export const voiceAPI = {
 - **FastAPI**: 现代化的 Python Web 框架
 - **Pydantic**: 数据验证和序列化
 - **SQLAlchemy**: ORM 数据库操作（如需要）
-- **PaddleOCR**: 中文 OCR 识别
 - **FunAudioLLM**: 高性能语音识别
 - **Edge-TTS**: 文字转语音
 
