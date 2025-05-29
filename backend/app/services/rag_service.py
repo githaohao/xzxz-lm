@@ -191,9 +191,13 @@ class RAGService:
                 logger.info("处理检索结果...")
                 for i, chunk_id in enumerate(results['ids'][0]):
                     distance = results['distances'][0][i]
-                    # ChromaDB默认使用L2距离，转换为相似度
-                    # 对于normalize的向量，L2距离和余弦距离相关
-                    similarity = max(0, 1 - distance / 2)  # 改进的相似度计算
+                    
+                    # 改进的相似度计算
+                    # ChromaDB使用L2距离，需要根据实际距离范围调整计算方式
+                    if distance <= 2.0:  # 对于归一化向量，L2距离通常在0-2之间
+                        similarity = max(0, 1 - distance / 2)
+                    else:  # 对于未归一化向量，使用指数衰减
+                        similarity = max(0, 1.0 / (1 + distance / 100))  # 调整衰减因子2
                     
                     logger.debug(f"候选结果 {i+1}: 距离={distance:.4f}, 相似度={similarity:.4f}")
                     
@@ -405,9 +409,12 @@ class RAGService:
         loop = asyncio.get_event_loop()
         embedding = await loop.run_in_executor(
             self.executor,
-            self.embedding_model.encode,
-            text
+            lambda: self.embedding_model.encode(text, normalize_embeddings=True)
         )
+        # 确保向量被归一化
+        norm = np.linalg.norm(embedding)
+        if norm > 0:
+            embedding = embedding / norm
         return embedding
     
     async def _generate_embeddings_batch(self, texts: List[str]) -> np.ndarray:
@@ -415,9 +422,12 @@ class RAGService:
         loop = asyncio.get_event_loop()
         embeddings = await loop.run_in_executor(
             self.executor,
-            self.embedding_model.encode,
-            texts
+            lambda: self.embedding_model.encode(texts, normalize_embeddings=True)
         )
+        # 确保所有向量被归一化
+        norms = np.linalg.norm(embeddings, axis=1, keepdims=True)
+        norms[norms == 0] = 1  # 避免除零
+        embeddings = embeddings / norms
         return embeddings
     
     def _generate_doc_id(self, content: str, filename: str) -> str:
