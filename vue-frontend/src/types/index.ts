@@ -120,4 +120,35 @@ export interface TTSRequest {
   voice?: string
   rate?: number
   pitch?: number
+}
+
+// 对话类型
+export interface Conversation {
+  id: string
+  title: string
+  createdAt: Date
+  updatedAt: Date
+  messageCount: number
+  lastMessage?: string
+  tags?: string[]
+  isActive?: boolean
+}
+
+// 对话消息历史
+export interface ConversationData {
+  conversation: Conversation
+  messages: Message[]
+  ragDocuments: RAGDocument[]  // 与该对话关联的文档
+}
+
+// 创建对话请求
+export interface CreateConversationRequest {
+  title?: string
+  initialMessage?: string
+}
+
+// 对话列表响应
+export interface ConversationsResponse {
+  conversations: Conversation[]
+  total: number
 } 

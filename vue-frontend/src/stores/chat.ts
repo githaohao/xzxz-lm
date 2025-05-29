@@ -3,19 +3,22 @@ import { ref, computed } from 'vue'
 import type { Message, ProcessedFile, StreamEvent, RAGSearchRequest } from '@/types'
 import { generateId } from '@/utils/voice-utils'
 import { sendTextMessage, sendMultimodalMessage, searchDocuments } from '@/utils/api'
+import { useConversationStore } from './conversation'
 
 export const useChatStore = defineStore('chat', () => {
+  const conversationStore = useConversationStore()
+
   // 状态
-  const messages = ref<Message[]>([])
   const isLoading = ref(false)
   const processingStatus = ref('')
   const currentStreamingMessage = ref<Message | null>(null)
   const processedFile = ref<ProcessedFile | null>(null)
   const abortController = ref<AbortController | null>(null)
 
-  // 计算属性
+  // 计算属性 - 使用对话store中的消息
+  const messages = computed(() => conversationStore.currentConversationMessages)
   const hasMessages = computed(() => messages.value.length > 0)
-  const canSend = computed(() => !isLoading.value && (processedFile.value || messages.value.length > 0))
+  const canSend = computed(() => !isLoading.value && conversationStore.currentConversation)
 
   // 添加消息
   function addMessage(message: Omit<Message, 'id' | 'timestamp'>) {
@@ -24,7 +27,12 @@ export const useChatStore = defineStore('chat', () => {
       id: generateId(),
       timestamp: new Date()
     }
-    messages.value.push(newMessage)
+    
+    // 添加到当前对话
+    if (conversationStore.currentConversation) {
+      conversationStore.addMessageToConversation(conversationStore.currentConversation.id, newMessage)
+    }
+    
     return newMessage
   }
 
@@ -209,7 +217,9 @@ export const useChatStore = defineStore('chat', () => {
 
   // 清除消息
   function clearMessages() {
-    messages.value = []
+    if (conversationStore.currentConversation) {
+      conversationStore.clearConversationMessages(conversationStore.currentConversation.id)
+    }
     currentStreamingMessage.value = null
     processingStatus.value = ''
   }

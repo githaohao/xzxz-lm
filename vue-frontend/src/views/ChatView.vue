@@ -1,5 +1,15 @@
 <template>
   <div class="flex h-full bg-gradient-to-br from-slate-50 to-slate-100 dark:from-slate-900 dark:to-slate-800">
+    <!-- 对话列表面板 -->
+    <div 
+      :class="[
+        'transition-all duration-300 ease-in-out flex-shrink-0',
+        showConversationList ? 'w-72' : 'w-0'
+      ]"
+    >
+      <ConversationList v-show="showConversationList" />
+    </div>
+
     <!-- RAG文档管理面板 -->
     <div 
       :class="[
@@ -11,10 +21,17 @@
     </div>
 
     <!-- 主要内容区域 -->
-    <div class="flex-1 flex flex-col">
+    <div class="flex-1 flex flex-col min-w-0">
       <!-- 顶部工具栏 -->
       <div class="flex items-center justify-between p-4 border-b border-slate-200 dark:border-slate-700 bg-white/80 dark:bg-slate-900/80 backdrop-blur-sm">
         <div class="flex items-center gap-3">
+          <button
+            @click="toggleConversationList"
+            class="p-2 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
+            :title="showConversationList ? '隐藏对话列表' : '显示对话列表'"
+          >
+            <MessageSquare class="h-5 w-5 text-slate-600 dark:text-slate-400" />
+          </button>
           <button
             @click="toggleDocumentPanel"
             class="p-2 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
@@ -23,12 +40,22 @@
             <PanelLeftOpen v-if="!showDocumentPanel" class="h-5 w-5 text-slate-600 dark:text-slate-400" />
             <PanelLeftClose v-else class="h-5 w-5 text-slate-600 dark:text-slate-400" />
           </button>
-          <h1 class="text-lg font-semibold text-slate-900 dark:text-slate-100">智能对话</h1>
+          <div class="flex flex-col">
+            <h1 class="text-lg font-semibold text-slate-900 dark:text-slate-100">
+              {{ conversationStore.currentConversation?.title || '智能对话' }}
+            </h1>
+            <p v-if="conversationStore.currentConversation" class="text-xs text-slate-500">
+              {{ conversationStore.currentConversation.messageCount }} 条消息
+            </p>
+          </div>
         </div>
         
         <div class="flex items-center gap-2">
-          <Badge v-if="selectedDocumentCount > 0" variant="outline" class="text-purple-600 border-purple-300">
-            📚 已选 {{ selectedDocumentCount }} 个文档
+          <Badge v-if="currentConversationRagDocsCount > 0" variant="outline" class="text-purple-600 border-purple-300">
+            📚 {{ currentConversationRagDocsCount }} 个文档
+          </Badge>
+          <Badge v-if="selectedDocumentCount > 0" variant="outline" class="text-blue-600 border-blue-300">
+            📄 已选 {{ selectedDocumentCount }}
           </Badge>
         </div>
       </div>
@@ -460,7 +487,8 @@ import {
   Loader2,
   X,
   PanelLeftOpen,
-  PanelLeftClose
+  PanelLeftClose,
+  MessageSquare
 } from 'lucide-vue-next'
 import { Card, CardContent } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
@@ -475,6 +503,9 @@ import { formatTime, formatFileSize, hasThinkTags, extractThinkContent } from '@
 import { uploadFile } from '@/utils/api'
 import { getRagSuggestion, isFileRagSuitable } from '@/utils/rag-utils'
 import RAGDocumentPanel from '@/components/RAGDocumentPanel.vue'
+import ConversationList from '@/components/ConversationList.vue'
+import { useConversationStore } from '@/stores/conversation'
+import type { RAGDocument } from '@/types'
 
 const chatStore = useChatStore()
 const {
@@ -492,78 +523,24 @@ const fileInput = ref<HTMLInputElement>()
 const isDragging = ref(false)
 const ragEnabled = ref(true) // 默认启用RAG
 const showDocumentPanel = ref(true) // 显示文档面板
+const showConversationList = ref(true) // 显示对话列表
 
 // RAG Store
 const ragStore = useRAGStore()
-const { selectedCount: selectedDocumentCount } = storeToRefs(ragStore)
+const { selectedCount: selectedDocumentCount, selectedDocumentsList } = storeToRefs(ragStore)
+
+// 对话Store
+const conversationStore = useConversationStore()
+const { currentConversationRagDocs } = storeToRefs(conversationStore)
+
+// 计算当前对话的RAG文档数量
+const currentConversationRagDocsCount = computed(() => currentConversationRagDocs.value.length)
 
 // 新增：滚动区域引用
 const scrollAreaRef = ref<InstanceType<typeof ScrollArea>>()
-
-// 新增：智能滚动控制
 const isUserScrolling = ref(false)
 const scrollTimeout = ref<number | null>(null)
 const isAtBottom = ref(true)
-
-// 切换文档面板显示
-function toggleDocumentPanel() {
-  showDocumentPanel.value = !showDocumentPanel.value
-}
-
-// 计算智能建议
-const ragSuggestion = computed(() => {
-  if (!processedFile.value?.content || !inputMessage.value) return null
-  return getRagSuggestion(inputMessage.value, processedFile.value.content)
-})
-
-// 新增：检测是否在底部的函数
-function checkIfAtBottom(viewport: Element) {
-  const threshold = 50 // 允许50px的误差
-  const isBottom = viewport.scrollTop + viewport.clientHeight >= viewport.scrollHeight - threshold
-  isAtBottom.value = isBottom
-  return isBottom
-}
-
-// 新增：处理用户滚动事件
-function handleUserScroll(event: Event) {
-  const viewport = event.target as Element
-  
-  // 检测是否在底部
-  checkIfAtBottom(viewport)
-  
-  // 标记用户正在滚动
-  isUserScrolling.value = true
-  
-  // 清除之前的超时
-  if (scrollTimeout.value) {
-    clearTimeout(scrollTimeout.value)
-  }
-  
-  // 1秒后重置用户滚动状态
-  scrollTimeout.value = setTimeout(() => {
-    isUserScrolling.value = false
-    // 如果在底部，重新启用自动滚动
-    if (isAtBottom.value) {
-      scrollToBottom()
-    }
-  }, 1000)
-}
-
-// 新增：自动滚动到底部函数
-function scrollToBottom() {
-  // 如果用户正在滚动，不执行自动滚动
-  if (isUserScrolling.value) return
-  
-  nextTick(() => {
-    if (scrollAreaRef.value) {
-      const viewport = scrollAreaRef.value.$el.querySelector('[data-reka-scroll-area-viewport]')
-      if (viewport) {
-        viewport.scrollTop = viewport.scrollHeight
-        isAtBottom.value = true
-      }
-    }
-  })
-}
 
 // 新增：初始化滚动监听
 function initScrollListener() {
@@ -629,7 +606,7 @@ async function handleSend() {
   
   // 如果有选中的文档，使用第一个选中的文档（或者可以扩展为多文档支持）
   if (selectedDocumentCount.value > 0) {
-    const selectedDocs = ragStore.selectedDocumentsList
+    const selectedDocs = selectedDocumentsList.value
     if (selectedDocs.length > 0) {
       const firstDoc = selectedDocs[0]
               fileToSend = {
@@ -712,8 +689,27 @@ async function processFile(file: File) {
     // 设置文件状态（uploadFile函数已经处理了ocrCompleted和processing状态）
     setProcessedFile(result)
     
-    if (result.ocrCompleted) {
+    if (result.ocrCompleted && result.doc_id) {
       console.log('✅ OCR处理完成，文件已准备就绪（支持RAG智能检索）:', result)
+      
+      // 如果有当前对话，自动将文档关联到对话
+      if (conversationStore.currentConversation && result.doc_id) {
+        // 创建文档对象
+        const uploadedDoc: RAGDocument = {
+          doc_id: result.doc_id,
+          filename: result.name,
+          file_type: result.type,
+          chunk_count: 0, // 会在后续更新
+          total_length: result.size,
+          created_at: new Date().toISOString()
+        }
+        
+        conversationStore.addRagDocumentToConversation(
+          conversationStore.currentConversation.id, 
+          uploadedDoc
+        )
+        console.log('📚 文档已自动关联到当前对话:', uploadedDoc.filename)
+      }
     } else {
       console.log('⏳ 文件上传成功，OCR处理中:', result)
     }
@@ -723,4 +719,69 @@ async function processFile(file: File) {
     alert(`文件处理失败: ${error.message}`)
   }
 }
+
+// 新增：检测是否在底部的函数
+function checkIfAtBottom(viewport: Element) {
+  const threshold = 50 // 允许50px的误差
+  const isBottom = viewport.scrollTop + viewport.clientHeight >= viewport.scrollHeight - threshold
+  isAtBottom.value = isBottom
+  return isBottom
+}
+
+// 新增：处理用户滚动事件
+function handleUserScroll(event: Event) {
+  const viewport = event.target as Element
+  
+  // 检测是否在底部
+  checkIfAtBottom(viewport)
+  
+  // 标记用户正在滚动
+  isUserScrolling.value = true
+  
+  // 清除之前的超时
+  if (scrollTimeout.value) {
+    clearTimeout(scrollTimeout.value)
+  }
+  
+  // 1秒后重置用户滚动状态
+  scrollTimeout.value = setTimeout(() => {
+    isUserScrolling.value = false
+    // 如果在底部，重新启用自动滚动
+    if (isAtBottom.value) {
+      scrollToBottom()
+    }
+  }, 1000)
+}
+
+// 新增：自动滚动到底部函数
+function scrollToBottom() {
+  // 如果用户正在滚动，不执行自动滚动
+  if (isUserScrolling.value) return
+  
+  nextTick(() => {
+    if (scrollAreaRef.value) {
+      const viewport = scrollAreaRef.value.$el.querySelector('[data-reka-scroll-area-viewport]')
+      if (viewport) {
+        viewport.scrollTop = viewport.scrollHeight
+        isAtBottom.value = true
+      }
+    }
+  })
+}
+
+// 切换文档面板显示
+function toggleDocumentPanel() {
+  showDocumentPanel.value = !showDocumentPanel.value
+}
+
+// 切换对话列表显示
+function toggleConversationList() {
+  showConversationList.value = !showConversationList.value
+}
+
+// 计算智能建议
+const ragSuggestion = computed(() => {
+  if (!processedFile.value?.content || !inputMessage.value) return null
+  return getRagSuggestion(inputMessage.value, processedFile.value.content)
+})
 </script>

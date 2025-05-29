@@ -5,32 +5,26 @@ import { getAllDocuments, deleteDocument } from '@/utils/api'
 
 export const useRAGStore = defineStore('rag', () => {
   // 状态
-  const documents = ref<RAGDocument[]>([])
   const selectedDocuments = ref<Set<string>>(new Set())
   const isLoading = ref(false)
   const lastUpdateTime = ref<Date | null>(null)
 
-  // 计算属性
+  // 当前对话关联的文档（由外部传入）
+  const currentConversationDocuments = ref<RAGDocument[]>([])
+
+  // 计算属性 - 基于当前对话的文档
+  const documents = computed(() => currentConversationDocuments.value)
   const hasDocuments = computed(() => documents.value.length > 0)
   const selectedDocumentsList = computed(() => 
     documents.value.filter(doc => selectedDocuments.value.has(doc.doc_id))
   )
   const selectedCount = computed(() => selectedDocuments.value.size)
 
-  // 获取所有文档
-  async function fetchDocuments() {
-    try {
-      isLoading.value = true
-      const response: RAGDocumentsResponse = await getAllDocuments()
-      documents.value = response.documents
-      lastUpdateTime.value = new Date()
-      console.log(`📚 获取到 ${response.total_count} 个RAG文档`)
-    } catch (error) {
-      console.error('获取文档列表失败:', error)
-      documents.value = []
-    } finally {
-      isLoading.value = false
-    }
+  // 设置当前对话的文档
+  function setCurrentConversationDocuments(docs: RAGDocument[]) {
+    currentConversationDocuments.value = docs
+    // 清除已选择的文档，因为切换了对话
+    selectedDocuments.value.clear()
   }
 
   // 选择文档
@@ -69,8 +63,8 @@ export const useRAGStore = defineStore('rag', () => {
     try {
       const success = await deleteDocument(docId)
       if (success) {
-        // 从列表中移除
-        documents.value = documents.value.filter(doc => doc.doc_id !== docId)
+        // 从当前对话文档中移除
+        currentConversationDocuments.value = currentConversationDocuments.value.filter(doc => doc.doc_id !== docId)
         // 从选择中移除
         selectedDocuments.value.delete(docId)
         console.log(`🗑️ 文档删除成功: ${docId}`)
@@ -98,12 +92,7 @@ export const useRAGStore = defineStore('rag', () => {
     return successCount
   }
 
-  // 根据文件名查找文档
-  function findDocumentByFilename(filename: string): RAGDocument | undefined {
-    return documents.value.find(doc => doc.filename === filename)
-  }
-
-  // 获取文档统计信息
+  // 获取文档统计信息（基于当前对话）
   const documentStats = computed(() => ({
     totalDocuments: documents.value.length,
     totalChunks: documents.value.reduce((sum, doc) => sum + doc.chunk_count, 0),
@@ -139,9 +128,21 @@ export const useRAGStore = defineStore('rag', () => {
     }
   }
 
+  // 简化的获取文档方法，仅用于刷新当前对话文档
+  async function fetchDocuments() {
+    // 这个方法现在主要用于触发UI刷新
+    // 实际的文档数据由对话store管理
+    isLoading.value = true
+    try {
+      lastUpdateTime.value = new Date()
+    } finally {
+      isLoading.value = false
+    }
+  }
+
   return {
     // 状态
-    documents,
+    documents, // 当前对话的文档
     selectedDocuments,
     isLoading,
     lastUpdateTime,
@@ -154,6 +155,7 @@ export const useRAGStore = defineStore('rag', () => {
 
     // 方法
     fetchDocuments,
+    setCurrentConversationDocuments,
     selectDocument,
     unselectDocument,
     toggleDocument,
@@ -161,7 +163,6 @@ export const useRAGStore = defineStore('rag', () => {
     selectAll,
     removeDocument,
     removeSelectedDocuments,
-    findDocumentByFilename,
     formatDocumentSize,
     formatCreateTime
   }

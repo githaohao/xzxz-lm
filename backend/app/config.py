@@ -43,7 +43,7 @@ class Settings(BaseSettings):
     ocr_cache_ttl: int = 3600  # 缓存时间（秒）
     
     # OCR 性能优化配置
-    ocr_speed_mode: bool = False  # 速度优先模式
+    ocr_speed_mode: bool = True  # 速度优先模式
     ocr_fast_engine: str = "tesseract"  # 快速引擎选择: tesseract, paddleocr
     
     # TTS 配置

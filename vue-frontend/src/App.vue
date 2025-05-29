@@ -57,9 +57,19 @@
 </template>
 
 <script setup lang="ts">
+import { onMounted } from 'vue'
 import { ThemeSelector } from '@/components/ui/theme-selector'
 import { useTheme } from '@/composables/useTheme'
+import { useConversationStore } from '@/stores/conversation'
 
 // 初始化主题系统
 useTheme()
+
+// 初始化对话系统
+const conversationStore = useConversationStore()
+
+onMounted(() => {
+  // 初始化对话store
+  conversationStore.initialize()
+})
 </script> 

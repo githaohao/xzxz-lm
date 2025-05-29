@@ -4,7 +4,7 @@
     <div class="p-4 border-b border-slate-200 dark:border-slate-700">
       <div class="flex items-center justify-between">
         <h2 class="text-lg font-semibold text-slate-900 dark:text-slate-100">
-          📚 文档库
+          📚 当前对话文档
         </h2>
         <div class="flex items-center gap-2">
           <button
@@ -16,7 +16,7 @@
           </button>
           <button
             v-if="selectedCount > 0"
-            @click="handleBatchDelete"
+            @click="handleBatchRemove"
             class="p-1.5 rounded-md hover:bg-red-100 dark:hover:bg-red-900/20 text-red-600 dark:text-red-400 transition-colors"
           >
             <Trash2 class="h-4 w-4" />
@@ -29,6 +29,9 @@
         {{ documentStats.totalDocuments }} 个文档
         <span v-if="selectedCount > 0" class="text-purple-600 dark:text-purple-400">
           (已选 {{ selectedCount }})
+        </span>
+        <span v-if="conversationStore.currentConversation" class="ml-2 text-blue-600 dark:text-blue-400">
+          • {{ conversationStore.currentConversation.title }}
         </span>
       </div>
     </div>
@@ -45,9 +48,11 @@
         <!-- 空状态 -->
         <div v-else-if="!hasDocuments" class="p-4 text-center">
           <FileText class="h-12 w-12 mx-auto text-slate-300 dark:text-slate-600 mb-3" />
-          <p class="text-sm text-slate-500 dark:text-slate-400">
-            还没有文档<br>
-            上传PDF或图片文件开始使用
+          <p class="text-sm text-slate-500 dark:text-slate-400 mb-3">
+            当前对话还没有文档
+          </p>
+          <p class="text-xs text-slate-400 dark:text-slate-500">
+            在聊天界面上传文件即可添加文档
           </p>
         </div>
 
@@ -104,8 +109,9 @@
             <!-- 操作按钮 -->
             <div class="flex-shrink-0">
               <button
-                @click.stop="handleDelete(document.doc_id)"
+                @click.stop="handleRemoveFromConversation(document.doc_id)"
                 class="p-1 rounded hover:bg-red-100 dark:hover:bg-red-900/20 text-red-500 dark:text-red-400 opacity-0 group-hover:opacity-100 transition-opacity"
+                title="从对话中删除"
               >
                 <X class="h-3 w-3" />
               </button>
@@ -144,7 +150,7 @@
 </template>
 
 <script setup lang="ts">
-import { onMounted } from 'vue'
+import { ref, computed, watch, onMounted } from 'vue'
 import { storeToRefs } from 'pinia'
 import {
   RefreshCw,
@@ -157,8 +163,11 @@ import {
 import { Badge } from '@/components/ui/badge'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import { useRAGStore } from '@/stores/rag'
+import { useConversationStore } from '@/stores/conversation'
 
 const ragStore = useRAGStore()
+const conversationStore = useConversationStore()
+
 const {
   documents,
   selectedDocuments,
@@ -170,37 +179,49 @@ const {
 
 const {
   fetchDocuments,
+  setCurrentConversationDocuments,
   toggleDocument,
   clearSelection,
   selectAll,
-  removeDocument,
-  removeSelectedDocuments,
   formatDocumentSize,
   formatCreateTime
 } = ragStore
+
+// 当前对话的RAG文档
+const { currentConversationRagDocs } = storeToRefs(conversationStore)
+
+// 监听当前对话的文档变化
+watch(currentConversationRagDocs, (newDocs) => {
+  setCurrentConversationDocuments(newDocs)
+}, { immediate: true })
+
+// 监听对话切换
+watch(() => conversationStore.currentConversation, () => {
+  // 对话切换时重新设置文档
+  if (conversationStore.currentConversation) {
+    setCurrentConversationDocuments(currentConversationRagDocs.value)
+  }
+}, { immediate: true })
 
 // 刷新文档列表
 async function refreshDocuments() {
   await fetchDocuments()
 }
 
-// 删除单个文档
-async function handleDelete(docId: string) {
-  if (confirm('确定要删除这个文档吗？此操作不可撤销。')) {
-    const success = await removeDocument(docId)
-    if (!success) {
-      alert('删除失败，请稍后重试')
-    }
+// 从对话中删除文档
+function handleRemoveFromConversation(docId: string) {
+  if (conversationStore.currentConversation && confirm('确定要删除这个文档吗？删除后无法恢复。')) {
+    conversationStore.removeRagDocumentFromConversation(conversationStore.currentConversation.id, docId)
   }
 }
 
-// 批量删除
-async function handleBatchDelete() {
-  if (confirm(`确定要删除选中的 ${selectedCount.value} 个文档吗？此操作不可撤销。`)) {
-    const successCount = await removeSelectedDocuments()
-    if (successCount !== selectedCount.value) {
-      alert(`部分文档删除失败，成功删除 ${successCount} 个`)
-    }
+// 批量删除文档
+function handleBatchRemove() {
+  if (conversationStore.currentConversation && confirm(`确定要删除选中的 ${selectedCount.value} 个文档吗？删除后无法恢复。`)) {
+    const docIds = Array.from(selectedDocuments.value)
+    docIds.forEach(docId => {
+      conversationStore.removeRagDocumentFromConversation(conversationStore.currentConversation!.id, docId)
+    })
   }
 }
 
