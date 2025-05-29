@@ -10,15 +10,7 @@
       <ConversationList v-show="showConversationList" />
     </div>
 
-    <!-- RAG文档管理面板 -->
-    <div 
-      :class="[
-        'transition-all duration-300 ease-in-out flex-shrink-0',
-        showDocumentPanel ? 'w-80' : 'w-0'
-      ]"
-    >
-      <RAGDocumentPanel v-show="showDocumentPanel" />
-    </div>
+
 
     <!-- 主要内容区域 -->
     <div class="flex-1 flex flex-col min-w-0">
@@ -33,12 +25,11 @@
             <MessageSquare class="h-5 w-5 text-slate-600 dark:text-slate-400" />
           </button>
           <button
-            @click="toggleDocumentPanel"
+            @click="openDocumentDialog"
             class="p-2 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
-            :title="showDocumentPanel ? '隐藏文档面板' : '显示文档面板'"
+            title="文档管理"
           >
-            <PanelLeftOpen v-if="!showDocumentPanel" class="h-5 w-5 text-slate-600 dark:text-slate-400" />
-            <PanelLeftClose v-else class="h-5 w-5 text-slate-600 dark:text-slate-400" />
+            <FileText class="h-5 w-5 text-slate-600 dark:text-slate-400" />
           </button>
           <div class="flex flex-col">
             <h1 class="text-lg font-semibold text-slate-900 dark:text-slate-100">
@@ -474,6 +465,11 @@
       </div>
     </div>
   </div>
+
+  <!-- RAG文档管理弹窗 -->
+  <RAGDocumentDialog 
+    v-model:open="showDocumentDialog"
+  />
 </template>
 
 <script setup lang="ts">
@@ -488,7 +484,8 @@ import {
   X,
   PanelLeftOpen,
   PanelLeftClose,
-  MessageSquare
+  MessageSquare,
+  FileText
 } from 'lucide-vue-next'
 import { Card, CardContent } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
@@ -502,7 +499,7 @@ import { useRAGStore } from '@/stores/rag'
 import { formatTime, formatFileSize, hasThinkTags, extractThinkContent } from '@/utils/voice-utils'
 import { uploadFile } from '@/utils/api'
 import { getRagSuggestion, isFileRagSuitable } from '@/utils/rag-utils'
-import RAGDocumentPanel from '@/components/RAGDocumentPanel.vue'
+import RAGDocumentDialog from '@/components/RAGDocumentDialog.vue'
 import ConversationList from '@/components/ConversationList.vue'
 import { useConversationStore } from '@/stores/conversation'
 import type { RAGDocument } from '@/types'
@@ -522,7 +519,7 @@ const inputMessage = ref('')
 const fileInput = ref<HTMLInputElement>()
 const isDragging = ref(false)
 const ragEnabled = ref(true) // 默认启用RAG
-const showDocumentPanel = ref(true) // 显示文档面板
+const showDocumentDialog = ref(false) // 文档管理弹窗
 const showConversationList = ref(true) // 显示对话列表
 
 // RAG Store
@@ -769,9 +766,9 @@ function scrollToBottom() {
   })
 }
 
-// 切换文档面板显示
-function toggleDocumentPanel() {
-  showDocumentPanel.value = !showDocumentPanel.value
+// 打开文档管理弹窗
+function openDocumentDialog() {
+  showDocumentDialog.value = true
 }
 
 // 切换对话列表显示
