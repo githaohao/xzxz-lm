@@ -25,6 +25,11 @@ const router = createRouter({
       component: () => import('../views/SimpleVoiceChatView.vue')
     },
     {
+      path: '/knowledge-base',
+      name: 'knowledge-base',
+      component: () => import('../views/KnowledgeBaseView.vue')
+    },
+    {
       path: '/components',
       name: 'components',
       component: () => import('../views/ComponentShowcaseView.vue')

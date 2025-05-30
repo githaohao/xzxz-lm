@@ -1,17 +1,5 @@
 <template>
   <Dialog v-model:open="isOpen">
-    <DialogTrigger as-child>
-      <slot name="trigger">
-        <Button variant="outline" size="sm" class="flex items-center gap-2">
-          <FileText class="h-4 w-4" />
-          文档管理
-          <Badge v-if="documentStats.totalDocuments > 0" variant="secondary" class="ml-1">
-            {{ documentStats.totalDocuments }}
-          </Badge>
-        </Button>
-      </slot>
-    </DialogTrigger>
-    
     <DialogContent class="max-w-4xl max-h-[80vh] flex flex-col">
       <DialogHeader>
         <DialogTitle class="flex items-center gap-2">

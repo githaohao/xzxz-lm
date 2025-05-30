@@ -73,6 +73,27 @@
           </ul>
         </CardContent>
       </Card>
+
+      <!-- 知识库管理卡片 -->
+      <Card class="hover:shadow-lg transition-shadow cursor-pointer" @click="$router.push('/knowledge-base')">
+        <CardHeader>
+          <CardTitle class="flex items-center gap-2">
+            <Database class="h-6 w-6" />
+            知识库管理
+          </CardTitle>
+        </CardHeader>
+        <CardContent>
+          <p class="text-muted-foreground mb-4">
+            管理和组织你的文档，创建专业的知识库
+          </p>
+          <ul class="text-sm space-y-1">
+            <li>• 文档分类管理</li>
+            <li>• RAG智能检索</li>
+            <li>• 批量操作支持</li>
+            <li>• 知识库切换</li>
+          </ul>
+        </CardContent>
+      </Card>
     </div>
 
     <!-- 系统状态 -->
@@ -168,7 +189,8 @@ import {
   Zap, 
   FileText, 
   Volume2, 
-  Smartphone 
+  Smartphone,
+  Database
 } from 'lucide-vue-next'
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'

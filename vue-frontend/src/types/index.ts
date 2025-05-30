@@ -151,4 +151,58 @@ export interface CreateConversationRequest {
 export interface ConversationsResponse {
   conversations: Conversation[]
   total: number
+}
+
+// 知识库类型
+export interface KnowledgeBase {
+  id: string
+  name: string
+  description?: string
+  documentIds: string[]  // 关联的文档ID列表
+  createdAt: Date
+  updatedAt: Date
+  color?: string  // 用于UI区分的颜色
+  isDefault?: boolean  // 是否为默认知识库
+}
+
+// 知识库创建请求
+export interface CreateKnowledgeBaseRequest {
+  name: string
+  description?: string
+  color?: string
+}
+
+// 知识库更新请求
+export interface UpdateKnowledgeBaseRequest {
+  name?: string
+  description?: string
+  color?: string
+}
+
+// 文档移动请求
+export interface MoveDocumentsRequest {
+  documentIds: string[]
+  targetKnowledgeBaseId: string
+  sourceKnowledgeBaseId?: string
+}
+
+// 知识库统计信息
+export interface KnowledgeBaseStats {
+  totalDocuments: number
+  totalChunks: number
+  totalSize: number
+  recentlyAdded: number  // 最近7天添加的文档数
+}
+
+// 文档搜索选项
+export interface DocumentSearchOptions {
+  query?: string
+  knowledgeBaseId?: string
+  fileTypes?: string[]
+  dateRange?: {
+    start: Date
+    end: Date
+  }
+  sortBy?: 'name' | 'date' | 'size'
+  sortOrder?: 'asc' | 'desc'
 } 

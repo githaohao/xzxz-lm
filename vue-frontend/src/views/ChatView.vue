@@ -31,6 +31,13 @@
           >
             <FileText class="h-5 w-5 text-slate-600 dark:text-slate-400" />
           </button>
+          <button
+            @click="openKnowledgeBaseManager"
+            class="p-2 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
+            title="知识库管理"
+          >
+            <Database class="h-5 w-5 text-slate-600 dark:text-slate-400" />
+          </button>
           <div class="flex flex-col">
             <h1 class="text-lg font-semibold text-slate-900 dark:text-slate-100">
               {{ conversationStore.currentConversation?.title || '智能对话' }}
@@ -48,6 +55,7 @@
           <Badge v-if="selectedDocumentCount > 0" variant="outline" class="text-blue-600 border-blue-300">
             📄 已选 {{ selectedDocumentCount }}
           </Badge>
+          <KnowledgeBaseSelector v-model="selectedKnowledgeBase" />
         </div>
       </div>
 
@@ -485,7 +493,8 @@ import {
   PanelLeftOpen,
   PanelLeftClose,
   MessageSquare,
-  FileText
+  FileText,
+  Database
 } from 'lucide-vue-next'
 import { Card, CardContent } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
@@ -501,8 +510,10 @@ import { uploadFile } from '@/utils/api'
 import { getRagSuggestion, isFileRagSuitable } from '@/utils/rag-utils'
 import RAGDocumentDialog from '@/components/RAGDocumentDialog.vue'
 import ConversationList from '@/components/ConversationList.vue'
+import KnowledgeBaseSelector from '@/components/KnowledgeBaseSelector.vue'
 import { useConversationStore } from '@/stores/conversation'
-import type { RAGDocument } from '@/types'
+import { useKnowledgeBaseStore } from '@/stores/knowledgeBase'
+import type { RAGDocument, KnowledgeBase } from '@/types'
 
 const chatStore = useChatStore()
 const {
@@ -521,6 +532,7 @@ const isDragging = ref(false)
 const ragEnabled = ref(true) // 默认启用RAG
 const showDocumentDialog = ref(false) // 文档管理弹窗
 const showConversationList = ref(true) // 显示对话列表
+const selectedKnowledgeBase = ref<KnowledgeBase | null>(null) // 选中的知识库
 
 // RAG Store
 const ragStore = useRAGStore()
@@ -606,15 +618,33 @@ async function handleSend() {
     const selectedDocs = selectedDocumentsList.value
     if (selectedDocs.length > 0) {
       const firstDoc = selectedDocs[0]
-              fileToSend = {
-          name: firstDoc.filename,
-          type: firstDoc.file_type,
-          size: firstDoc.total_length,
-          content: '', // 内容会在后端检索时获取
-          doc_id: firstDoc.doc_id,
-          ocrCompleted: true,
-          rag_enabled: ragEnabled.value
-        }
+      fileToSend = {
+        name: firstDoc.filename,
+        type: firstDoc.file_type,
+        size: firstDoc.total_length,
+        content: '', // 内容会在后端检索时获取
+        doc_id: firstDoc.doc_id,
+        ocrCompleted: true,
+        rag_enabled: ragEnabled.value
+      }
+    }
+  } else if (selectedKnowledgeBase.value) {
+    // 如果选择了知识库但没有选中具体文档，使用知识库中的文档
+    const kbStore = useKnowledgeBaseStore()
+    const kbDocuments = kbStore.currentKnowledgeBaseDocuments
+    
+    if (kbDocuments.length > 0) {
+      // 使用知识库的第一个文档作为RAG源
+      const firstDoc = kbDocuments[0]
+      fileToSend = {
+        name: firstDoc.filename,
+        type: firstDoc.file_type,
+        size: firstDoc.total_length,
+        content: '', // 内容会在后端检索时获取
+        doc_id: firstDoc.doc_id,
+        ocrCompleted: true,
+        rag_enabled: ragEnabled.value
+      }
     }
   }
   
@@ -781,4 +811,10 @@ const ragSuggestion = computed(() => {
   if (!processedFile.value?.content || !inputMessage.value) return null
   return getRagSuggestion(inputMessage.value, processedFile.value.content)
 })
+
+// 打开知识库管理
+function openKnowledgeBaseManager() {
+  // 跳转到知识库管理页面
+  window.open('/knowledge-base', '_blank')
+}
 </script>
