@@ -1,7 +1,7 @@
 <template>
   <div class="flex h-full bg-gradient-to-br from-slate-50 to-slate-100 dark:from-slate-900 dark:to-slate-800">
     <!-- 知识库列表侧边栏 -->
-    <div class="w-80 border-r border-slate-200 dark:border-slate-700 bg-white/80 dark:bg-slate-900/80 backdrop-blur-sm flex flex-col">
+    <div class="w-72 lg:w-80 xl:w-96 shrink-0 border-r border-slate-200 dark:border-slate-700 bg-white/80 dark:bg-slate-900/80 backdrop-blur-sm flex flex-col">
       <!-- 头部 -->
       <div class="p-6 border-b border-slate-200 dark:border-slate-700">
         <div class="flex items-center justify-between mb-4">
@@ -159,15 +159,15 @@
     <!-- 主内容区域 -->
     <div class="flex-1 flex flex-col min-w-0">
       <!-- 工具栏 -->
-      <div class="p-6 border-b border-slate-200 dark:border-slate-700 bg-white/80 dark:bg-slate-900/80 backdrop-blur-sm">
-        <div class="flex items-center justify-between">
-          <div class="flex items-center gap-4">
-            <div>
-              <h2 class="text-lg font-semibold text-slate-900 dark:text-slate-100">
+      <div class="p-4 lg:p-6 border-b border-slate-200 dark:border-slate-700 bg-white/80 dark:bg-slate-900/80 backdrop-blur-sm">
+        <div class="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
+          <div class="flex items-center gap-4 min-w-0">
+            <div class="min-w-0 flex-1">
+              <h2 class="text-lg font-semibold text-slate-900 dark:text-slate-100 truncate">
                 {{ selectedKnowledgeBase ? selectedKnowledgeBase.name : '全部文档' }}
               </h2>
               <p class="text-sm text-slate-500 dark:text-slate-400">
-                {{ filteredDocuments.length }} 个文档
+                {{ enhancedFilteredDocuments.length }} 个文档
                 <span v-if="selectedDocuments.size > 0" class="text-purple-600 dark:text-purple-400">
                   · 已选择 {{ selectedDocuments.size }} 个
                 </span>
@@ -175,12 +175,12 @@
             </div>
             
             <!-- 快速统计 -->
-            <div v-if="selectedKnowledgeBase && knowledgeBaseStats[selectedKnowledgeBase.id]" class="flex items-center gap-4 text-sm text-slate-500">
-              <span class="flex items-center gap-1">
+            <div v-if="selectedKnowledgeBase && knowledgeBaseStats[selectedKnowledgeBase.id]" class="hidden xl:flex items-center gap-4 text-sm text-slate-500">
+              <span class="flex items-center gap-1 whitespace-nowrap">
                 <Hash class="h-4 w-4" />
                 {{ knowledgeBaseStats[selectedKnowledgeBase.id].totalChunks }} 个片段
               </span>
-              <span class="flex items-center gap-1">
+              <span class="flex items-center gap-1 whitespace-nowrap">
                 <HardDrive class="h-4 w-4" />
                 {{ formatFileSize(knowledgeBaseStats[selectedKnowledgeBase.id].totalSize) }}
               </span>
@@ -188,32 +188,107 @@
           </div>
 
           <!-- 操作按钮 -->
-          <div class="flex items-center gap-2">
+          <div class="flex flex-col sm:flex-row items-stretch sm:items-center gap-2 min-w-0">
+            <!-- 文档上传（仅在选择知识库时显示） -->
+            <div v-if="selectedKnowledgeBase" class="flex items-center gap-2">
+              <input
+                ref="fileInputRef"
+                type="file"
+                multiple
+                accept=".pdf,.png,.jpg,.jpeg,.txt,.doc,.docx"
+                class="hidden"
+                @change="handleFileSelect"
+              />
+              <Button
+                @click="triggerFileUpload"
+                :disabled="isUploading"
+                variant="default"
+                size="sm"
+                class="bg-green-600 hover:bg-green-700 whitespace-nowrap"
+              >
+                <template v-if="isUploading">
+                  <Loader2 class="h-4 w-4 animate-spin mr-1" />
+                  上传中...
+                </template>
+                <template v-else>
+                  <Upload class="h-4 w-4 mr-1" />
+                  上传文档
+                </template>
+              </Button>
+              
+              <!-- 上传进度提示 -->
+              <div v-if="uploadProgress.length > 0" class="text-sm">
+                <Badge variant="secondary" class="whitespace-nowrap">
+                  {{ uploadProgress.filter(p => p.completed).length }}/{{ uploadProgress.length }} 完成
+                </Badge>
+              </div>
+            </div>
+
             <!-- 搜索和过滤 -->
-            <div class="flex items-center gap-2">
-              <div class="relative">
+            <div class="flex flex-col sm:flex-row items-stretch sm:items-center gap-2" v-if="selectedDocuments.size <= 0">
+              <!-- 搜索类型切换 -->
+              <div class="flex items-center gap-1 border border-slate-200 dark:border-slate-700 rounded-lg p-1 shrink-0">
+                <Button
+                  @click="searchType = 'filename'"
+                  :variant="searchType === 'filename' ? 'default' : 'ghost'"
+                  size="sm"
+                  class="h-8 px-2 lg:px-3 text-xs"
+                >
+                  <FileText class="h-3 w-3 mr-1" />
+                  <span class="hidden sm:inline">文档名</span>
+                </Button>
+                <Button
+                  @click="searchType = 'content'"
+                  :variant="searchType === 'content' ? 'default' : 'ghost'"
+                  size="sm"
+                  class="h-8 px-2 lg:px-3 text-xs"
+                >
+                  <Search class="h-3 w-3 mr-1" />
+                  <span class="hidden sm:inline">内容</span>
+                </Button>
+              </div>
+              
+              <!-- 搜索框 -->
+              <div class="relative flex-1 min-w-0">
                 <Search class="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-slate-400" />
                 <Input
                   v-model="documentSearch"
-                  placeholder="搜索文档..."
-                  class="pl-10 w-64"
+                  :placeholder="searchType === 'filename' ? '搜索文档名...' : '搜索文档内容...'"
+                  class="pl-10 w-full"
+                  @keydown.enter="handleSearch"
                 />
+                <Button
+                  v-if="documentSearch && searchType === 'content'"
+                  @click="handleSearch"
+                  :disabled="isSearching"
+                  variant="ghost"
+                  size="sm"
+                  class="absolute right-1 top-1/2 transform -translate-y-1/2 h-7 px-2"
+                >
+                  <template v-if="isSearching">
+                    <Loader2 class="h-3 w-3 animate-spin" />
+                  </template>
+                  <template v-else>
+                    检索
+                  </template>
+                </Button>
               </div>
               
               <Button
                 @click="showFilterDialog = true"
                 variant="outline"
                 size="sm"
+                class="shrink-0"
               >
                 <Filter class="h-4 w-4 mr-1" />
-                筛选
+                <span class="hidden sm:inline">筛选</span>
               </Button>
             </div>
 
             <!-- 批量操作 -->
-            <div v-if="selectedDocuments.size > 0" class="flex items-center gap-2">
+            <div v-if="selectedDocuments.size > 0" class="flex flex-col sm:flex-row items-stretch sm:items-center gap-2">
               <Select v-model="batchMoveTarget" @update:model-value="(value: any) => value && typeof value === 'string' && handleBatchMove(value)">
-                <SelectTrigger class="w-48">
+                <SelectTrigger class="w-full sm:w-48">
                   <SelectValue placeholder="移动到知识库..." />
                 </SelectTrigger>
                 <SelectContent>
@@ -231,9 +306,10 @@
                 @click="handleBatchDelete"
                 variant="destructive"
                 size="sm"
+                class="whitespace-nowrap"
               >
                 <Trash2 class="h-4 w-4 mr-1" />
-                删除
+                <span class="hidden sm:inline">删除</span>
               </Button>
             </div>
 
@@ -242,9 +318,45 @@
               :disabled="isLoading"
               variant="outline"
               size="sm"
+              class="shrink-0"
             >
               <RefreshCw :class="['h-4 w-4', isLoading ? 'animate-spin' : '']" />
             </Button>
+          </div>
+        </div>
+      </div>
+
+      <!-- 搜索状态提示 -->
+      <div v-if="searchType === 'content' && (isSearching || semanticSearchResults)" class="px-4 lg:px-6 py-3 bg-blue-50 dark:bg-blue-950/30 border-b border-blue-200 dark:border-blue-800">
+        <div v-if="isSearching" class="flex items-center gap-2 text-blue-600 dark:text-blue-400">
+          <Loader2 class="h-4 w-4 animate-spin" />
+          <span class="text-sm">正在检索"{{ documentSearch }}"的相关内容...</span>
+        </div>
+        <div v-else-if="semanticSearchResults" class="text-sm">
+          <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+            <div class="flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-4 text-blue-600 dark:text-blue-400">
+              <span class="flex items-center gap-1 whitespace-nowrap">
+                🔍 找到 {{ semanticSearchResults.chunks.length }} 个相关片段
+              </span>
+              <span class="flex items-center gap-1 whitespace-nowrap">
+                📄 涉及 {{ searchedDocIds.size }} 个文档
+              </span>
+              <span class="text-xs text-slate-500 whitespace-nowrap">
+                耗时 {{ semanticSearchResults.search_time.toFixed(2) }}s
+              </span>
+            </div>
+            <Button
+              @click="clearSemanticSearch"
+              variant="ghost"
+              size="sm"
+              class="text-xs shrink-0 self-start sm:self-auto"
+            >
+              <X class="h-3 w-3 mr-1" />
+              清除检索
+            </Button>
+          </div>
+          <div v-if="semanticSearchResults.chunks.length === 0" class="text-amber-600 dark:text-amber-400 mt-1">
+            💡 未找到相关内容，请尝试调整搜索关键词
           </div>
         </div>
       </div>
@@ -266,19 +378,28 @@
           </p>
         </div>
 
-        <div v-else-if="filteredDocuments.length === 0" class="flex flex-col items-center justify-center py-20">
+        <div v-else-if="enhancedFilteredDocuments.length === 0" class="flex flex-col items-center justify-center py-20">
           <Search class="h-20 w-20 text-slate-300 dark:text-slate-600 mb-6" />
           <h3 class="text-lg font-medium text-slate-700 dark:text-slate-300 mb-2">
-            未找到匹配的文档
+            {{ searchType === 'content' ? '未找到相关内容' : '未找到匹配的文档' }}
           </h3>
-          <p class="text-sm text-slate-500 dark:text-slate-400">
-            尝试修改搜索条件或清除筛选
+          <p class="text-sm text-slate-500 dark:text-slate-400 mb-4">
+            {{ searchType === 'content' 
+              ? '尝试使用不同的关键词或降低搜索精度' 
+              : '尝试修改搜索条件或清除筛选' 
+            }}
           </p>
+          <div v-if="searchType === 'content'" class="text-xs text-slate-400 space-y-1">
+            <p>💡 搜索建议：</p>
+            <p>• 使用更通用的关键词</p>
+            <p>• 尝试相关的同义词</p>
+            <p>• 检查拼写是否正确</p>
+          </div>
         </div>
 
-        <div v-else class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
+        <div v-else class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5 gap-4">
           <div
-            v-for="document in filteredDocuments"
+            v-for="document in enhancedFilteredDocuments"
             :key="document.doc_id"
             :class="[
               'group p-4 rounded-lg border cursor-pointer transition-all duration-200',
@@ -360,6 +481,24 @@
                 <div class="flex items-center gap-1">
                   <Clock class="h-3 w-3" />
                   {{ formatDate(document.created_at) }}
+                </div>
+              </div>
+
+              <!-- 相关度显示（仅在语义搜索时显示） -->
+              <div v-if="searchType === 'content' && semanticSearchResults && getDocumentRelevance(document.doc_id)" class="mt-2">
+                <div class="flex items-center justify-between text-xs">
+                  <span class="text-green-600 dark:text-green-400 font-medium">
+                    🎯 相关度: {{ (getDocumentRelevance(document.doc_id)!.maxSimilarity * 100).toFixed(1) }}%
+                  </span>
+                  <span class="text-slate-500">
+                    {{ getDocumentRelevance(document.doc_id)!.chunkCount }} 个相关片段
+                  </span>
+                </div>
+                <div class="mt-1 w-full bg-slate-200 dark:bg-slate-700 rounded-full h-1">
+                  <div 
+                    class="bg-green-500 h-1 rounded-full transition-all duration-300"
+                    :style="{ width: `${getDocumentRelevance(document.doc_id)!.maxSimilarity * 100}%` }"
+                  ></div>
                 </div>
               </div>
 
@@ -487,6 +626,71 @@
       </ScrollArea>
     </DialogContent>
   </Dialog>
+
+  <!-- 文档上传进度对话框 -->
+  <Dialog v-model:open="showUploadProgress">
+    <DialogContent class="sm:max-w-lg">
+      <DialogHeader>
+        <DialogTitle>文档上传进度</DialogTitle>
+        <DialogDescription>
+          正在将文档上传到知识库 "{{ selectedKnowledgeBase?.name }}"
+        </DialogDescription>
+      </DialogHeader>
+      
+      <div class="space-y-3 mt-4">
+        <div
+          v-for="(progress, index) in uploadProgress"
+          :key="index"
+          class="flex items-center gap-3 p-3 border border-slate-200 dark:border-slate-700 rounded-lg"
+        >
+          <!-- 状态图标 -->
+          <div class="flex-shrink-0">
+            <Check v-if="progress.completed && !progress.error" class="h-5 w-5 text-green-600" />
+            <AlertTriangle v-else-if="progress.error" class="h-5 w-5 text-red-600" />
+            <Loader2 v-else class="h-5 w-5 animate-spin text-blue-600" />
+          </div>
+          
+          <!-- 文件信息 -->
+          <div class="flex-1 min-w-0">
+            <p class="text-sm font-medium text-slate-900 dark:text-slate-100 truncate">
+              {{ progress.fileName }}
+            </p>
+            <p class="text-xs text-slate-500 dark:text-slate-400">
+              <span v-if="progress.completed && !progress.error" class="text-green-600">✅ 上传完成</span>
+              <span v-else-if="progress.error" class="text-red-600">❌ {{ progress.error }}</span>
+              <span v-else class="text-blue-600">🔄 正在上传...</span>
+            </p>
+          </div>
+        </div>
+      </div>
+
+      <!-- 整体进度 -->
+      <div class="mt-4 p-3 bg-slate-50 dark:bg-slate-800 rounded-lg">
+        <div class="flex items-center justify-between text-sm">
+          <span>整体进度</span>
+          <span class="font-medium">
+            {{ uploadProgress.filter(p => p.completed).length }}/{{ uploadProgress.length }}
+          </span>
+        </div>
+        <div class="mt-2 w-full bg-slate-200 dark:bg-slate-700 rounded-full h-2">
+          <div 
+            class="bg-blue-600 h-2 rounded-full transition-all duration-300"
+            :style="{ width: `${(uploadProgress.filter(p => p.completed).length / uploadProgress.length) * 100}%` }"
+          ></div>
+        </div>
+      </div>
+
+      <div class="flex justify-end mt-6">
+        <Button 
+          v-if="!isUploading" 
+          @click="showUploadProgress = false"
+          variant="outline"
+        >
+          关闭
+        </Button>
+      </div>
+    </DialogContent>
+  </Dialog>
 </template>
 
 <script setup lang="ts">
@@ -509,7 +713,9 @@ import {
   RefreshCw,
   Loader2,
   AlertTriangle,
-  HardDrive
+  HardDrive,
+  Upload,
+  X
 } from 'lucide-vue-next'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -521,8 +727,12 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Label } from '@/components/ui/label'
 import { Textarea } from '@/components/ui/textarea'
 import { useKnowledgeBaseStore } from '@/stores/knowledgeBase'
-import { deleteDocument as apiDeleteDocument } from '@/utils/api'
+import { deleteDocument as apiDeleteDocument, uploadFile } from '@/utils/api'
 import type { KnowledgeBase, RAGDocument } from '@/types'
+
+// 引入RAG搜索相关API和类型
+import { searchDocuments } from '@/utils/api'
+import type { RAGSearchRequest, RAGSearchResponse, DocumentChunk } from '@/types'
 
 // Store
 const knowledgeBaseStore = useKnowledgeBaseStore()
@@ -561,8 +771,27 @@ const documentSearch = ref('')
 const showCreateDialog = ref(false)
 const showUncategorized = ref(false)
 const showFilterDialog = ref(false)
+const showUploadProgress = ref(false)
 const editingKnowledgeBase = ref<KnowledgeBase | null>(null)
 const batchMoveTarget = ref('')
+const fileInputRef = ref<HTMLInputElement | null>(null)
+const isUploading = ref(false)
+const searchType = ref('filename')
+const isSearching = ref(false)
+
+// RAG内容搜索相关状态
+const semanticSearchResults = ref<RAGSearchResponse | null>(null)
+const searchedDocIds = ref<Set<string>>(new Set())
+const lastSearchQuery = ref('')
+
+// 定义上传进度类型
+interface UploadProgress {
+  fileName: string
+  completed: boolean
+  error?: string
+}
+
+const uploadProgress = ref<UploadProgress[]>([])
 
 // 新建/编辑知识库表单
 const newKnowledgeBase = ref({
@@ -586,7 +815,65 @@ const filteredKnowledgeBases = computed(() => {
 
 // 监听文档搜索
 watch(documentSearch, (value) => {
-  updateSearchOptions({ query: value })
+  if (searchType.value === 'filename') {
+    updateSearchOptions({ query: value })
+    // 清除语义搜索结果
+    if (!value) {
+      clearSemanticSearch()
+    }
+  }
+})
+
+// 监听搜索类型切换
+watch(searchType, () => {
+  clearSemanticSearch()
+  if (searchType.value === 'filename') {
+    updateSearchOptions({ query: documentSearch.value })
+  }
+})
+
+// 增强的过滤文档列表计算属性
+const enhancedFilteredDocuments = computed(() => {
+  if (searchType.value === 'content' && semanticSearchResults.value) {
+    // 语义搜索模式：根据相关度排序
+    const chunks = semanticSearchResults.value.chunks
+    if (chunks.length === 0) return []
+    
+    // 按文档分组并计算总相关度
+    const docScores = new Map<string, { doc: RAGDocument, maxSimilarity: number, totalScore: number, chunkCount: number }>()
+    
+    chunks.forEach(chunk => {
+      const docId = chunk.metadata.doc_id
+      const doc = filteredDocuments.value.find(d => d.doc_id === docId)
+      if (doc) {
+        const existing = docScores.get(docId)
+        if (existing) {
+          existing.maxSimilarity = Math.max(existing.maxSimilarity, chunk.similarity)
+          existing.totalScore += chunk.similarity
+          existing.chunkCount += 1
+        } else {
+          docScores.set(docId, {
+            doc,
+            maxSimilarity: chunk.similarity,
+            totalScore: chunk.similarity,
+            chunkCount: 1
+          })
+        }
+      }
+    })
+    
+    // 按平均相关度排序
+    return Array.from(docScores.values())
+      .sort((a, b) => {
+        const avgA = a.totalScore / a.chunkCount
+        const avgB = b.totalScore / b.chunkCount
+        return avgB - avgA
+      })
+      .map(item => item.doc)
+  }
+  
+  // 文档名搜索模式或默认模式
+  return filteredDocuments.value
 })
 
 // 生命周期
@@ -722,5 +1009,161 @@ async function addToKnowledgeBase(docId: string, kbId: string) {
     console.error('添加文档到知识库失败:', error)
     alert('添加失败，请重试')
   }
+}
+
+// 处理文件上传
+function triggerFileUpload() {
+  if (fileInputRef.value) {
+    fileInputRef.value.click()
+  }
+}
+
+function handleFileSelect(event: Event) {
+  const target = event.target as HTMLInputElement
+  if (target && target.files) {
+    const files = Array.from(target.files)
+    uploadMultipleFiles(files)
+  }
+}
+
+async function uploadMultipleFiles(files: File[]) {
+  if (!selectedKnowledgeBase.value?.id) {
+    alert('请先选择一个知识库')
+    return
+  }
+
+  isUploading.value = true
+  showUploadProgress.value = true
+  uploadProgress.value = files.map(file => ({
+    fileName: file.name,
+    completed: false
+  }))
+
+  try {
+    for (let i = 0; i < files.length; i++) {
+      const file = files[i]
+      await handleSingleFileUpload(file, i)
+    }
+    
+    // 上传完成后刷新文档列表
+    await fetchAllDocuments()
+  } catch (error) {
+    console.error('批量上传失败:', error)
+  } finally {
+    isUploading.value = false
+    // 延迟关闭对话框，让用户看到完成状态
+    setTimeout(() => {
+      showUploadProgress.value = false
+      uploadProgress.value = []
+    }, 3000)
+  }
+}
+
+async function handleSingleFileUpload(file: File, index: number) {
+  try {
+    // 使用现有的上传API
+    const processedFile = await uploadFile(file)
+    
+    // 如果文档处理成功并且有doc_id，添加到当前知识库
+    if (processedFile.doc_id && selectedKnowledgeBase.value?.id) {
+      await addDocumentsToKnowledgeBase(selectedKnowledgeBase.value.id, [processedFile.doc_id])
+    }
+    
+    // 更新进度
+    uploadProgress.value[index].completed = true
+  } catch (error) {
+    console.error(`上传文件 ${file.name} 失败:`, error)
+    uploadProgress.value[index].error = error instanceof Error ? error.message : '上传失败'
+  }
+}
+
+// 处理搜索
+async function handleSearch() {
+  if (!documentSearch.value.trim()) {
+    clearSemanticSearch()
+    return
+  }
+
+  if (searchType.value === 'filename') {
+    updateSearchOptions({ query: documentSearch.value })
+    clearSemanticSearch()
+  } else if (searchType.value === 'content') {
+    await performSemanticSearch(documentSearch.value)
+  }
+}
+
+// 执行语义搜索
+async function performSemanticSearch(query: string) {
+  if (!query.trim()) return
+
+  isSearching.value = true
+  try {
+    // 获取当前知识库的文档ID列表
+    let docIds: string[] | undefined
+    if (selectedKnowledgeBase.value) {
+      docIds = selectedKnowledgeBase.value.documentIds
+      if (docIds.length === 0) {
+        semanticSearchResults.value = { chunks: [], total_found: 0, search_time: 0 }
+        return
+      }
+    }
+
+    const request: RAGSearchRequest = {
+      query,
+      doc_ids: docIds,
+      top_k: 20, // 增加返回数量以获得更多相关文档
+      min_similarity: 0.3 // 降低相似度阈值以获得更多结果
+    }
+
+    console.log('🔍 执行知识库内容检索:', {
+      query,
+      knowledgeBase: selectedKnowledgeBase.value?.name || '全部文档',
+      docIds: docIds?.length || '全部'
+    })
+
+    const response = await searchDocuments(request)
+    semanticSearchResults.value = response
+    lastSearchQuery.value = query
+
+    // 记录搜索到的文档ID
+    searchedDocIds.value.clear()
+    response.chunks.forEach(chunk => {
+      searchedDocIds.value.add(chunk.metadata.doc_id)
+    })
+
+    console.log('✅ 语义搜索完成:', {
+      chunksFound: response.chunks.length,
+      documentsFound: searchedDocIds.value.size,
+      searchTime: response.search_time.toFixed(3) + 's'
+    })
+
+  } catch (error) {
+    console.error('❌ 语义搜索失败:', error)
+    semanticSearchResults.value = { chunks: [], total_found: 0, search_time: 0 }
+  } finally {
+    isSearching.value = false
+  }
+}
+
+// 清除语义搜索结果
+function clearSemanticSearch() {
+  semanticSearchResults.value = null
+  searchedDocIds.value.clear()
+  lastSearchQuery.value = ''
+}
+
+// 获取文档相关度
+function getDocumentRelevance(docId: string) {
+  if (searchType.value === 'content' && semanticSearchResults.value) {
+    const chunks = semanticSearchResults.value.chunks.filter(c => c.metadata.doc_id === docId)
+    if (chunks.length > 0) {
+      const maxSimilarity = Math.max(...chunks.map(c => c.similarity))
+      return {
+        maxSimilarity,
+        chunkCount: chunks.length
+      }
+    }
+  }
+  return null
 }
 </script> 

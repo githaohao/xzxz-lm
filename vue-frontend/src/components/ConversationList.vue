@@ -1,143 +1,149 @@
 <template>
-  <div class="h-full flex flex-col bg-white dark:bg-slate-900 border-r border-slate-200 dark:border-slate-700">
-    <!-- 顶部操作栏 -->
-    <div class="p-4 border-b border-slate-200 dark:border-slate-700">
-      <div class="flex items-center justify-between mb-3">
-        <h2 class="text-lg font-semibold text-slate-900 dark:text-slate-100">对话列表</h2>
-        <Button 
-          @click="createNewConversation" 
-          size="sm" 
-          class="h-8 px-3"
-        >
-          <Plus class="h-4 w-4 mr-1" />
-          新建
-        </Button>
-      </div>
-      
-      <!-- 搜索框 -->
-      <div class="relative">
-        <Search class="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-slate-400" />
-        <input
-          v-model="searchQuery"
-          type="text"
-          placeholder="搜索对话..."
-          class="w-full pl-10 pr-4 py-2 text-sm border border-slate-200 dark:border-slate-600 rounded-lg bg-slate-50 dark:bg-slate-800 text-slate-900 dark:text-slate-100 placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-        />
-      </div>
-    </div>
-
-    <!-- 对话列表 -->
-    <div class="flex-1 overflow-y-auto">
-      <div v-if="filteredConversations.length === 0" class="p-4 text-center text-slate-500">
-        <MessageCircle class="h-8 w-8 mx-auto mb-2 opacity-50" />
-        <p>{{ searchQuery ? '未找到匹配的对话' : '暂无对话' }}</p>
-      </div>
-      
-      <div 
-        v-for="conversation in filteredConversations"
-        :key="conversation.id"
-        :class="[
-          'group relative p-4 border-b border-slate-100 dark:border-slate-800 cursor-pointer transition-colors',
-          conversation.isActive 
-            ? 'bg-blue-50 dark:bg-blue-900/20 border-l-4 border-l-blue-500' 
-            : 'hover:bg-slate-50 dark:hover:bg-slate-800'
-        ]"
-        @click="selectConversation(conversation.id)"
-      >
-        <!-- 对话内容 -->
-        <div class="flex-1 min-w-0">
-          <div class="flex items-center justify-between mb-1">
-            <h3 
-              class="text-sm font-medium text-slate-900 dark:text-slate-100 truncate"
-              :class="{ 'text-blue-700 dark:text-blue-300': conversation.isActive }"
-            >
-              {{ conversation.title }}
-            </h3>
-            <time class="text-xs text-slate-500 ml-2 flex-shrink-0">
-              {{ formatTime(conversation.updatedAt) }}
-            </time>
-          </div>
-          
-          <p v-if="conversation.lastMessage" class="text-xs text-slate-600 dark:text-slate-400 truncate">
-            {{ conversation.lastMessage }}
-          </p>
-          
-          <div class="flex items-center gap-2 mt-2">
-            <Badge variant="secondary" class="text-xs">
-              {{ conversation.messageCount }} 条消息
-            </Badge>
-            <Badge 
-              v-if="getConversationRagDocsCount(conversation.id) > 0" 
-              variant="outline" 
-              class="text-xs text-purple-600 border-purple-300"
-            >
-              📚 {{ getConversationRagDocsCount(conversation.id) }} 个文档
-            </Badge>
-          </div>
+  <!-- 包装所有内容在一个根元素中以解决 v-show 指令警告 -->
+  <div>
+    <div class="h-full flex flex-col bg-white dark:bg-slate-900 border-r border-slate-200 dark:border-slate-700">
+      <!-- 顶部操作栏 -->
+      <div class="p-4 border-b border-slate-200 dark:border-slate-700">
+        <div class="flex items-center justify-between mb-3">
+          <h2 class="text-lg font-semibold text-slate-900 dark:text-slate-100">对话列表</h2>
+          <Button 
+            @click="createNewConversation" 
+            size="sm" 
+            class="h-8 px-3"
+          >上传文档
+            <Plus class="h-4 w-4 mr-1" />
+            新建
+          </Button>
         </div>
-
-        <!-- 操作按钮 -->
-        <div class="absolute top-2 right-2 opacity-0 group-hover:opacity-100 transition-opacity">
-          <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <Button variant="ghost" size="sm" class="h-6 w-6 p-0">
-                <MoreVertical class="h-3 w-3" />
-              </Button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent align="end">
-              <DropdownMenuItem @click.stop="editConversationTitle(conversation.id)">
-                <Edit2 class="h-4 w-4 mr-2" />
-                重命名
-              </DropdownMenuItem>
-              <DropdownMenuItem @click.stop="clearConversationMessages(conversation.id)">
-                <Trash2 class="h-4 w-4 mr-2" />
-                清空消息
-              </DropdownMenuItem>
-              <DropdownMenuItem 
-                @click.stop="deleteConversation(conversation.id)"
-                class="text-red-600 focus:text-red-600"
-              >
-                <X class="h-4 w-4 mr-2" />
-                删除对话
-              </DropdownMenuItem>
-            </DropdownMenuContent>
-          </DropdownMenu>
-        </div>
-      </div>
-    </div>
-
-    <!-- 底部统计 -->
-    <div class="p-4 border-t border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800">
-      <p class="text-xs text-slate-500">
-        总计 {{ conversationStore.conversations.length }} 个对话
-      </p>
-    </div>
-  </div>
-
-  <!-- 重命名对话框 -->
-  <Dialog v-model:open="showRenameDialog">
-    <DialogContent class="sm:max-w-md">
-      <DialogHeader>
-        <DialogTitle>重命名对话</DialogTitle>
-      </DialogHeader>
-      <div class="space-y-4">
-        <div>
-          <label class="text-sm font-medium text-slate-700 dark:text-slate-300">对话标题</label>
+        
+        <!-- 搜索框 -->
+        <div class="relative">
+          <Search class="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-slate-400" />
           <input
-            v-model="newTitle"
+            v-model="searchQuery"
             type="text"
-            class="mt-1 block w-full px-3 py-2 border border-slate-300 dark:border-slate-600 rounded-md bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-            placeholder="输入新的对话标题"
-            @keyup.enter="confirmRename"
+            placeholder="搜索对话..."
+            class="w-full pl-10 pr-4 py-2 text-sm border border-slate-200 dark:border-slate-600 rounded-lg bg-slate-50 dark:bg-slate-800 text-slate-900 dark:text-slate-100 placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
           />
         </div>
-        <div class="flex justify-end gap-2">
-          <Button variant="outline" @click="showRenameDialog = false">取消</Button>
-          <Button @click="confirmRename">确认</Button>
+      </div>
+
+      <!-- 对话列表 -->
+      <div class="flex-1 overflow-y-auto scrollbar-thin scrollbar-track-slate-100 scrollbar-thumb-slate-300 dark:scrollbar-track-slate-800 dark:scrollbar-thumb-slate-600 hover:scrollbar-thumb-slate-400 dark:hover:scrollbar-thumb-slate-500">
+        <div v-if="filteredConversations.length === 0" class="flex items-center justify-center min-h-[200px] p-8 text-center text-slate-500">
+          <div>
+            <MessageCircle class="h-12 w-12 mx-auto mb-3 opacity-50" />
+            <p class="text-sm">{{ searchQuery ? '未找到匹配的对话' : '暂无对话' }}</p>
+            <p v-if="!searchQuery" class="text-xs mt-1 opacity-75">点击"新建"按钮开始第一个对话</p>
+          </div>
+        </div>
+        
+        <div 
+          v-for="conversation in filteredConversations"
+          :key="conversation.id"
+          :class="[
+            'group relative p-4 border-b border-slate-100 dark:border-slate-800 cursor-pointer transition-colors',
+            conversation.isActive 
+              ? 'bg-blue-50 dark:bg-blue-900/20 border-l-4 border-l-blue-500' 
+              : 'hover:bg-slate-50 dark:hover:bg-slate-800'
+          ]"
+          @click="selectConversation(conversation.id)"
+        >
+          <!-- 对话内容 -->
+          <div class="flex-1 min-w-0">
+            <div class="flex items-center justify-between mb-1">
+              <h3 
+                class="text-sm font-medium text-slate-900 dark:text-slate-100 truncate"
+                :class="{ 'text-blue-700 dark:text-blue-300': conversation.isActive }"
+              >
+                {{ conversation.title }}
+              </h3>
+              <time class="text-xs text-slate-500 ml-2 flex-shrink-0">
+                {{ formatTime(conversation.updatedAt) }}
+              </time>
+            </div>
+            
+            <p v-if="conversation.lastMessage" class="text-xs text-slate-600 dark:text-slate-400 truncate">
+              {{ conversation.lastMessage }}
+            </p>
+            
+            <div class="flex items-center gap-2 mt-2">
+              <Badge variant="secondary" class="text-xs">
+                {{ conversation.messageCount }} 条消息
+              </Badge>
+              <Badge 
+                v-if="getConversationRagDocsCount(conversation.id) > 0" 
+                variant="outline" 
+                class="text-xs text-purple-600 border-purple-300"
+              >
+                📚 {{ getConversationRagDocsCount(conversation.id) }} 个文档
+              </Badge>
+            </div>
+          </div>
+
+          <!-- 操作按钮 -->
+          <div class="absolute top-2 right-2 opacity-0 group-hover:opacity-100 transition-opacity">
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button variant="ghost" size="sm" class="h-6 w-6 p-0">
+                  <MoreVertical class="h-3 w-3" />
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end">
+                <DropdownMenuItem @click.stop="editConversationTitle(conversation.id)">
+                  <Edit2 class="h-4 w-4 mr-2" />
+                  重命名
+                </DropdownMenuItem>
+                <DropdownMenuItem @click.stop="clearConversationMessages(conversation.id)">
+                  <Trash2 class="h-4 w-4 mr-2" />
+                  清空消息
+                </DropdownMenuItem>
+                <DropdownMenuItem 
+                  @click.stop="deleteConversation(conversation.id)"
+                  class="text-red-600 focus:text-red-600"
+                >
+                  <X class="h-4 w-4 mr-2" />
+                  删除对话
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
+          </div>
         </div>
       </div>
-    </DialogContent>
-  </Dialog>
+
+      <!-- 底部统计 -->
+      <div class="p-4 border-t border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-center">
+        <p class="text-xs text-slate-500">
+          总计 {{ conversationStore.conversations.length }} 个对话
+        </p>
+      </div>
+    </div>
+
+    <!-- 重命名对话框 -->
+    <Dialog v-model:open="showRenameDialog">
+      <DialogContent class="sm:max-w-md">
+        <DialogHeader>
+          <DialogTitle>重命名对话</DialogTitle>
+        </DialogHeader>
+        <div class="space-y-4">
+          <div>
+            <label class="text-sm font-medium text-slate-700 dark:text-slate-300">对话标题</label>
+            <input
+              v-model="newTitle"
+              type="text"
+              class="mt-1 block w-full px-3 py-2 border border-slate-300 dark:border-slate-600 rounded-md bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+              placeholder="输入新的对话标题"
+              @keyup.enter="confirmRename"
+            />
+          </div>
+          <div class="flex justify-end gap-2">
+            <Button variant="outline" @click="showRenameDialog = false">取消</Button>
+            <Button @click="confirmRename">确认</Button>
+          </div>
+        </div>
+      </DialogContent>
+    </Dialog>
+  </div>
 </template>
 
 <script setup lang="ts">

@@ -14,7 +14,7 @@ class Settings(BaseSettings):
     
     # LM Studio API 配置
     lm_studio_base_url: str = "http://127.0.0.1:1234/v1"
-    lm_studio_model: str = "qwen3-14b-mlx"
+    lm_studio_model: str = "deepseek-r1-0528-qwen3-8b-mlx@8bit"
     lm_studio_api_key: str = "not-needed"  # LM Studio 通常不需要 API key
     
     # 文件上传配置
