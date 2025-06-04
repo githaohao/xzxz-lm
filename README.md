@@ -35,9 +35,9 @@
 ### 界面示例
 ![image](https://gitee.com/githaohao/xzxz-lm/raw/main/docs/%E6%88%AA%E5%B1%8F2025-05-26%20%E4%B8%8A%E5%8D%889.36.01.png)
 ![image](https://gitee.com/githaohao/xzxz-lm/raw/main/docs/%E6%88%AA%E5%B1%8F2025-06-04%20%E4%B8%8B%E5%8D%882.30.51.png)
-![image](https://gitee.com/githaohao/xzxz-lm/blob/main/docs/%E6%88%AA%E5%B1%8F2025-06-04%20%E4%B8%8B%E5%8D%882.31.08.png)
-![image](https://gitee.com/githaohao/xzxz-lm/blob/main/docs/%E6%88%AA%E5%B1%8F2025-06-04%20%E4%B8%8B%E5%8D%882.31.20.png)
-![image](https://gitee.com/githaohao/xzxz-lm/blob/main/docs/%E6%88%AA%E5%B1%8F2025-06-04%20%E4%B8%8B%E5%8D%882.31.30.png)
+![image](https://gitee.com/githaohao/xzxz-lm/raw/main/docs/%E6%88%AA%E5%B1%8F2025-06-04%20%E4%B8%8B%E5%8D%882.31.08.png)
+![image](https://gitee.com/githaohao/xzxz-lm/raw/main/docs/%E6%88%AA%E5%B1%8F2025-06-04%20%E4%B8%8B%E5%8D%882.31.20.png)
+![image](https://gitee.com/githaohao/xzxz-lm/raw/main/docs/%E6%88%AA%E5%B1%8F2025-06-04%20%E4%B8%8B%E5%8D%882.31.30.png)
 ![image](https://gitee.com/githaohao/xzxz-lm/raw/main/docs/%E6%88%AA%E5%B1%8F2025-05-26%20%E4%B8%8A%E5%8D%889.36.30.png)
 ![image](https://gitee.com/githaohao/xzxz-lm/raw/main/docs/%E6%88%AA%E5%B1%8F2025-05-26%20%E4%B8%8A%E5%8D%889.36.45.png)
 ![image](https://gitee.com/githaohao/xzxz-lm/raw/main/docs/%E6%88%AA%E5%B1%8F2025-05-26%20%E4%B8%8A%E5%8D%889.36.53.png)
