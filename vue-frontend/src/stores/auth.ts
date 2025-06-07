@@ -1,6 +1,6 @@
 import { defineStore } from 'pinia'
 import { ref, computed } from 'vue'
-import type { UserInfo, LoginRequest, CaptchaResponse } from '@/types'
+import type { UserInfo, UserInfoResponse, LoginRequest, CaptchaResponse, TokenInfo } from '@/types'
 import { 
   login as apiLogin, 
   logout as apiLogout, 
@@ -17,22 +17,40 @@ import { authManager } from '@/utils/auth'
 export const useAuthStore = defineStore('auth', () => {
   // 状态
   const user = ref<UserInfo | null>(null)
+  const token = ref<string | null>(null)
   const isLoading = ref(false)
   const error = ref<string | null>(null)
   const captcha = ref<CaptchaResponse | null>(null)
 
   // 计算属性
-  const isLoggedIn = computed(() => checkLogin())
+  const isLoggedIn = computed(() => {
+    // 只基于store内的响应式状态，确保登录状态能立即响应变化
+    return !!token.value && !!user.value
+  })
   const userProfile = computed(() => user.value?.user || null)
   const userRoles = computed(() => user.value?.roles || [])
   const userPermissions = computed(() => user.value?.permissions || [])
   const isAdmin = computed(() => user.value?.user?.admin === true)
 
+  // 同步token状态的辅助方法
+  const syncTokenState = () => {
+    const currentToken = authManager.getToken()
+    token.value = currentToken
+  }
+
   // 初始化用户状态
   const initializeAuth = () => {
     const currentUser = getCurrentUser()
-    if (currentUser) {
+    const currentToken = authManager.getToken()
+    
+    if (currentUser && currentToken) {
       user.value = currentUser
+      token.value = currentToken
+      console.log('初始化用户状态成功:', currentUser.user.userName)
+    } else {
+      user.value = null
+      token.value = null
+      console.log('未发现已登录用户')
     }
   }
 
@@ -55,12 +73,17 @@ export const useAuthStore = defineStore('auth', () => {
     try {
       isLoading.value = true
       error.value = null
-      
       const response = await apiLogin(loginData)
-      
       if (response.code === 200) {
-        // 登录成功，获取用户信息
-        await fetchUserInfo()
+        // 登录成功，立即同步用户信息和token到store
+        const currentUser = getCurrentUser()
+        const currentToken = authManager.getToken()
+        
+        if (currentUser && currentToken) {
+          user.value = currentUser
+          token.value = currentToken
+        }
+        
         return { success: true, message: '登录成功' }
       } else {
         error.value = response.msg || '登录失败'
@@ -83,10 +106,12 @@ export const useAuthStore = defineStore('auth', () => {
       // 即使退出失败，也要清除本地状态
       console.warn('退出登录失败:', err)
     } finally {
-      // 清除用户状态
+      // 清除用户状态（包括Pinia store和AuthManager）
       user.value = null
+      token.value = null
       error.value = null
       isLoading.value = false
+      // apiLogout已经调用了authManager.clearAuth()
     }
   }
 
@@ -94,11 +119,18 @@ export const useAuthStore = defineStore('auth', () => {
   const fetchUserInfo = async () => {
     try {
       isLoading.value = true
-      const response = await apiGetUserInfo()
+      const response: UserInfoResponse = await apiGetUserInfo()
       
-      if (response.code === 200 && response.data) {
-        user.value = response.data
-        return response.data
+      if (response.code === 200) {
+        // API返回的数据结构: { code: 200, msg: "", user: {}, permissions: [], roles: [] }
+        // 构建用户信息对象
+        const userInfo: UserInfo = {
+          user: response.user,
+          permissions: response.permissions || [],
+          roles: response.roles || []
+        }
+        user.value = userInfo
+        return userInfo
       } else {
         throw new Error(response.msg || '获取用户信息失败')
       }
@@ -163,6 +195,8 @@ export const useAuthStore = defineStore('auth', () => {
     try {
       const response = await apiRefreshToken()
       if (response.code === 200) {
+        // 刷新成功后同步token状态
+        syncTokenState()
         return true
       }
       return false
@@ -193,6 +227,7 @@ export const useAuthStore = defineStore('auth', () => {
   return {
     // 状态
     user,
+    token,
     isLoading,
     error,
     captcha,
@@ -215,6 +250,7 @@ export const useAuthStore = defineStore('auth', () => {
     hasPermission,
     hasRole,
     clearError,
-    initializeAuth
+    initializeAuth,
+    syncTokenState
   }
 }) 

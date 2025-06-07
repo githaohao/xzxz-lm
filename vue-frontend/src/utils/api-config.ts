@@ -1,7 +1,7 @@
 // API配置文件
 export const API_CONFIG = {
   // 基础URL配置
-  BASE_URL: "/api",  // 不使用基础URL，直接使用完整路径
+  BASE_URL: "",  // 不使用基础URL，直接使用完整路径
   
   // 超时配置
   TIMEOUT: {
@@ -16,37 +16,37 @@ export const API_CONFIG = {
   // API端点配置
   ENDPOINTS: {
     // LM聊天相关 (使用/api/lm前缀)
-    CHAT_STREAM: '/lm/chat/stream',
-    MULTIMODAL_STREAM: '/lm/chat/multimodal/stream/processed',
+    CHAT_STREAM: '/api/lm/chat/stream',
+    MULTIMODAL_STREAM: '/api/lm/chat/multimodal/stream/processed',
     
     // LM语音相关
-    VOICE_CHAT: '/lm/voice/chat',
-    VOICE_TTS: '/lm/voice/speech/synthesize',
-    VOICE_ENGINE: '/lm/voice/engine',
-    VOICE_CONVERSATION: '/lm/voice/conversation',
+    VOICE_CHAT: '/api/lm/voice/chat',
+    VOICE_TTS: '/api/lm/voice/speech/synthesize',
+    VOICE_ENGINE: '/api/lm/voice/engine',
+    VOICE_CONVERSATION: '/api/lm/voice/conversation',
     
     // LM文件相关
-    UPLOAD: '/lm/upload',
-    OCR: '/lm/ocr',
+    UPLOAD: '/api/lm/upload',
+    OCR: '/api/lm/ocr',
     
     // LM RAG相关
-    RAG_DOCUMENTS: '/lm/rag/documents',
-    RAG_SEARCH: '/lm/rag/search',
-    RAG_PROCESS: '/lm/rag/process',
+    RAG_DOCUMENTS: '/api/lm/rag/documents',
+    RAG_SEARCH: '/api/lm/rag/search',
+    RAG_PROCESS: '/api/lm/rag/process',
     
     // LM系统相关
-    HEALTH: '/lm/health',
+    HEALTH: '/api/lm/health',
     
-    // 若依微服务用户系统 (使用/api/system前缀)
-    SYSTEM_LOGIN: '/auth/login',
-    SYSTEM_LOGOUT: '/system/logout',
-    SYSTEM_USER_PROFILE: '/system/user/profile',
-    SYSTEM_USER_AVATAR: '/system/user/avatar',
-    SYSTEM_MENU_LIST: '/system/menu/list',
-    SYSTEM_REFRESH_TOKEN: '/system/refresh',
-    SYSTEM_CAPTCHA: '/system/captcha',
-    SYSTEM_USER_INFO: '/system/getInfo',
-    SYSTEM_ROUTER_LIST: '/system/getRouters',
+    // 若依微服务用户系统 (直接使用完整路径)
+    SYSTEM_LOGIN: '/api/auth/login',
+    SYSTEM_LOGOUT: '/api/system/logout',
+    SYSTEM_USER_PROFILE: '/api/system/user/profile',
+    SYSTEM_USER_AVATAR: '/api/system/user/avatar',
+    SYSTEM_MENU_LIST: '/api/system/menu/list',
+    SYSTEM_REFRESH_TOKEN: '/api/system/refresh',
+    SYSTEM_CAPTCHA: '/api/auth/captcha',
+    SYSTEM_USER_INFO: '/api/system/user/getInfo',
+    SYSTEM_ROUTER_LIST: '/api/system/getRouters',
   },
   
   // 请求头配置

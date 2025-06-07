@@ -3,23 +3,23 @@
     <!-- 用户头像触发器 -->
     <button
       @click="toggleDropdown"
-      class="flex items-center space-x-3 text-sm rounded-full focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 transition-all duration-200 hover:shadow-md"
+      class="flex items-center space-x-3 text-sm rounded-full focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-ring transition-all duration-200 hover:shadow-md"
     >
       <div class="relative">
         <img
           :src="userAvatar"
           :alt="userDisplayName"
-          class="w-8 h-8 rounded-full object-cover border-2 border-white shadow-sm"
+          class="w-8 h-8 rounded-full object-cover border-2 border-card shadow-sm"
         />
         <div
           v-if="authStore.isLoggedIn"
-          class="absolute -bottom-0.5 -right-0.5 w-3 h-3 bg-green-400 border-2 border-white rounded-full"
+          class="absolute -bottom-0.5 -right-0.5 w-3 h-3 bg-green-400 border-2 border-card rounded-full"
           title="在线"
         ></div>
       </div>
-      <span class="font-medium text-gray-700 hidden sm:block">{{ userDisplayName }}</span>
+      <span class="font-medium text-foreground hidden sm:block">{{ userDisplayName }}</span>
       <svg
-        class="w-4 h-4 text-gray-400 transition-transform duration-200"
+        class="w-4 h-4 text-muted-foreground transition-transform duration-200"
         :class="{ 'rotate-180': isDropdownOpen }"
         fill="none"
         stroke="currentColor"
@@ -40,24 +40,24 @@
     >
       <div
         v-if="isDropdownOpen"
-        class="absolute right-0 z-50 mt-2 w-80 bg-white rounded-lg shadow-lg ring-1 ring-black ring-opacity-5 focus:outline-none"
+        class="absolute right-0 z-50 mt-2 w-80 bg-popover rounded-lg shadow-lg ring-1 ring-border ring-opacity-5 focus:outline-none"
       >
         <div class="p-4">
           <!-- 用户信息头部 -->
-          <div class="flex items-center space-x-4 mb-4 pb-4 border-b border-gray-100">
+          <div class="flex items-center space-x-4 mb-4 pb-4 border-b border-border">
             <div class="relative">
               <img
                 :src="userAvatar"
                 :alt="userDisplayName"
-                class="w-12 h-12 rounded-full object-cover border-2 border-gray-200"
+                class="w-12 h-12 rounded-full object-cover border-2 border-border"
               />
               <!-- 上传头像按钮 -->
               <label
                 for="avatar-upload"
-                class="absolute -bottom-1 -right-1 w-6 h-6 bg-blue-500 rounded-full flex items-center justify-center cursor-pointer hover:bg-blue-600 transition-colors duration-200"
+                class="absolute -bottom-1 -right-1 w-6 h-6 bg-primary rounded-full flex items-center justify-center cursor-pointer hover:bg-primary/80 transition-colors duration-200"
                 title="更换头像"
               >
-                <svg class="w-3 h-3 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <svg class="w-3 h-3 text-primary-foreground" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6v6m0 0v6m0-6h6m-6 0H6" />
                 </svg>
               </label>
@@ -70,13 +70,13 @@
               />
             </div>
             <div class="flex-1 min-w-0">
-              <h3 class="text-lg font-semibold text-gray-900 truncate">{{ userDisplayName }}</h3>
-              <p class="text-sm text-gray-500 truncate">{{ authStore.userProfile?.email || '未设置邮箱' }}</p>
+              <h3 class="text-lg font-semibold text-popover-foreground truncate">{{ userDisplayName }}</h3>
+              <p class="text-sm text-muted-foreground truncate">{{ authStore.userProfile?.email || '未设置邮箱' }}</p>
               <div class="flex flex-wrap gap-1 mt-1">
                 <span
                   v-for="role in authStore.userRoles"
                   :key="role"
-                  class="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-blue-100 text-blue-800"
+                  class="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-primary/10 text-primary"
                 >
                   {{ role }}
                 </span>
@@ -85,26 +85,26 @@
           </div>
 
           <!-- 用户详细信息 -->
-          <div v-if="authStore.userProfile" class="space-y-3 mb-4 pb-4 border-b border-gray-100">
+          <div v-if="authStore.userProfile" class="space-y-3 mb-4 pb-4 border-b border-border">
             <div class="flex items-center justify-between text-sm">
-              <span class="text-gray-500">用户名</span>
-              <span class="text-gray-900 font-medium">{{ authStore.userProfile.userName }}</span>
+              <span class="text-muted-foreground">用户名</span>
+              <span class="text-popover-foreground font-medium">{{ authStore.userProfile.userName }}</span>
             </div>
             <div class="flex items-center justify-between text-sm">
-              <span class="text-gray-500">昵称</span>
-              <span class="text-gray-900 font-medium">{{ authStore.userProfile.nickName || '未设置' }}</span>
+              <span class="text-muted-foreground">昵称</span>
+              <span class="text-popover-foreground font-medium">{{ authStore.userProfile.nickName || '未设置' }}</span>
             </div>
             <div class="flex items-center justify-between text-sm">
-              <span class="text-gray-500">手机号</span>
-              <span class="text-gray-900 font-medium">{{ authStore.userProfile.phonenumber || '未设置' }}</span>
+              <span class="text-muted-foreground">手机号</span>
+              <span class="text-popover-foreground font-medium">{{ authStore.userProfile.phonenumber || '未设置' }}</span>
             </div>
             <div class="flex items-center justify-between text-sm">
-              <span class="text-gray-500">部门</span>
-              <span class="text-gray-900 font-medium">{{ authStore.userProfile.dept?.deptName || '未分配' }}</span>
+              <span class="text-muted-foreground">部门</span>
+              <span class="text-popover-foreground font-medium">{{ authStore.userProfile.dept?.deptName || '未分配' }}</span>
             </div>
             <div class="flex items-center justify-between text-sm">
-              <span class="text-gray-500">创建时间</span>
-              <span class="text-gray-900 font-medium">{{ formatDate(authStore.userProfile.createTime) }}</span>
+              <span class="text-muted-foreground">创建时间</span>
+              <span class="text-popover-foreground font-medium">{{ formatDate(authStore.userProfile.createTime) }}</span>
             </div>
           </div>
 
@@ -112,28 +112,28 @@
           <div class="space-y-2">
             <button
               @click="openProfile"
-              class="w-full flex items-center px-3 py-2 text-sm text-gray-700 rounded-md hover:bg-gray-100 transition-colors duration-200"
+              class="w-full flex items-center px-3 py-2 text-sm text-popover-foreground rounded-md hover:bg-accent hover:text-accent-foreground transition-colors duration-200"
             >
-              <svg class="w-4 h-4 mr-3 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <svg class="w-4 h-4 mr-3 text-muted-foreground" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
               </svg>
               个人资料
             </button>
             <button
               @click="openSettings"
-              class="w-full flex items-center px-3 py-2 text-sm text-gray-700 rounded-md hover:bg-gray-100 transition-colors duration-200"
+              class="w-full flex items-center px-3 py-2 text-sm text-popover-foreground rounded-md hover:bg-accent hover:text-accent-foreground transition-colors duration-200"
             >
-              <svg class="w-4 h-4 mr-3 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <svg class="w-4 h-4 mr-3 text-muted-foreground" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
               </svg>
               系统设置
             </button>
-            <div class="border-t border-gray-100 pt-2">
+            <div class="border-t border-border pt-2">
               <button
                 @click="handleLogout"
                 :disabled="authStore.isLoading"
-                class="w-full flex items-center px-3 py-2 text-sm text-red-600 rounded-md hover:bg-red-50 transition-colors duration-200 disabled:opacity-50"
+                class="w-full flex items-center px-3 py-2 text-sm text-destructive rounded-md hover:bg-destructive/10 transition-colors duration-200 disabled:opacity-50"
               >
                 <svg class="w-4 h-4 mr-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" />

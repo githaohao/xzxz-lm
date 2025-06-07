@@ -21,25 +21,25 @@ const router = createRouter({
       path: '/chat',
       name: 'chat',
       component: () => import('../views/ChatView.vue'),
-      meta: { requiresAuth: true }
+      meta: { requiresAuth: false }
     },
     {
       path: '/voice-chat',
       name: 'voice-chat',
       component: () => import('../views/VoiceChatView.vue'),
-      meta: { requiresAuth: true }
+      meta: { requiresAuth: false }
     },
     {
       path: '/simple-voice-chat',
       name: 'simple-voice-chat',
       component: () => import('../views/SimpleVoiceChatView.vue'),
-      meta: { requiresAuth: true }
+      meta: { requiresAuth: false }
     },
     {
       path: '/knowledge-base',
       name: 'knowledge-base',
       component: () => import('../views/KnowledgeBaseView.vue'),
-      meta: { requiresAuth: true }
+      meta: { requiresAuth: false }
     },
     {
       path: '/components',

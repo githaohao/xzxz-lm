@@ -10,6 +10,7 @@ import type {
   LoginRequest,
   LoginResponse,
   UserInfo,
+  UserInfoResponse,
   CaptchaResponse,
   UpdateProfileRequest,
   ChangePasswordRequest,
@@ -49,8 +50,8 @@ class ApiClient {
       ...(options.headers as Record<string, string> || {}),
     }
 
-    // 如果不跳过认证且用户已登录，添加Authorization头
-    if (!skipAuth && authManager.isLoggedIn()) {
+    // 如果不跳过认证且有token，添加Authorization头
+    if (!skipAuth && authManager.getToken()) {
       Object.assign(headers, authManager.getAuthHeader())
     }
 
@@ -146,12 +147,20 @@ class ApiClient {
   ): Promise<Response> {
     const url = `${this.baseURL}${endpoint}`
     
+    // 准备请求头，包含认证信息
+    const headers: Record<string, string> = {
+      'Content-Type': 'application/json',
+      'Accept': 'text/event-stream',
+    }
+    
+    // 添加认证头
+    if (authManager.getToken()) {
+      Object.assign(headers, authManager.getAuthHeader())
+    }
+    
     const response = await fetch(url, {
       method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Accept': 'text/event-stream',
-      },
+      headers,
       body: JSON.stringify(data),
       signal,
     })
@@ -478,9 +487,9 @@ export async function login(loginData: LoginRequest): Promise<RuoyiResponse<Logi
   )
   
   // 如果登录成功，保存token和用户信息
-  if (response.code === 200 && response.data?.token) {
+  if (response.code === 200 && response.data?.access_token) {
     authManager.setToken({
-      token: response.data.token,
+      token: response.data.access_token,
       expires_in: response.data.expires_in || 7200,
       token_type: 'Bearer'
     })
@@ -512,12 +521,18 @@ export async function logout(): Promise<RuoyiResponse> {
 /**
  * 获取用户信息
  */
-export async function getUserInfo(): Promise<RuoyiResponse<UserInfo>> {
-  const response = await api.get<RuoyiResponse<UserInfo>>(API_CONFIG.ENDPOINTS.SYSTEM_USER_INFO)
+export async function getUserInfo(): Promise<UserInfoResponse> {
+  const response = await api.get<UserInfoResponse>(API_CONFIG.ENDPOINTS.SYSTEM_USER_INFO)
   
   // 如果获取成功，保存用户信息
-  if (response.code === 200 && response.data) {
-    authManager.setUserInfo(response.data)
+  if (response.code === 200 && response.user) {
+    // 构建标准的UserInfo格式
+    const userInfo: UserInfo = {
+      user: response.user,
+      permissions: response.permissions || [],
+      roles: response.roles || []
+    }
+    authManager.setUserInfo(userInfo)
   }
   
   return response
@@ -599,9 +614,9 @@ export async function refreshToken(): Promise<RuoyiResponse<LoginResponse>> {
   )
   
   // 如果刷新成功，更新token
-  if (response.code === 200 && response.data?.token) {
+  if (response.code === 200 && response.data?.access_token) {
     authManager.setToken({
-      token: response.data.token,
+      token: response.data.access_token,
       expires_in: response.data.expires_in || 7200,
       refresh_token: refreshToken,
       token_type: 'Bearer'

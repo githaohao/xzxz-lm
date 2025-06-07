@@ -222,7 +222,7 @@ export interface LoginRequest {
 export interface LoginResponse {
   code: number
   msg: string
-  token?: string
+  access_token?: string
   expires_in?: number
 }
 
@@ -370,6 +370,15 @@ export interface RuoyiResponse<T = any> {
   data?: T
   rows?: T[]
   total?: number
+}
+
+// 用户信息API特殊响应格式（实际返回格式）
+export interface UserInfoResponse {
+  code: number
+  msg: string
+  permissions: string[]
+  roles: string[]
+  user: UserInfo['user']
 }
 
 // Token信息
