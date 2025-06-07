@@ -11,15 +11,20 @@
 - 📁 **文件上传**: 拖拽上传，支持多种文件格式
 - 🌐 **跨平台**: 前后端分离，易于扩展到小程序和 APP
 - 🎨 **现代化 UI**: 使用 shadcn-ui 组件库，提供优秀的用户体验
+- ☁️ **智能同步**: 登录后自动同步本地对话到云端，支持批量同步功能
 
 ## 技术栈
 
 ### 后端
 - **FastAPI**: 高性能 Python Web 框架
+- **NestJS**: 企业级 Node.js 框架，用于聊天历史管理微服务
+- **TypeORM**: 数据库 ORM 框架
+- **MySQL**: 关系型数据库，存储聊天历史
 - **FunAudioLLM**: 高性能语音识别引擎（比 Whisper 快 15 倍）
 - **Edge-TTS**: 微软语音合成服务
 - **pdf2image**: PDF 转图片处理
 - **LM Studio API**: 本地大语言模型服务
+- **Nacos**: 微服务注册与配置中心
 
 ### 前端
 - **Vue 3**: 渐进式 JavaScript 框架
@@ -52,7 +57,11 @@
 # 1. 启动Nacos集成版本
 ./scripts/start_with_nacos.sh
 
-# 2. 或使用Docker Compose启动完整微服务环境
+# 2. 启动NestJS聊天历史服务
+cd nestjs-chat-service
+./start.sh
+
+# 3. 或使用Docker Compose启动完整微服务环境
 docker-compose -f docker-compose.nacos.yml up -d
 ```
 
@@ -181,6 +190,16 @@ export default defineConfig({
 
 ### 🔧 系统监控 (/api/lm/*)
 - `GET /api/lm/health` - 健康检查
+
+### 💬 聊天历史服务 (/chat/*)
+- `GET /chat/sessions` - 获取聊天会话列表
+- `POST /chat/sessions` - 创建新的聊天会话
+- `GET /chat/sessions/{id}` - 获取指定会话详情
+- `DELETE /chat/sessions/{id}` - 删除聊天会话
+- `GET /chat/sessions/{id}/messages` - 获取会话消息列表
+- `POST /chat/sessions/{id}/messages` - 添加新消息到会话
+- `DELETE /chat/messages/{id}` - 删除指定消息
+- `GET /chat/health` - 聊天服务健康检查
 
 ### 👤 若依用户系统 (/api/system/*)
 - `GET /api/system/captcha` - 获取验证码

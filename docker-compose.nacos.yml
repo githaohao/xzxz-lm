@@ -109,6 +109,69 @@ services:
     volumes:
       - ./gateway/logs:/app/logs
 
+  # 聊天历史服务数据库
+  chat-mysql:
+    image: mysql:8.0
+    container_name: chat-mysql
+    environment:
+      - MYSQL_ROOT_PASSWORD=root
+      - MYSQL_DATABASE=xzxz_chat_history
+      - MYSQL_USER=chat_user
+      - MYSQL_PASSWORD=chat_password
+    volumes:
+      - ./mysql/chat-data:/var/lib/mysql
+      - ./mysql/chat-init:/docker-entrypoint-initdb.d
+    ports:
+      - "3307:3306"
+    restart: unless-stopped
+    networks:
+      - xzxz-network
+
+  # 小智小智聊天历史服务
+  xzxz-chat-service:
+    build:
+      context: ./nestjs-chat-service
+      dockerfile: Dockerfile
+    container_name: xzxz-chat-service
+    environment:
+      # 应用配置
+      - NODE_ENV=production
+      - HOST=0.0.0.0
+      - PORT=8001
+      
+      # 数据库配置
+      - DB_HOST=chat-mysql
+      - DB_PORT=3306
+      - DB_USERNAME=chat_user
+      - DB_PASSWORD=chat_password
+      - DB_DATABASE=xzxz_chat_history
+      - DB_SYNCHRONIZE=true
+      - DB_LOGGING=false
+      
+      # Nacos配置
+      - NACOS_ENABLED=true
+      - NACOS_SERVER_ADDRESSES=nacos:8848
+      - NACOS_NAMESPACE=
+      - NACOS_GROUP=DEFAULT_GROUP
+      - NACOS_CLUSTER_NAME=DEFAULT
+      - NACOS_SERVICE_NAME=xzxz-chat-service
+      - NACOS_WEIGHT=1.0
+      - SERVICE_IP=xzxz-chat-service
+    ports:
+      - "8001:8001"
+    depends_on:
+      - nacos
+      - chat-mysql
+    restart: unless-stopped
+    networks:
+      - xzxz-network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8001/chat/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+
   # Redis (用于Gateway限流等功能)
   redis:
     image: redis:7-alpine
