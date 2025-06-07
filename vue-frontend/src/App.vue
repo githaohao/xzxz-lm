@@ -3,11 +3,16 @@
     <nav class="border-b border-border bg-card">
       <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         <div class="flex justify-between h-16">
-          <div class="flex items-center">
-            <router-link to="/" class="text-xl font-bold text-primary">
-              小智小智 多模态聊天系统
-            </router-link>
+   <!-- 左侧Logo -->
+         <div class="flex items-center space-x-4">
+            <div class="w-8 h-8 bg-gradient-to-r from-blue-500 to-purple-600 rounded-lg flex items-center justify-center">
+              <svg class="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+              </svg>
+            </div>
+            <h1 class="text-xl font-bold text-gray-900">小智小智</h1>
           </div>
+
           <div class="flex items-center space-x-4">
             <router-link
               to="/"
@@ -46,6 +51,19 @@
             </router-link>
             <ThemeSelector />
           </div>
+
+          <div class="flex items-center space-x-4">
+            <!-- 登录/用户信息 -->
+            <div v-if="!authStore.isLoggedIn">
+              <router-link
+                to="/login"
+                class="bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700 text-white px-4 py-2 rounded-lg font-medium transition-all duration-200 shadow-sm"
+              >
+                登录
+              </router-link>
+            </div>
+            <UserProfile v-else />
+          </div>
         </div>
       </div>
     </nav>
@@ -61,6 +79,11 @@ import { onMounted } from 'vue'
 import { ThemeSelector } from '@/components/ui/theme-selector'
 import { useTheme } from '@/composables/useTheme'
 import { useConversationStore } from '@/stores/conversation'
+import { useAuthStore } from '@/stores/auth'
+import UserProfile from '@/components/UserProfile.vue'
+
+const authStore = useAuthStore()
+
 
 // 初始化主题系统
 useTheme()

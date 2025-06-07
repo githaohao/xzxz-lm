@@ -121,7 +121,7 @@ const routes = [
 ```typescript
 // utils/api.ts
 const api = axios.create({
-  baseURL: '/api',
+  baseURL: '/',
   timeout: 30000
 })
 

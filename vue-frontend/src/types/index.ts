@@ -205,4 +205,177 @@ export interface DocumentSearchOptions {
   }
   sortBy?: 'name' | 'date' | 'size'
   sortOrder?: 'asc' | 'desc'
+}
+
+// ==================== 若依微服务用户系统类型定义 ====================
+
+// 登录请求
+export interface LoginRequest {
+  username: string
+  password: string
+  code?: string      // 验证码
+  uuid?: string      // 验证码UUID
+  rememberMe?: boolean
+}
+
+// 登录响应
+export interface LoginResponse {
+  code: number
+  msg: string
+  token?: string
+  expires_in?: number
+}
+
+// 用户信息
+export interface UserInfo {
+  user: {
+    userId: number
+    userName: string
+    nickName: string
+    email: string
+    phonenumber: string
+    sex: string
+    avatar: string
+    status: string
+    delFlag: string
+    loginIp: string
+    loginDate: string
+    createBy: string
+    createTime: string
+    updateBy: string
+    updateTime: string
+    remark: string
+    dept: {
+      deptId: number
+      parentId: number
+      ancestors: string
+      deptName: string
+      orderNum: number
+      leader: string
+      phone: string
+      email: string
+      status: string
+      delFlag: string
+      createBy: string
+      createTime: string
+      updateBy: string
+      updateTime: string
+    }
+    roles: Array<{
+      roleId: number
+      roleName: string
+      roleKey: string
+      roleSort: number
+      dataScope: string
+      menuCheckStrictly: boolean
+      deptCheckStrictly: boolean
+      status: string
+      delFlag: string
+      createBy: string
+      createTime: string
+      updateBy: string
+      updateTime: string
+      flag: boolean
+      menuIds: number[]
+      deptIds: number[]
+      permissions: string[]
+    }>
+    roleIds: number[]
+    postIds: number[]
+    roleId: number
+    admin: boolean
+  }
+  roles: string[]
+  permissions: string[]
+}
+
+// 菜单项
+export interface MenuItem {
+  menuId: number
+  menuName: string
+  parentId: number
+  orderNum: number
+  path: string
+  component: string
+  query: string
+  isFrame: number
+  isCache: number
+  menuType: string
+  visible: string
+  status: string
+  perms: string
+  icon: string
+  createBy: string
+  createTime: string
+  updateBy: string
+  updateTime: string
+  remark: string
+  children?: MenuItem[]
+}
+
+// 路由信息
+export interface RouterInfo {
+  name: string
+  path: string
+  hidden: boolean
+  redirect?: string
+  component: string
+  query?: string
+  alwaysShow?: boolean
+  meta: {
+    title: string
+    icon: string
+    noCache: boolean
+    link?: string
+  }
+  children?: RouterInfo[]
+}
+
+// 验证码响应
+export interface CaptchaResponse {
+  code: number
+  msg: string
+  captchaEnabled: boolean
+  uuid: string
+  img: string
+}
+
+// 用户资料更新请求
+export interface UpdateProfileRequest {
+  nickName?: string
+  email?: string
+  phonenumber?: string
+  sex?: string
+  remark?: string
+}
+
+// 密码修改请求
+export interface ChangePasswordRequest {
+  oldPassword: string
+  newPassword: string
+  confirmPassword: string
+}
+
+// 头像上传响应
+export interface AvatarUploadResponse {
+  code: number
+  msg: string
+  imgUrl?: string
+}
+
+// 通用API响应格式（若依标准）
+export interface RuoyiResponse<T = any> {
+  code: number
+  msg: string
+  data?: T
+  rows?: T[]
+  total?: number
+}
+
+// Token信息
+export interface TokenInfo {
+  token: string
+  expires_in: number
+  refresh_token?: string
+  token_type?: string
 } 

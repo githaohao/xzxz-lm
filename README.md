@@ -159,25 +159,40 @@ export default defineConfig({
 
 ## API 接口
 
-### 聊天接口
-- `POST /chat/multimodal` - 多模态聊天
-- `POST /chat` - 纯文本聊天
-- `POST /chat/stream` - 流式聊天
+### 🤖 AI聊天服务 (/api/lm/*)
+- `POST /api/lm/chat/stream` - 流式文本聊天
+- `POST /api/lm/chat/multimodal/stream/processed` - 多模态流式聊天
 
-### 文件处理
-- `POST /upload` - 文件上传
-- `POST /ocr` - OCR 文字识别
+### 🎤 语音功能 (/api/lm/voice/*)
+- `POST /api/lm/voice/chat` - 语音对话
+- `POST /api/lm/voice/speech/synthesize` - 语音合成(TTS)
+- `GET /api/lm/voice/engine` - 获取语音引擎状态
+- `DELETE /api/lm/voice/conversation/{id}` - 清除对话历史
 
-### 语音功能
-- `POST /voice/tts` - 文字转语音
-- `POST /voice/stt` - 语音转文字（FunAudioLLM）
-- `GET /voice/engine` - 获取语音引擎状态
-- `POST /voice/chat` - 语音对话
-- `GET /voice/audio/{filename}` - 获取音频文件
+### 📁 文件处理 (/api/lm/*)
+- `POST /api/lm/upload` - 文件上传
+- `POST /api/lm/ocr` - OCR文字识别
 
-### 系统状态和监控
-- `GET /health` - 标准健康检查
-- `GET /status` - 详细系统状态信息
+### 🧠 RAG智能检索 (/api/lm/rag/*)
+- `GET /api/lm/rag/documents` - 获取文档列表
+- `POST /api/lm/rag/search` - 文档检索
+- `POST /api/lm/rag/process` - 文档处理
+- `DELETE /api/lm/rag/documents/{id}` - 删除文档
+
+### 🔧 系统监控 (/api/lm/*)
+- `GET /api/lm/health` - 健康检查
+
+### 👤 若依用户系统 (/api/system/*)
+- `GET /api/system/captcha` - 获取验证码
+- `POST /api/system/login` - 用户登录
+- `POST /api/system/logout` - 退出登录
+- `GET /api/system/getInfo` - 获取用户信息
+- `GET /api/system/user/profile` - 获取用户资料
+- `POST /api/system/user/profile` - 更新用户资料
+- `POST /api/system/user/avatar` - 上传用户头像
+- `GET /api/system/menu/list` - 获取菜单列表
+- `GET /api/system/getRouters` - 获取路由列表
+- `POST /api/system/refresh` - 刷新Token
 
 ### 微服务集成
 - **服务注册**: 自动注册到Nacos服务注册中心

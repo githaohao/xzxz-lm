@@ -291,7 +291,7 @@ pnpm dev
 
 ### 1. 检查模型加载
 
-访问：`http://localhost:8000/api/voice/engine`
+访问：`http://localhost:8000/voice/engine`
 
 应该看到：
 ```json

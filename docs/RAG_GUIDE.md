@@ -68,7 +68,7 @@ pnpm dev
 
 ### 文档检索
 ```typescript
-POST /api/rag/search
+POST /rag/search
 {
   "query": "搜索查询",
   "doc_ids": ["文档ID列表"],
@@ -79,8 +79,8 @@ POST /api/rag/search
 
 ### 文档管理
 ```typescript
-GET /api/rag/documents/{doc_id}     // 获取文档信息
-DELETE /api/rag/documents/{doc_id}  // 删除文档
+GET /rag/documents/{doc_id}     // 获取文档信息
+DELETE /rag/documents/{doc_id}  // 删除文档
 ```
 
 ## ⚙️ 配置选项

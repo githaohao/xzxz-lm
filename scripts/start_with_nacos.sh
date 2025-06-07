@@ -109,8 +109,8 @@ echo "================================================"
 echo -e "${GREEN}🌟 服务启动信息:${NC}"
 echo -e "   应用名称: ${APP_NAME:-小智小智 多模态聊天系统}"
 echo -e "   服务地址: http://${HOST:-0.0.0.0}:${PORT:-8000}"
-echo -e "   健康检查: http://${HOST:-0.0.0.0}:${PORT:-8000}/api/health"
-echo -e "   服务状态: http://${HOST:-0.0.0.0}:${PORT:-8000}/api/status"
+echo -e "   健康检查: http://${HOST:-0.0.0.0}:${PORT:-8000}/health"
+echo -e "   服务状态: http://${HOST:-0.0.0.0}:${PORT:-8000}/status"
 
 if [ "${DEBUG:-true}" = "true" ]; then
     echo -e "   API文档: http://${HOST:-0.0.0.0}:${PORT:-8000}/docs"
@@ -118,7 +118,7 @@ fi
 
 if [ "${NACOS_ENABLED:-false}" = "true" ]; then
     echo -e "   ${GREEN}Nacos注册: 启用${NC}"
-    echo -e "   Gateway访问: http://your-gateway:port${GATEWAY_CONTEXT_PATH:-/lm}/api/health"
+    echo -e "   Gateway访问: http://your-gateway:port${GATEWAY_CONTEXT_PATH:-/lm}/health"
 else
     echo -e "   ${YELLOW}Nacos注册: 禁用${NC}"
 fi
