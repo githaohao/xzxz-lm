@@ -119,4 +119,5 @@ class HealthResponse(BaseModel):
     status: str
     timestamp: datetime = Field(default_factory=datetime.now)
     lm_studio_status: bool
-    services: dict = Field(default_factory=dict) 
+    services: dict = Field(default_factory=dict)
+    nacos_info: Optional[dict] = None

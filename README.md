@@ -46,7 +46,19 @@
 
 ## 🚀 快速启动
 
-### 环境变量设置（推荐）
+### 微服务模式启动（推荐）
+
+```bash
+# 1. 启动Nacos集成版本
+./scripts/start_with_nacos.sh
+
+# 2. 或使用Docker Compose启动完整微服务环境
+docker-compose -f docker-compose.nacos.yml up -d
+```
+
+### 独立模式启动
+
+#### 环境变量设置（推荐）
 
 为了避免 tokenizers 并行处理警告，建议先设置环境变量：
 
@@ -60,7 +72,7 @@ export PYTORCH_ENABLE_MPS_FALLBACK=1  # Apple Silicon 用户
 export MPS_MEMORY_FRACTION=0.8        # Apple Silicon 用户
 ```
 
-### 启动服务
+#### 启动服务
 
 ### 环境要求
 
@@ -136,7 +148,7 @@ export default defineConfig({
   server: {
     port: 3001,
     proxy: {
-      '/api': {
+      '^/(chat|health|voice|upload|ocr|tts|rag)': {
         target: 'http://localhost:8000',
         changeOrigin: true,
       },
@@ -148,23 +160,30 @@ export default defineConfig({
 ## API 接口
 
 ### 聊天接口
-- `POST /api/chat/multimodal` - 多模态聊天
-- `POST /api/chat` - 纯文本聊天
-- `POST /api/chat/stream` - 流式聊天
+- `POST /chat/multimodal` - 多模态聊天
+- `POST /chat` - 纯文本聊天
+- `POST /chat/stream` - 流式聊天
 
 ### 文件处理
-- `POST /api/upload` - 文件上传
-- `POST /api/ocr` - OCR 文字识别
+- `POST /upload` - 文件上传
+- `POST /ocr` - OCR 文字识别
 
 ### 语音功能
-- `POST /api/voice/tts` - 文字转语音
-- `POST /api/voice/stt` - 语音转文字（FunAudioLLM）
-- `GET /api/voice/engine` - 获取语音引擎状态
-- `POST /api/voice/chat` - 语音对话
-- `GET /api/voice/audio/{filename}` - 获取音频文件
+- `POST /voice/tts` - 文字转语音
+- `POST /voice/stt` - 语音转文字（FunAudioLLM）
+- `GET /voice/engine` - 获取语音引擎状态
+- `POST /voice/chat` - 语音对话
+- `GET /voice/audio/{filename}` - 获取音频文件
 
-### 系统状态
-- `GET /api/health` - 健康检查
+### 系统状态和监控
+- `GET /health` - 标准健康检查
+- `GET /status` - 详细系统状态信息
+
+### 微服务集成
+- **服务注册**: 自动注册到Nacos服务注册中心
+- **配置管理**: 支持从Nacos获取动态配置
+- **健康检查**: 提供多种格式的健康检查端点
+- **服务发现**: 支持通过Nacos进行服务发现
 
 ## 页面路由
 
@@ -173,6 +192,21 @@ export default defineConfig({
 - `/voice-chat` - 详细版语音聊天页面
 - `/simple-voice-chat` - 简化版语音聊天页面
 - `/style-showcase` - shadcn-ui 组件展示页面
+
+## 测试工具
+
+### 健康检查端点测试
+```bash
+# 测试所有健康检查端点
+python3 scripts/test_health_endpoints.py
+
+# 或者直接执行
+./scripts/test_health_endpoints.py
+```
+
+该脚本会测试以下端点：
+- `/health` - 标准健康检查
+- `/status` - 详细系统状态
 
 ## 使用说明
 
@@ -194,7 +228,60 @@ export default defineConfig({
 
 ## 部署说明
 
-### Docker 部署（推荐）
+### 微服务部署（Nacos + 若依Gateway）
+
+#### 1. 启用Nacos服务注册
+
+```bash
+# 1. 复制环境配置文件
+cp backend/env.example backend/.env
+
+# 2. 编辑配置文件，启用Nacos
+vim backend/.env
+# 设置 NACOS_ENABLED=true
+# 设置 NACOS_SERVER_ADDRESSES=your-nacos-server:8848
+
+# 3. 使用Nacos启动脚本
+./scripts/start_with_nacos.sh
+```
+
+#### 2. Docker Compose 部署（包含Nacos）
+
+```bash
+# 启动完整的微服务环境（包含Nacos、MySQL、Redis、Gateway）
+docker-compose -f docker-compose.nacos.yml up -d
+
+# 查看服务状态
+docker-compose -f docker-compose.nacos.yml ps
+
+# 查看日志
+docker-compose -f docker-compose.nacos.yml logs -f xzxz-lm-service
+```
+
+#### 3. 若依Gateway配置
+
+将 `configs/gateway-routes.yml` 中的配置添加到您的若依Gateway配置中：
+
+```yaml
+spring:
+  cloud:
+    gateway:
+      routes:
+        - id: xzxz-lm-service
+          uri: lb://xzxz-lm-service
+          predicates:
+            - Path=/lm/**
+          filters:
+            - StripPrefix=1
+```
+
+#### 4. 服务访问
+
+- **直接访问**: `http://localhost:8000/health`
+- **通过Gateway**: `http://gateway:8080/lm/health`
+- **Nacos控制台**: `http://localhost:8848/nacos`
+
+### 传统Docker部署
 
 ```bash
 # 构建后端镜像

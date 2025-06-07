@@ -20,7 +20,7 @@ class Settings(BaseSettings):
     # 文件上传配置
     upload_dir: str = "uploads"
     max_file_size: int = 50 * 1024 * 1024  # 50MB
-    allowed_file_types: List[str] = [".pdf", ".png", ".jpg", ".jpeg", ".wav", ".mp3"]
+    allowed_file_types: str = ".pdf,.png,.jpg,.jpeg,.wav,.mp3"  # 改为字符串格式
     
     # OCR 配置
     tesseract_path: str = "/usr/local/bin/tesseract"  # macOS 默认路径
@@ -93,9 +93,38 @@ class Settings(BaseSettings):
         "http://localhost:3001",
     ]
     
+    # Nacos 服务发现配置
+    nacos_enabled: bool = True  # 是否启用Nacos
+    nacos_server_addresses: str = "nacos:8848"  # Nacos服务器地址
+    nacos_namespace: str = ""  # 命名空间ID，默认为public
+    nacos_group: str = "DEFAULT_GROUP"  # 服务分组
+    nacos_cluster_name: str = "DEFAULT"  # 集群名称
+    nacos_service_name: str = "xzxz-lm-service"  # 服务名称
+    nacos_weight: float = 1.0  # 服务权重
+    nacos_metadata: dict = {
+        "version": "1.0.0",
+        "service_type": "ai_chat",
+        "framework": "fastapi",
+        "features": "multimodal,voice,ocr"
+    }
+    
+    # 服务实例配置
+    service_ip: str = "0.0.0.0"  # 服务IP，注册到Nacos时使用
+    service_port: int = 8000  # 服务端口
+    service_health_check_url: str = "/health"  # 健康检查路径
+    
+    # 若依Gateway适配配置
+    gateway_context_path: str = "/lm"  # Gateway中的服务路径前缀
+    gateway_service_id: str = "xzxz-lm-service"  # Gateway中的服务ID
+    
     class Config:
         env_file = ".env"
         case_sensitive = False
+        
+    @property
+    def allowed_file_types_list(self) -> List[str]:
+        """获取允许的文件类型列表"""
+        return [ext.strip() for ext in self.allowed_file_types.split(',')]
 
 # 创建全局设置实例
 settings = Settings()

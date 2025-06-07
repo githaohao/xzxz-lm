@@ -1,0 +1,132 @@
+version: '3.8'
+
+services:
+  # Nacos 服务发现和配置中心
+  nacos:
+    image: nacos/nacos-server:v2.3.0
+    container_name: nacos-server
+    environment:
+      - MODE=standalone
+      - SPRING_DATASOURCE_PLATFORM=mysql
+      - MYSQL_SERVICE_HOST=nacos-mysql
+      - MYSQL_SERVICE_DB_NAME=nacos_devtest
+      - MYSQL_SERVICE_PORT=3306
+      - MYSQL_SERVICE_USER=nacos
+      - MYSQL_SERVICE_PASSWORD=nacos
+    volumes:
+      - ./nacos/logs/:/home/nacos/logs
+      - ./nacos/data/:/home/nacos/data
+    ports:
+      - "8848:8848"
+      - "9848:9848"
+    depends_on:
+      - nacos-mysql
+    restart: unless-stopped
+    networks:
+      - xzxz-network
+
+  # Nacos MySQL 数据库
+  nacos-mysql:
+    image: mysql:8.0
+    container_name: nacos-mysql
+    environment:
+      - MYSQL_ROOT_PASSWORD=root
+      - MYSQL_DATABASE=nacos_devtest
+      - MYSQL_USER=nacos
+      - MYSQL_PASSWORD=nacos
+    volumes:
+      - ./mysql/data:/var/lib/mysql
+      - ./mysql/conf:/etc/mysql/conf.d
+      - ./mysql/init:/docker-entrypoint-initdb.d
+    ports:
+      - "3306:3306"
+    restart: unless-stopped
+    networks:
+      - xzxz-network
+
+  # 小智小智 AI 聊天服务
+  xzxz-lm-service:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile.nacos
+    container_name: xzxz-lm-service
+    environment:
+      # 应用配置
+      - APP_NAME=小智小智 多模态聊天系统
+      - DEBUG=false
+      - HOST=0.0.0.0
+      - PORT=8000
+      
+      # Nacos 配置
+      - NACOS_ENABLED=true
+      - NACOS_SERVER_ADDRESSES=nacos:8848
+      - NACOS_SERVICE_NAME=xzxz-lm-service
+      - NACOS_GROUP=DEFAULT_GROUP
+      - NACOS_CLUSTER_NAME=DEFAULT
+      - SERVICE_IP=xzxz-lm-service
+      
+      # LM Studio 配置 (需要根据实际情况调整)
+      - LM_STUDIO_BASE_URL=http://host.docker.internal:1234/v1
+      
+      # 其他配置
+      - UPLOAD_DIR=/app/uploads
+      - OCR_ENGINE=tesseract
+    volumes:
+      - ./backend/uploads:/app/uploads
+      - ./backend/models:/app/models
+      - ./backend/logs:/app/logs
+    ports:
+      - "8000:8000"
+    depends_on:
+      - nacos
+    restart: unless-stopped
+    networks:
+      - xzxz-network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/api/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+
+  # 若依 Gateway（示例，需要根据实际若依版本调整）
+  ruoyi-gateway:
+    image: your-registry/ruoyi-gateway:latest  # 替换为您的若依Gateway镜像
+    container_name: ruoyi-gateway
+    environment:
+      - SPRING_PROFILES_ACTIVE=prod
+      - NACOS_SERVER_ADDR=nacos:8848
+      - NACOS_NAMESPACE=
+      - NACOS_GROUP=DEFAULT_GROUP
+    ports:
+      - "8080:8080"
+    depends_on:
+      - nacos
+      - xzxz-lm-service
+    restart: unless-stopped
+    networks:
+      - xzxz-network
+    volumes:
+      - ./gateway/logs:/app/logs
+
+  # Redis (用于Gateway限流等功能)
+  redis:
+    image: redis:7-alpine
+    container_name: redis
+    ports:
+      - "6379:6379"
+    restart: unless-stopped
+    networks:
+      - xzxz-network
+    volumes:
+      - ./redis/data:/data
+
+networks:
+  xzxz-network:
+    driver: bridge
+
+volumes:
+  mysql-data:
+  nacos-data:
+  nacos-logs:
+  redis-data: 

@@ -66,7 +66,7 @@
       </div>
 
       <!-- 文档列表 -->
-      <ScrollArea class="flex-1 min-h-0">
+      <ScrollArea class="flex-1 min-h-0 h-96">
         <div class="space-y-3 pr-2">
           <!-- 加载状态 -->
           <div v-if="isLoading && !hasDocuments" class="flex flex-col items-center justify-center py-12">
@@ -323,6 +323,7 @@ const filteredDocuments = computed(() => {
 
 // 监听当前对话的文档变化
 watch(currentConversationRagDocs, (newDocs) => {
+  console.log('🔍 RAG文档数据变化:', newDocs)
   setCurrentConversationDocuments(newDocs)
 }, { immediate: true })
 

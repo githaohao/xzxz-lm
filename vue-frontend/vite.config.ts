@@ -13,7 +13,7 @@ export default defineConfig({
   server: {
     port: 3001,
     proxy: {
-      '/api': {
+      '^/(chat|health|voice|upload|ocr|tts|rag)': {
         target: 'http://localhost:8000',
         changeOrigin: true,
       },

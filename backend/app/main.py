@@ -81,7 +81,7 @@ if os.path.exists(settings.upload_dir):
 # 注册路由
 app.include_router(chat.router)
 app.include_router(health.router)
-app.include_router(voice.router, prefix="/api/voice", tags=["voice"])
+app.include_router(voice.router, prefix="/voice", tags=["voice"])
 
 @app.exception_handler(Exception)
 async def global_exception_handler(request: Request, exc: Exception):
@@ -106,7 +106,25 @@ async def startup_event():
     logger.info(f"📂 上传目录: {settings.upload_dir}")
     logger.info(f"🤖 LM Studio URL: {settings.lm_studio_base_url}")
     logger.info(f"🔧 调试模式: {'开启' if settings.debug else '关闭'}")
+    logger.info(f"🌐 Nacos功能: {'开启' if settings.nacos_enabled else '关闭'}")
     logger.info("=" * 80)
+    
+    # 初始化和注册Nacos服务
+    if settings.nacos_enabled:
+        try:
+            from app.services.nacos_service import nacos_service
+            
+            logger.info("🔗 初始化Nacos服务...")
+            if await nacos_service.initialize():
+                logger.info("🚀 正在注册服务到Nacos...")
+                if await nacos_service.register_service():
+                    logger.info("✅ Nacos服务注册成功")
+                else:
+                    logger.error("❌ Nacos服务注册失败")
+            else:
+                logger.error("❌ Nacos初始化失败")
+        except Exception as e:
+            logger.error(f"❌ Nacos服务配置失败: {e}")
     
     # 检查FunAudioLLM语音引擎状态
     try:
@@ -133,6 +151,18 @@ async def shutdown_event():
     """应用关闭事件"""
     logger.info("👋 应用正在关闭...")
     
+    # 注销Nacos服务
+    if settings.nacos_enabled:
+        try:
+            from app.services.nacos_service import nacos_service
+            logger.info("🔗 正在注销Nacos服务...")
+            if await nacos_service.deregister_service():
+                logger.info("✅ Nacos服务注销成功")
+            else:
+                logger.warning("⚠️ Nacos服务注销失败")
+        except Exception as e:
+            logger.error(f"❌ Nacos服务注销异常: {e}")
+    
     # 清理临时文件
     try:
         from app.services.tts_service import tts_service
@@ -158,11 +188,11 @@ async def root():
         ],
         "docs": "/docs" if settings.debug else "文档已禁用",
         "api_endpoints": {
-            "engine_status": "/api/voice/engine",
-            "chat": "/api/voice/chat",
-            "recognize": "/api/voice/recognize",
-            "analyze": "/api/voice/analyze",
-            "conversation": "/api/voice/conversation/{session_id}"
+            "engine_status": "/voice/engine",
+            "chat": "/voice/chat",
+            "recognize": "/voice/recognize",
+            "analyze": "/voice/analyze",
+            "conversation": "/voice/conversation/{session_id}"
         }
     }
 

@@ -477,6 +477,7 @@
   <!-- RAG文档管理弹窗 -->
   <RAGDocumentDialog 
     v-model:open="showDocumentDialog"
+    @preview-document="handlePreviewDocument"
   />
 </template>
 
@@ -506,7 +507,7 @@ import { Avatar, AvatarFallback } from '@/components/ui/avatar'
 import { useChatStore } from '@/stores/chat'
 import { useRAGStore } from '@/stores/rag'
 import { formatTime, formatFileSize, hasThinkTags, extractThinkContent } from '@/utils/voice-utils'
-import { uploadFile } from '@/utils/api'
+import { uploadFile, getDocumentInfo } from '@/utils/api'
 import { getRagSuggestion, isFileRagSuitable } from '@/utils/rag-utils'
 import RAGDocumentDialog from '@/components/RAGDocumentDialog.vue'
 import ConversationList from '@/components/ConversationList.vue'
@@ -721,21 +722,42 @@ async function processFile(file: File) {
       
       // 如果有当前对话，自动将文档关联到对话
       if (conversationStore.currentConversation && result.doc_id) {
-        // 创建文档对象
-        const uploadedDoc: RAGDocument = {
-          doc_id: result.doc_id,
-          filename: result.name,
-          file_type: result.type,
-          chunk_count: 0, // 会在后续更新
-          total_length: result.size,
-          created_at: new Date().toISOString()
+        try {
+          // 从后端获取文档的完整信息，包括正确的chunk_count
+          const docInfo = await getDocumentInfo(result.doc_id)
+          
+          const uploadedDoc: RAGDocument = {
+            doc_id: result.doc_id,
+            filename: result.name,
+            file_type: result.type,
+            chunk_count: docInfo?.chunk_count || 0,
+            total_length: docInfo?.total_length || result.size,
+            created_at: docInfo?.created_at || new Date().toISOString()
+          }
+          
+          conversationStore.addRagDocumentToConversation(
+            conversationStore.currentConversation.id, 
+            uploadedDoc
+          )
+          console.log('📚 文档已自动关联到当前对话:', uploadedDoc.filename, '片段数:', uploadedDoc.chunk_count)
+        } catch (error) {
+          console.warn('⚠️ 获取文档信息失败，使用默认信息:', error)
+          // 如果获取文档信息失败，使用默认值
+          const uploadedDoc: RAGDocument = {
+            doc_id: result.doc_id,
+            filename: result.name,
+            file_type: result.type,
+            chunk_count: 0,
+            total_length: result.size,
+            created_at: new Date().toISOString()
+          }
+          
+          conversationStore.addRagDocumentToConversation(
+            conversationStore.currentConversation.id, 
+            uploadedDoc
+          )
+          console.log('📚 文档已自动关联到当前对话 (默认信息):', uploadedDoc.filename)
         }
-        
-        conversationStore.addRagDocumentToConversation(
-          conversationStore.currentConversation.id, 
-          uploadedDoc
-        )
-        console.log('📚 文档已自动关联到当前对话:', uploadedDoc.filename)
       }
     } else {
       console.log('⏳ 文件上传成功，OCR处理中:', result)
@@ -816,5 +838,12 @@ const ragSuggestion = computed(() => {
 function openKnowledgeBaseManager() {
   // 跳转到知识库管理页面
   window.open('/knowledge-base', '_blank')
+}
+
+// 处理预览文档
+function handlePreviewDocument(document: RAGDocument) {
+  console.log('📖 预览文档:', document.filename)
+  // TODO: 实现文档预览功能，可以显示文档内容或跳转到详情页
+  alert(`预览文档: ${document.filename}\n\n文件类型: ${document.file_type}\n文档大小: ${ragStore.formatDocumentSize(document.total_length)}\n创建时间: ${ragStore.formatCreateTime(document.created_at)}\n片段数量: ${document.chunk_count}`)
 }
 </script>

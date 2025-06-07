@@ -23,7 +23,7 @@ from app.services.rag_service import rag_service
 from app.config import settings
 
 logger = logging.getLogger(__name__)
-router = APIRouter(prefix="/api", tags=["chat"])
+router = APIRouter(prefix="", tags=["chat"])
 
 @router.post("/chat", response_model=ChatResponse)
 async def chat_completion(request: ChatRequest):

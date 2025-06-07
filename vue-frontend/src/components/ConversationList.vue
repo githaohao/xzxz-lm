@@ -10,7 +10,7 @@
             @click="createNewConversation" 
             size="sm" 
             class="h-8 px-3"
-          >上传文档
+          >
             <Plus class="h-4 w-4 mr-1" />
             新建
           </Button>

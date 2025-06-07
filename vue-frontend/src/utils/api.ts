@@ -12,7 +12,7 @@ import type {
 
 // 创建axios实例
 const api = axios.create({
-  baseURL: '/api',
+  baseURL: '/',
   timeout: 30000,
 })
 
@@ -39,7 +39,7 @@ export async function sendTextMessage(
   maxTokens: number = 2048,
   signal?: AbortSignal
 ): Promise<Response> {
-  const response = await fetch('/api/chat/stream', {
+  const response = await fetch('/chat/stream', {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json'
@@ -69,34 +69,45 @@ export async function sendMultimodalMessage(
   maxTokens: number = 2048,
   signal?: AbortSignal
 ): Promise<Response> {
-  const response = await fetch('/api/chat/multimodal/stream/processed', {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json'
+  const response = await api.post('/chat/multimodal/stream/processed', {
+    message,
+    history: convertToBackendMessages(history),
+    file_data: {
+      name: fileData.name,
+      type: fileData.type,
+      size: fileData.size,
+      content: fileData.content || null,
+      ocr_completed: fileData.ocrCompleted || false,
+      doc_id: fileData.doc_id || null,
+      rag_enabled: fileData.rag_enabled || false
     },
-    body: JSON.stringify({
-      message,
-      history: convertToBackendMessages(history),
-      file_data: {
-        name: fileData.name,
-        type: fileData.type,
-        size: fileData.size,
-        content: fileData.content || null,
-        ocr_completed: fileData.ocrCompleted || false,
-        doc_id: fileData.doc_id || null,
-        rag_enabled: fileData.rag_enabled || false
-      },
-      temperature,
-      max_tokens: maxTokens
-    }),
-    signal
+    temperature,
+    max_tokens: maxTokens
+  }, {
+    signal,
+    responseType: 'stream'
   })
 
-  if (!response.ok) {
-    throw new Error(`HTTP ${response.status}: ${response.statusText}`)
-  }
+  // 对于流式响应，我们需要返回一个兼容的Response对象
+  const stream = new ReadableStream({
+    start(controller) {
+      response.data.on('data', (chunk: any) => {
+        controller.enqueue(chunk)
+      })
+      response.data.on('end', () => {
+        controller.close()
+      })
+      response.data.on('error', (error: any) => {
+        controller.error(error)
+      })
+    }
+  })
 
-  return response
+  return new Response(stream, {
+    status: response.status,
+    statusText: response.statusText,
+    headers: new Headers(response.headers as any)
+  })
 }
 
 // 语音聊天API

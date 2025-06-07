@@ -35,3 +35,12 @@ langchain>=0.0.350
 # 并发处理优化
 asyncio-pool>=0.6.0
 aiofiles>=23.0.0
+
+# Nacos 服务发现和配置管理
+nacos-sdk-python>=1.1.0
+python-consul>=1.1.0
+requests>=2.31.0
+pydantic-settings>=2.0.0
+
+# 微服务监控和健康检查
+psutil>=5.9.0
