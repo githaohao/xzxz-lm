@@ -181,13 +181,12 @@ export class AuthManager {
    */
   public getAuthHeader(): Record<string, string> {
     const token = this.getToken()
-    if (!token) {
-      return {}
+    if (token) {
+      return {
+        'Authorization': `Bearer ${token}`
+      }
     }
-    
-    return {
-      'Authorization': `Bearer ${token}`
-    }
+    return {}
   }
 
   /**

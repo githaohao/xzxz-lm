@@ -121,6 +121,24 @@ export const useConversationStore = defineStore('conversation', () => {
     }
   }
 
+  // 更新对话的聊天历史会话ID
+  function updateConversationHistorySession(conversationId: string, historySessionId: string) {
+    const conversation = conversations.value.find(c => c.id === conversationId)
+    if (conversation) {
+      conversation.historySessionId = historySessionId
+      conversation.updatedAt = new Date()
+      
+      // 更新对话数据中的conversation引用
+      const data = conversationData.value.get(conversationId)
+      if (data) {
+        data.conversation = conversation
+      }
+      
+      saveToCache()
+      console.log(`✅ 对话 ${conversationId} 已关联聊天历史会话 ${historySessionId}`)
+    }
+  }
+
   // 添加消息到当前对话
   function addMessageToConversation(conversationId: string, message: Message) {
     const data = conversationData.value.get(conversationId)
@@ -290,6 +308,7 @@ export const useConversationStore = defineStore('conversation', () => {
     setCurrentConversation,
     deleteConversation,
     updateConversationTitle,
+    updateConversationHistorySession,
     addMessageToConversation,
     getConversationMessages,
     clearConversationMessages,

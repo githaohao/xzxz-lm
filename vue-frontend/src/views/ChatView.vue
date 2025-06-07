@@ -10,8 +10,6 @@
       <ConversationList v-show="showConversationList" />
     </div>
 
-
-
     <!-- 主要内容区域 -->
     <div class="flex-1 flex flex-col min-w-0">
       <!-- 顶部工具栏 -->
@@ -42,9 +40,21 @@
             <h1 class="text-lg font-semibold text-slate-900 dark:text-slate-100">
               {{ conversationStore.currentConversation?.title || '智能对话' }}
             </h1>
-            <p v-if="conversationStore.currentConversation" class="text-xs text-slate-500">
-              {{ conversationStore.currentConversation.messageCount }} 条消息
-            </p>
+            <div v-if="conversationStore.currentConversation" class="flex items-center gap-2 text-xs text-slate-500">
+              <span>{{ conversationStore.currentConversation.messageCount }} 条消息</span>
+              <span v-if="conversationStore.currentConversation.historySessionId" class="flex items-center gap-1">
+                <div class="w-1.5 h-1.5 rounded-full bg-green-500"></div>
+                <span>已同步</span>
+              </span>
+              <span v-else-if="isHistorySyncEnabled" class="flex items-center gap-1">
+                <div class="w-1.5 h-1.5 rounded-full bg-yellow-500"></div>
+                <span>待同步</span>
+              </span>
+              <span v-else class="flex items-center gap-1">
+                <CloudOff class="w-3 h-3 text-slate-400" />
+                <span>本地模式</span>
+              </span>
+            </div>
           </div>
         </div>
         
@@ -55,6 +65,7 @@
           <Badge v-if="selectedDocumentCount > 0" variant="outline" class="text-blue-600 border-blue-300">
             📄 已选 {{ selectedDocumentCount }}
           </Badge>
+          
           <KnowledgeBaseSelector v-model="selectedKnowledgeBase" />
         </div>
       </div>
@@ -495,7 +506,9 @@ import {
   PanelLeftClose,
   MessageSquare,
   FileText,
-  Database
+  Database,
+  History,
+  CloudOff
 } from 'lucide-vue-next'
 import { Card, CardContent } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
@@ -506,6 +519,7 @@ import { Separator } from '@/components/ui/separator'
 import { Avatar, AvatarFallback } from '@/components/ui/avatar'
 import { useChatStore } from '@/stores/chat'
 import { useRAGStore } from '@/stores/rag'
+import { useChatHistoryStore } from '@/stores/chatHistory'
 import { formatTime, formatFileSize, hasThinkTags, extractThinkContent } from '@/utils/voice-utils'
 import { uploadFile, getDocumentInfo } from '@/utils/api'
 import { getRagSuggestion, isFileRagSuitable } from '@/utils/rag-utils'
@@ -522,10 +536,19 @@ const {
   isLoading,
   processingStatus,
   currentStreamingMessage,
-  processedFile
+  processedFile,
+  isHistorySyncEnabled
 } = storeToRefs(chatStore)
 
-const { sendMessage, cancelRequest, setProcessedFile } = chatStore
+const { 
+  sendMessage, 
+  cancelRequest, 
+  setProcessedFile,
+} = chatStore
+
+// 聊天历史Store
+const chatHistoryStore = useChatHistoryStore()
+const { sessions, loading: historyLoading } = storeToRefs(chatHistoryStore)
 
 const inputMessage = ref('')
 const fileInput = ref<HTMLInputElement>()
@@ -551,31 +574,6 @@ const scrollAreaRef = ref<InstanceType<typeof ScrollArea>>()
 const isUserScrolling = ref(false)
 const scrollTimeout = ref<number | null>(null)
 const isAtBottom = ref(true)
-
-// 新增：初始化滚动监听
-function initScrollListener() {
-  nextTick(() => {
-    if (scrollAreaRef.value) {
-      const viewport = scrollAreaRef.value.$el.querySelector('[data-reka-scroll-area-viewport]')
-      if (viewport) {
-        viewport.addEventListener('scroll', handleUserScroll, { passive: true })
-      }
-    }
-  })
-}
-
-// 新增：清理滚动监听
-function cleanupScrollListener() {
-  if (scrollAreaRef.value) {
-    const viewport = scrollAreaRef.value.$el.querySelector('[data-reka-scroll-area-viewport]')
-    if (viewport) {
-      viewport.removeEventListener('scroll', handleUserScroll)
-    }
-  }
-  if (scrollTimeout.value) {
-    clearTimeout(scrollTimeout.value)
-  }
-}
 
 // 生命周期钩子
 onMounted(() => {
@@ -845,5 +843,30 @@ function handlePreviewDocument(document: RAGDocument) {
   console.log('📖 预览文档:', document.filename)
   // TODO: 实现文档预览功能，可以显示文档内容或跳转到详情页
   alert(`预览文档: ${document.filename}\n\n文件类型: ${document.file_type}\n文档大小: ${ragStore.formatDocumentSize(document.total_length)}\n创建时间: ${ragStore.formatCreateTime(document.created_at)}\n片段数量: ${document.chunk_count}`)
+}
+
+// 新增：初始化滚动监听
+function initScrollListener() {
+  nextTick(() => {
+    if (scrollAreaRef.value) {
+      const viewport = scrollAreaRef.value.$el.querySelector('[data-reka-scroll-area-viewport]')
+      if (viewport) {
+        viewport.addEventListener('scroll', handleUserScroll, { passive: true })
+      }
+    }
+  })
+}
+
+// 新增：清理滚动监听
+function cleanupScrollListener() {
+  if (scrollAreaRef.value) {
+    const viewport = scrollAreaRef.value.$el.querySelector('[data-reka-scroll-area-viewport]')
+    if (viewport) {
+      viewport.removeEventListener('scroll', handleUserScroll)
+    }
+  }
+  if (scrollTimeout.value) {
+    clearTimeout(scrollTimeout.value)
+  }
 }
 </script>

@@ -163,8 +163,12 @@ import { Badge } from '@/components/ui/badge'
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu'
 import { useConversationStore } from '@/stores/conversation'
+import { useChatHistoryStore } from '@/stores/chatHistory'
+import { useChatStore } from '@/stores/chat'
 
 const conversationStore = useConversationStore()
+const chatHistoryStore = useChatHistoryStore()
+const chatStore = useChatStore()
 const { conversations } = storeToRefs(conversationStore)
 
 // 状态
@@ -187,9 +191,39 @@ const filteredConversations = computed(() => {
 })
 
 // 方法
-function createNewConversation() {
-  const newConv = conversationStore.createConversation()
-  console.log('创建新对话:', newConv.title)
+async function createNewConversation() {
+  try {
+    // 1. 先创建本地对话
+    const newConv = conversationStore.createConversation()
+    console.log('✅ 创建本地对话:', newConv.title)
+
+    // 2. 如果启用了历史同步，调用后端API创建聊天会话
+    if (chatStore.isHistorySyncEnabled) {
+      console.log('🔄 正在创建远程聊天会话...')
+      
+      const sessionData = {
+        title: newConv.title,
+        description: '多模态AI智能聊天对话',
+        tags: ['chat', 'ai', 'conversation']
+      }
+
+      const remoteSession = await chatHistoryStore.createSession(sessionData)
+      
+      if (remoteSession) {
+        // 将远程会话ID关联到本地对话
+        conversationStore.updateConversationHistorySession(newConv.id, remoteSession.id)
+        console.log('✅ 远程聊天会话创建成功:', remoteSession.id)
+      } else {
+        console.warn('⚠️ 远程聊天会话创建失败，仅保留本地对话')
+      }
+    } else {
+      console.log('📝 历史同步已禁用，仅创建本地对话')
+    }
+
+  } catch (error) {
+    console.error('❌ 创建对话时出错:', error)
+    // 即使后端调用失败，也不影响本地对话的使用
+  }
 }
 
 function selectConversation(conversationId: string) {

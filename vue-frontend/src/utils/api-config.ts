@@ -47,6 +47,14 @@ export const API_CONFIG = {
     SYSTEM_CAPTCHA: '/api/auth/captcha',
     SYSTEM_USER_INFO: '/api/system/user/getInfo',
     SYSTEM_ROUTER_LIST: '/api/system/getRouters',
+    
+    // 聊天历史服务 (使用/chat前缀)
+    CHAT_HISTORY_SESSIONS: '/api/chat/sessions',
+    CHAT_HISTORY_SESSION_DETAIL: '/api/chat/sessions',
+    CHAT_HISTORY_SESSION_MESSAGES: '/api/chat/sessions',
+    CHAT_HISTORY_MESSAGES_BATCH: '/api/chat/messages/batch',
+    CHAT_HISTORY_STATS: '/api/chat/stats',
+    CHAT_HISTORY_HEALTH: '/api/chat/health',
   },
   
   // 请求头配置

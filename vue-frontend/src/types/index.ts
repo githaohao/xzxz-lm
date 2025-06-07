@@ -9,6 +9,15 @@ export interface Message {
     size: number
     type: string
     rag_enabled?: boolean
+    doc_id?: string
+    ocrCompleted?: boolean
+    content?: string
+    attachments?: Array<{
+      type: string
+      url: string
+      name: string
+      size?: number
+    }>
   }
   isStreaming?: boolean
 }
@@ -42,6 +51,12 @@ export interface ProcessedFile {
   content?: string  // OCR处理后的内容，用于RAG
   doc_id?: string   // RAG文档ID
   rag_enabled?: boolean  // 是否启用RAG
+  attachments?: Array<{
+    type: string
+    url: string
+    name: string
+    size?: number
+  }>
 }
 
 // RAG文档块
@@ -58,6 +73,7 @@ export interface RAGSearchRequest {
   doc_ids?: string[]
   top_k?: number
   min_similarity?: number
+  similarity_threshold?: number
 }
 
 // RAG检索响应
@@ -65,6 +81,7 @@ export interface RAGSearchResponse {
   chunks: DocumentChunk[]
   total_found: number
   search_time: number
+  length?: number  // 兼容数组length属性
 }
 
 // RAG文档项
@@ -132,6 +149,7 @@ export interface Conversation {
   lastMessage?: string
   tags?: string[]
   isActive?: boolean
+  historySessionId?: string  // 关联的聊天历史会话ID
 }
 
 // 对话消息历史
@@ -387,4 +405,124 @@ export interface TokenInfo {
   expires_in: number
   refresh_token?: string
   token_type?: string
+}
+
+// ==================== 聊天历史服务相关类型 ====================
+
+// 聊天会话类型
+export interface ChatSession {
+  id: string
+  userId: number
+  title: string
+  description?: string
+  status: 'active' | 'archived' | 'deleted'
+  tags?: string[]
+  lastMessageAt?: Date
+  messageCount: number
+  createdAt: Date
+  updatedAt: Date
+  messages?: ChatMessage[]
+}
+
+// 聊天消息类型
+export interface ChatMessage {
+  id: string
+  sessionId: string
+  userId: number
+  role: 'user' | 'assistant' | 'system'
+  content: string
+  messageType: 'text' | 'voice' | 'image' | 'file' | 'multimodal'
+  metadata?: {
+    filePath?: string
+    fileName?: string
+    fileSize?: number
+    duration?: number
+    imageWidth?: number
+    imageHeight?: number
+    voiceUrl?: string
+    attachments?: Array<{
+      type: string
+      url: string
+      name: string
+      size?: number
+    }>
+    [key: string]: any
+  }
+  status: 'sent' | 'delivered' | 'read' | 'failed'
+  parentMessageId?: string
+  sequenceNumber: number
+  createdAt: Date
+}
+
+// 创建会话DTO
+export interface CreateSessionDto {
+  title?: string
+  description?: string
+  tags?: string[]
+}
+
+// 创建消息DTO
+export interface CreateMessageDto {
+  sessionId: string
+  role: 'user' | 'assistant' | 'system'
+  content: string
+  messageType?: 'text' | 'voice' | 'image' | 'file' | 'multimodal'
+  metadata?: {
+    filePath?: string
+    fileName?: string
+    fileSize?: number
+    duration?: number
+    imageWidth?: number
+    imageHeight?: number
+    voiceUrl?: string
+    attachments?: Array<{
+      type: string
+      url: string
+      name: string
+      size?: number
+    }>
+    [key: string]: any
+  }
+  parentMessageId?: string
+}
+
+// 查询会话DTO
+export interface QuerySessionsDto {
+  page?: number
+  limit?: number
+  status?: 'active' | 'archived' | 'deleted'
+  search?: string
+  sortBy?: 'createdAt' | 'updatedAt' | 'lastMessageAt' | 'messageCount'
+  sortOrder?: 'ASC' | 'DESC'
+}
+
+// 聊天历史服务响应类型
+export interface ChatHistoryResponse<T = any> {
+  code: number
+  msg: string
+  data?: T
+  pagination?: {
+    page: number
+    limit: number
+    total: number
+    totalPages: number
+  }
+}
+
+// 聊天统计信息
+export interface ChatStatsResponse {
+  totalSessions: number
+  totalMessages: number
+  archivedSessions: number
+}
+
+// 分页响应类型
+export interface PaginatedResponse<T> {
+  data: T[]
+  pagination: {
+    page: number
+    limit: number
+    total: number
+    totalPages: number
+  }
 } 

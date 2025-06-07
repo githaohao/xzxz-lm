@@ -110,7 +110,7 @@
 
           <!-- 快捷操作 -->
           <div class="space-y-2">
-            <button
+            <!-- <button
               @click="openProfile"
               class="w-full flex items-center px-3 py-2 text-sm text-popover-foreground rounded-md hover:bg-accent hover:text-accent-foreground transition-colors duration-200"
             >
@@ -128,8 +128,8 @@
                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
               </svg>
               系统设置
-            </button>
-            <div class="border-t border-border pt-2">
+            </button> -->
+            <div class="border-border">
               <button
                 @click="handleLogout"
                 :disabled="authStore.isLoading"
