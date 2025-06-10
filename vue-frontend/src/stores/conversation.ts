@@ -282,12 +282,104 @@ export const useConversationStore = defineStore('conversation', () => {
     localStorage.removeItem('conversations')
   }
 
-  // 初始化：从缓存加载数据，如果没有则创建默认对话
-  function initialize() {
+  // 从后端同步对话列表
+  async function syncFromBackend() {
+    try {
+      const { useChatStore } = await import('@/stores/chat')
+      const { useChatHistoryStore } = await import('@/stores/chatHistory')
+      
+      const chatStore = useChatStore()
+      const chatHistoryStore = useChatHistoryStore()
+      
+      // 检查是否启用了历史同步
+      if (!chatStore.isHistorySyncEnabled) {
+        console.log('📝 历史同步已禁用，跳过后端同步')
+        return false
+      }
+      
+      console.log('🔄 正在从后端同步对话列表...')
+      
+      // 获取用户的聊天会话列表
+      await chatHistoryStore.fetchSessions({ page: 1, limit: 100 })
+      
+      const remoteSessions = chatHistoryStore.sessions
+      console.log(`📥 从后端获取到 ${remoteSessions.length} 个会话`)
+      
+      // 将后端会话转换为本地对话格式
+      for (const session of remoteSessions) {
+        // 检查本地是否已存在相同的对话
+        const existingConv = conversations.value.find(c => c.historySessionId === session.id)
+        
+        if (!existingConv) {
+          // 创建新的本地对话
+          const newConversation: Conversation = {
+            id: generateId(),
+            title: session.title,
+            createdAt: new Date(session.createdAt),
+            updatedAt: new Date(session.updatedAt),
+            messageCount: session.messageCount || 0,
+            isActive: false,
+            historySessionId: session.id,
+            lastMessage: session.description
+          }
+          
+          conversations.value.push(newConversation)
+          
+          // 初始化对话数据
+          conversationData.value.set(newConversation.id, {
+            conversation: newConversation,
+            messages: [],
+            ragDocuments: []
+          })
+          
+          console.log(`✅ 同步会话: ${session.title} (${session.id})`)
+        } else {
+          // 更新现有对话的信息
+          existingConv.title = session.title
+          existingConv.updatedAt = new Date(session.updatedAt)
+          existingConv.messageCount = session.messageCount || 0
+          
+          // 更新对话数据中的conversation引用
+          const data = conversationData.value.get(existingConv.id)
+          if (data) {
+            data.conversation = existingConv
+          }
+        }
+      }
+      
+      // 按更新时间排序
+      conversations.value.sort((a, b) => b.updatedAt.getTime() - a.updatedAt.getTime())
+      
+      console.log(`✅ 对话同步完成，总计 ${conversations.value.length} 个对话`)
+      return true
+      
+    } catch (error) {
+      console.error('❌ 从后端同步对话失败:', error)
+      return false
+    }
+  }
+
+  // 初始化：先从缓存加载数据，然后从后端同步，最后创建默认对话
+  async function initialize() {
+    // 1. 从本地缓存加载
     loadFromCache()
+    console.log(`📁 从缓存加载了 ${conversations.value.length} 个对话`)
     
+    // 2. 尝试从后端同步
+    const syncSuccess = await syncFromBackend()
+    
+    // 3. 如果没有对话，创建默认对话
     if (conversations.value.length === 0) {
       createConversation({ title: '默认对话' })
+      console.log('📝 创建了默认对话')
+    } else if (syncSuccess) {
+      // 同步成功后保存到缓存
+      saveToCache()
+    }
+    
+    // 4. 设置当前对话（如果没有活跃对话）
+    if (!currentConversation.value && conversations.value.length > 0) {
+      setCurrentConversation(conversations.value[0].id)
     }
   }
 
@@ -317,6 +409,7 @@ export const useConversationStore = defineStore('conversation', () => {
     saveToCache,
     loadFromCache,
     clearAllConversations,
+    syncFromBackend,
     initialize
   }
 }) 

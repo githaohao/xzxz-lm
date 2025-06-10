@@ -60,17 +60,78 @@ class NacosService:
         try:
             # 如果配置了特定IP，优先使用
             if settings.service_ip and settings.service_ip != "0.0.0.0":
+                logger.info(f"🔧 使用配置的IP地址: {settings.service_ip}")
                 return settings.service_ip
             
-            # 自动获取本机IP
+            # 获取所有网络接口的IP地址
+            interfaces = self._get_all_interfaces()
+            logger.info(f"🔍 检测到的网络接口: {interfaces}")
+            
+            # 优先选择192.168.x.x网段的IP（局域网）
+            for interface_name, ip in interfaces.items():
+                if ip.startswith('192.168.'):
+                    logger.info(f"✅ 选择局域网IP: {ip} (接口: {interface_name})")
+                    return ip
+            
+            # 其次选择10.x.x.x网段的IP
+            for interface_name, ip in interfaces.items():
+                if ip.startswith('10.'):
+                    logger.info(f"✅ 选择私有网络IP: {ip} (接口: {interface_name})")
+                    return ip
+            
+            # 最后选择172.16-31.x.x网段的IP
+            for interface_name, ip in interfaces.items():
+                if ip.startswith('172.'):
+                    octets = ip.split('.')
+                    if len(octets) >= 2 and 16 <= int(octets[1]) <= 31:
+                        logger.info(f"✅ 选择私有网络IP: {ip} (接口: {interface_name})")
+                        return ip
+            
+            # 如果没有找到私有网络IP，使用第一个非回环IP
+            for interface_name, ip in interfaces.items():
+                if not ip.startswith('127.'):
+                    logger.info(f"✅ 选择公网IP: {ip} (接口: {interface_name})")
+                    return ip
+            
+            # 最后的备用方案：使用socket连接方式
             with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as s:
                 s.connect(("8.8.8.8", 80))
                 ip = s.getsockname()[0]
-                logger.info(f"🔍 自动检测到本机IP: {ip}")
+                logger.info(f"🔍 备用方案检测到IP: {ip}")
                 return ip
+                
         except Exception as e:
             logger.warning(f"获取本机IP失败: {e}, 使用localhost")
             return "127.0.0.1"
+    
+    def _get_all_interfaces(self) -> Dict[str, str]:
+        """获取所有网络接口的IP地址"""
+        interfaces = {}
+        try:
+            import netifaces
+            
+            for interface in netifaces.interfaces():
+                try:
+                    addrs = netifaces.ifaddresses(interface)
+                    if netifaces.AF_INET in addrs:
+                        for addr_info in addrs[netifaces.AF_INET]:
+                            ip = addr_info.get('addr')
+                            if ip and ip != '127.0.0.1':
+                                interfaces[interface] = ip
+                except Exception:
+                    continue
+                    
+        except ImportError:
+            # 如果没有netifaces库，使用psutil作为备选
+            try:
+                for interface, addrs in psutil.net_if_addrs().items():
+                    for addr in addrs:
+                        if addr.family == socket.AF_INET and addr.address != '127.0.0.1':
+                            interfaces[interface] = addr.address
+            except Exception as e:
+                logger.warning(f"使用psutil获取网络接口失败: {e}")
+        
+        return interfaces
     
     def _generate_instance_id(self) -> str:
         """生成服务实例ID"""
@@ -237,6 +298,15 @@ class NacosService:
             logger.error(f"获取配置失败: {e}")
             return None
     
+    async def get_network_info(self) -> Dict[str, Any]:
+        """获取网络接口信息 - 调试用"""
+        info = {
+            "current_ip": self._get_local_ip(),
+            "configured_ip": settings.service_ip,
+            "all_interfaces": self._get_all_interfaces()
+        }
+        return info
+
     async def health_check(self) -> Dict[str, Any]:
         """健康检查"""
         status = {
@@ -244,7 +314,8 @@ class NacosService:
             "nacos_connected": self.client is not None,
             "service_registered": self.is_registered,
             "service_name": settings.nacos_service_name,
-            "instance_id": self.service_instance_id
+            "instance_id": self.service_instance_id,
+            "network_info": await self.get_network_info()
         }
         
         if self.client and self.is_registered:

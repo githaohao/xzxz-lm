@@ -12,7 +12,9 @@ import sys
 import traceback
 
 from .config import settings
-from .routes import chat, health, voice
+from .routes import chat, health, voice, chat_history, user_rag
+from .database import Database
+from .middleware.auth import UserAuthMiddleware
 
 # 配置详细的日志系统
 def setup_logging():
@@ -74,6 +76,9 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+# 添加用户认证中间件
+app.add_middleware(UserAuthMiddleware)
+
 # 静态文件服务
 if os.path.exists(settings.upload_dir):
     app.mount("/uploads", StaticFiles(directory=settings.upload_dir), name="uploads")
@@ -82,6 +87,8 @@ if os.path.exists(settings.upload_dir):
 app.include_router(chat.router)
 app.include_router(health.router)
 app.include_router(voice.router, prefix="/voice", tags=["voice"])
+app.include_router(chat_history.router)
+app.include_router(user_rag.router)
 
 @app.exception_handler(Exception)
 async def global_exception_handler(request: Request, exc: Exception):
@@ -108,6 +115,16 @@ async def startup_event():
     logger.info(f"🔧 调试模式: {'开启' if settings.debug else '关闭'}")
     logger.info(f"🌐 Nacos功能: {'开启' if settings.nacos_enabled else '关闭'}")
     logger.info("=" * 80)
+    
+    # 初始化数据库
+    try:
+        logger.info("🗄️ 初始化数据库...")
+        db = Database()
+        await db.initialize()
+        logger.info("✅ 数据库初始化成功")
+    except Exception as e:
+        logger.error(f"❌ 数据库初始化失败: {e}")
+        raise e
     
     # 初始化和注册Nacos服务
     if settings.nacos_enabled:
@@ -143,6 +160,17 @@ async def startup_event():
         
     except Exception as e:
         logger.warning(f"FunAudioLLM语音引擎连接检查失败: {e}")
+    
+    # 初始化用户RAG服务
+    try:
+        from app.services.user_rag_service import user_rag_service
+        
+        logger.info("🧠 初始化用户RAG服务...")
+        await user_rag_service.initialize()
+        logger.info("✅ 用户RAG服务初始化成功")
+        
+    except Exception as e:
+        logger.warning(f"用户RAG服务初始化失败: {e}")
     
     logger.info("✅ 应用启动完成，准备接收请求...")
 

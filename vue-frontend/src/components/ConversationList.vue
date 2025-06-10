@@ -6,14 +6,26 @@
       <div class="p-4 border-b border-slate-200 dark:border-slate-700">
         <div class="flex items-center justify-between mb-3">
           <h2 class="text-lg font-semibold text-slate-900 dark:text-slate-100">对话列表</h2>
-          <Button 
-            @click="createNewConversation" 
-            size="sm" 
-            class="h-8 px-3"
-          >
-            <Plus class="h-4 w-4 mr-1" />
-            新建
-          </Button>
+          <div class="flex gap-2">
+            <Button 
+              @click="syncConversations" 
+              size="sm"
+              variant="outline"
+              :disabled="isSyncing"
+              title="从后端同步对话列表"
+              class="h-8 px-2"
+            >
+              <RefreshCw :class="['h-4 w-4', isSyncing ? 'animate-spin' : '']" />
+            </Button>
+            <Button 
+              @click="createNewConversation" 
+              size="sm" 
+              class="h-8 px-3"
+            >
+              <Plus class="h-4 w-4 mr-1" />
+              新建
+            </Button>
+          </div>
         </div>
         
         <!-- 搜索框 -->
@@ -156,7 +168,8 @@ import {
   MoreVertical, 
   Edit2, 
   Trash2, 
-  X 
+  X,
+  RefreshCw
 } from 'lucide-vue-next'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
@@ -176,6 +189,7 @@ const searchQuery = ref('')
 const showRenameDialog = ref(false)
 const editingConversationId = ref<string | null>(null)
 const newTitle = ref('')
+const isSyncing = ref(false)
 
 // 计算属性
 const filteredConversations = computed(() => {
@@ -191,6 +205,22 @@ const filteredConversations = computed(() => {
 })
 
 // 方法
+async function syncConversations() {
+  if (isSyncing.value) return
+  
+  try {
+    isSyncing.value = true
+    console.log('🔄 手动同步对话列表...')
+    
+    await conversationStore.syncFromBackend()
+    console.log('✅ 对话列表同步完成')
+  } catch (error) {
+    console.error('❌ 同步对话列表失败:', error)
+  } finally {
+    isSyncing.value = false
+  }
+}
+
 async function createNewConversation() {
   try {
     // 1. 先创建本地对话

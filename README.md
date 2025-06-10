@@ -11,18 +11,23 @@
 - 📁 **文件上传**: 拖拽上传，支持多种文件格式
 - 🌐 **跨平台**: 前后端分离，易于扩展到小程序和 APP
 - 🎨 **现代化 UI**: 使用 shadcn-ui 组件库，提供优秀的用户体验
-- ☁️ **智能同步**: 登录后自动同步本地对话到云端，支持批量同步功能
+- 👤 **用户隔离**: 每个用户拥有独立的聊天历史和知识库，数据完全隔离
+- 🔐 **安全认证**: 集成若依Gateway身份验证，支持多租户架构
+- 🧠 **个人知识库**: 用户可上传文档建立专属知识库，支持语义检索
+- 💾 **数据持久化**: SQLite + ChromaDB 双数据库架构，保证数据安全
+- 🔄 **实时同步**: 对话列表与后端实时同步，支持多设备数据一致性
 
 ## 技术栈
 
 ### 后端
 - **FastAPI**: 高性能 Python Web 框架
-- **NestJS**: 企业级 Node.js 框架，用于聊天历史管理微服务
-- **TypeORM**: 数据库 ORM 框架
-- **MySQL**: 关系型数据库，存储聊天历史
+- **SQLite**: 轻量级数据库，用于用户数据和聊天历史存储
+- **ChromaDB**: 向量数据库，支持用户隔离的文档检索
+- **Sentence Transformers**: 语义嵌入模型，用于文档向量化
+- **用户认证中间件**: 基于若依Gateway的用户身份验证
 - **FunAudioLLM**: 高性能语音识别引擎（比 Whisper 快 15 倍）
 - **Edge-TTS**: 微软语音合成服务
-- **pdf2image**: PDF 转图片处理
+- **PyPDF2 & python-docx**: 多格式文档解析
 - **LM Studio API**: 本地大语言模型服务
 - **Nacos**: 微服务注册与配置中心
 
@@ -36,7 +41,6 @@
 - **Pinia**: Vue 3 状态管理库
   
 
-截屏2025-06-04 下午2.30.51.png
 ### 界面示例
 ![image](https://gitee.com/githaohao/xzxz-lm/raw/main/docs/%E6%88%AA%E5%B1%8F2025-05-26%20%E4%B8%8A%E5%8D%889.36.01.png)
 ![image](https://gitee.com/githaohao/xzxz-lm/raw/main/docs/%E6%88%AA%E5%B1%8F2025-06-04%20%E4%B8%8B%E5%8D%882.30.51.png)
@@ -132,6 +136,80 @@ pnpm dev
 
 ## 配置说明
 
+### 环境变量配置 (.env)
+
+```bash
+# 复制配置模板文件
+cp backend/.env.example backend/.env
+```
+
+**重要配置项：**
+
+```bash
+# 服务IP配置 - 注册到Nacos时使用
+# 建议手动设置为实际网络接口的IP地址
+SERVICE_IP=192.168.100.24
+SERVICE_PORT=8000
+
+# Nacos服务发现配置
+NACOS_ENABLED=true
+NACOS_SERVER_ADDRESSES=nacos:8848
+NACOS_SERVICE_NAME=xzxz-lm-service
+
+# LM Studio配置
+LM_STUDIO_BASE_URL=http://127.0.0.1:1234/v1
+LM_STUDIO_MODEL=deepseek-r1-0528-qwen3-8b-mlx@8bit
+```
+
+### IP地址配置说明
+
+系统会按以下优先级检测和使用IP地址：
+
+1. **手动配置优先**：如果在 `.env` 文件中设置了 `SERVICE_IP`，系统将优先使用该IP
+2. **自动检测规则**：如果未配置或设置为 `0.0.0.0`，系统按以下顺序自动检测：
+   - 优先选择 `192.168.x.x` 网段的IP（局域网）
+   - 其次选择 `10.x.x.x` 网段的IP
+   - 再次选择 `172.16-31.x.x` 网段的IP
+   - 最后选择第一个非回环IP
+
+**推荐做法**：在 `.env` 文件中手动设置 `SERVICE_IP=192.168.100.24`，避免自动检测错误。
+
+### 网络接口调试
+
+如需查看系统检测到的所有网络接口，可访问健康检查接口：
+
+```bash
+curl http://localhost:8000/health
+```
+
+返回的 `network_info` 字段包含：
+- `current_ip`: 当前使用的IP
+- `configured_ip`: 配置文件中的IP
+- `all_interfaces`: 所有检测到的网络接口
+
+### 对话列表同步机制
+
+系统实现了前端与后端的对话列表双向同步：
+
+#### 🔄 自动同步
+- **应用启动**: 自动从后端同步对话列表到本地
+- **智能合并**: 本地对话与后端会话自动关联，避免重复
+- **缓存优化**: 优先从本地缓存加载，提升启动速度
+
+#### 🔧 手动同步
+- **刷新按钮**: 对话列表右上角的刷新按钮，随时同步最新数据
+- **状态指示**: 同步过程中显示旋转动画，提供清晰的用户反馈
+
+#### 📱 多设备支持
+- **数据一致性**: 同一用户在不同设备间保持对话历史一致
+- **离线优先**: 本地优先策略，即使网络异常也能正常使用
+- **智能恢复**: 网络恢复后自动同步差异数据
+
+#### 💾 存储策略
+- **本地存储**: localStorage缓存对话列表，提升加载速度
+- **后端持久化**: SQLite数据库存储用户聊天历史
+- **增量同步**: 只同步变更的对话，减少网络开销
+
 ### 后端配置 (backend/app/config.py)
 
 ```python
@@ -172,11 +250,12 @@ export default defineConfig({
 - `POST /api/lm/chat/stream` - 流式文本聊天
 - `POST /api/lm/chat/multimodal/stream/processed` - 多模态流式聊天
 
-### 🎤 语音功能 (/api/lm/voice/*)
-- `POST /api/lm/voice/chat` - 语音对话
-- `POST /api/lm/voice/speech/synthesize` - 语音合成(TTS)
-- `GET /api/lm/voice/engine` - 获取语音引擎状态
-- `DELETE /api/lm/voice/conversation/{id}` - 清除对话历史
+### 🎤 语音功能 (/voice/*)
+- `POST /voice/chat` - 语音对话
+- `POST /voice/speech/synthesize` - 语音合成(TTS)
+- `GET /voice/engine` - 获取语音引擎状态
+- `DELETE /voice/conversation/{id}` - 清除对话历史
+- `WebSocket /voice/ws/voice` - 实时语音WebSocket连接
 
 ### 📁 文件处理 (/api/lm/*)
 - `POST /api/lm/upload` - 文件上传
@@ -191,15 +270,29 @@ export default defineConfig({
 ### 🔧 系统监控 (/api/lm/*)
 - `GET /api/lm/health` - 健康检查
 
-### 💬 聊天历史服务 (/chat/*)
-- `GET /chat/sessions` - 获取聊天会话列表
-- `POST /chat/sessions` - 创建新的聊天会话
-- `GET /chat/sessions/{id}` - 获取指定会话详情
-- `DELETE /chat/sessions/{id}` - 删除聊天会话
-- `GET /chat/sessions/{id}/messages` - 获取会话消息列表
-- `POST /chat/sessions/{id}/messages` - 添加新消息到会话
-- `DELETE /chat/messages/{id}` - 删除指定消息
-- `GET /chat/health` - 聊天服务健康检查
+### 💬 用户聊天历史服务 (/api/user/chat/*)
+- `GET /api/user/chat/sessions` - 获取用户聊天会话列表
+- `POST /api/user/chat/sessions` - 创建新的聊天会话
+- `GET /api/user/chat/sessions/{id}` - 获取指定会话详情
+- `PUT /api/user/chat/sessions/{id}` - 更新会话信息
+- `DELETE /api/user/chat/sessions/{id}` - 删除会话
+- `PUT /api/user/chat/sessions/{id}/archive` - 归档会话
+- `PUT /api/user/chat/sessions/{id}/restore` - 恢复会话
+- `GET /api/user/chat/sessions/{id}/messages` - 获取会话消息列表
+- `POST /api/user/chat/sessions/{id}/messages` - 添加消息到会话
+- `POST /api/user/chat/messages/batch` - 批量添加消息
+- `DELETE /api/user/chat/messages/{id}` - 删除消息
+- `GET /api/user/chat/stats` - 获取用户聊天统计信息
+- `GET /api/user/chat/health` - 聊天历史服务健康检查
+
+### 📚 用户知识库服务 (/api/user/rag/*)
+- `POST /api/user/rag/documents/upload` - 上传文档到个人知识库
+- `GET /api/user/rag/documents` - 获取用户文档列表
+- `POST /api/user/rag/search` - 在用户知识库中搜索文档
+- `DELETE /api/user/rag/documents/{id}` - 删除用户文档
+- `GET /api/user/rag/documents/{id}/chunks` - 获取文档分块内容
+- `GET /api/user/rag/stats` - 获取用户RAG统计信息
+- `GET /api/user/rag/health` - 用户RAG服务健康检查
 
 ### 👤 若依用户系统 (/api/system/*)
 - `GET /api/system/captcha` - 获取验证码
@@ -373,6 +466,59 @@ docker-compose up -d
 - **小程序**: 使用相同的 API 接口
 - **移动 APP**: React Native 或原生开发
 - **桌面应用**: Electron 封装
+
+## 🔄 架构变更说明
+
+### v2.0 用户绑定架构升级
+
+本版本进行了重大架构升级，实现了完整的用户绑定功能：
+
+#### 🛠️ 技术栈升级
+- **响应模型重构**: `ChatHistoryResponse`类支持泛型参数化，继承`typing.Generic[T]`
+- **类型安全增强**: 统一使用`TypeVar`实现类型安全的API响应
+- **数据库双引擎**: SQLite + ChromaDB 实现关系型+向量型双存储
+- **用户数据隔离**: 每个用户拥有独立的数据空间，确保隐私安全
+
+#### 🗄️ 数据架构优化
+1. **用户会话表** (`user_chat_sessions`)
+   - 用户ID索引，支持快速查询
+   - 会话状态管理（活跃/归档/删除）
+   - 标签系统，支持分类管理
+
+2. **用户消息表** (`user_chat_messages`)
+   - 消息链式结构，支持回复引用
+   - 序列号排序，保证消息顺序
+   - 多类型消息支持（文本/语音/图片/文件）
+
+3. **用户文档表** (`user_documents`)
+   - RAG文档元数据管理
+   - OCR状态追踪
+   - 分块计数统计
+
+4. **向量存储** (ChromaDB)
+   - 用户专属Collection: `user_{id}_docs`
+   - 高维向量检索 (768维度)
+   - 语义相似度搜索
+
+#### 🔌 API架构升级
+```
+传统架构: /api/chat/* (全局共享)
+新架构: /api/user/chat/* (用户绑定)
+       /api/user/rag/* (个人知识库)
+```
+
+#### 🎯 核心改进
+- **泛型响应**: `ChatHistoryResponse[T]`支持任意数据类型
+- **类型检查**: 编译时类型验证，运行时类型安全
+- **用户认证**: 若依Gateway集成，自动提取用户信息
+- **数据隔离**: 严格的用户权限控制，防止数据泄露
+- **性能优化**: 索引优化、查询优化、缓存机制
+
+#### 📊 升级影响
+- **前端兼容**: 无需修改现有前端代码
+- **API路径**: 新增用户绑定API，保留原有API
+- **数据迁移**: 支持平滑数据迁移
+- **性能提升**: 用户数据隔离带来的查询性能优化
 
 ## 故障排除
 

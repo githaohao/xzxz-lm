@@ -1,101 +1,26 @@
 import { defineStore } from 'pinia'
 import { ref, computed } from 'vue'
-import api from '@/utils/api'
-import { API_CONFIG } from '@/utils/api-config'
-
-// 类型定义
-type ApiResponse<T = any> = {
-  code: number
-  msg?: string
-  data: T
-  pagination?: {
-    page: number
-    limit: number
-    total: number
-    totalPages: number
-  }
-}
-
-/**
- * 聊天会话接口
- */
-export interface ChatSession {
-  id: string
-  userId: number
-  title: string
-  description?: string
-  status: 'active' | 'archived' | 'deleted'
-  tags?: string[]
-  lastMessageAt?: string
-  messageCount: number
-  createdAt: string
-  updatedAt: string
-}
-
-/**
- * 聊天消息接口
- */
-export interface ChatMessage {
-  id: string
-  sessionId: string
-  userId: number
-  role: 'user' | 'assistant' | 'system'
-  content: string
-  messageType: 'text' | 'voice' | 'image' | 'file' | 'multimodal'
-  metadata?: {
-    filePath?: string
-    fileName?: string
-    fileSize?: number
-    duration?: number
-    imageWidth?: number
-    imageHeight?: number
-    voiceUrl?: string
-    attachments?: Array<{
-      type: string
-      url: string
-      name: string
-      size?: number
-    }>
-    [key: string]: any
-  }
-  status: 'sent' | 'delivered' | 'read' | 'failed'
-  parentMessageId?: string
-  sequenceNumber: number
-  createdAt: string
-}
-
-/**
- * 创建会话DTO
- */
-export interface CreateSessionDto {
-  title?: string
-  description?: string
-  tags?: string[]
-}
-
-/**
- * 创建消息DTO
- */
-export interface CreateMessageDto {
-  sessionId: string
-  role: 'user' | 'assistant' | 'system'
-  content: string
-  messageType?: 'text' | 'voice' | 'image' | 'file' | 'multimodal'
-  metadata?: any
-  parentMessageId?: string
-}
-
-/**
- * 查询参数接口
- */
-export interface QuerySessionsParams {
-  page?: number
-  limit?: number
-  status?: 'active' | 'archived' | 'deleted'
-  search?: string
-  sortBy?: 'createdAt' | 'updatedAt' | 'lastMessageAt' | 'messageCount'
-  sortOrder?: 'ASC' | 'DESC'
-}
+import { 
+  getChatSessions,
+  createChatSession,
+  getChatSessionById,
+  getChatSessionMessages,
+  addChatMessage,
+  addChatMessagesBatch,
+  updateChatSession,
+  deleteChatSession,
+  archiveChatSession,
+  restoreChatSession,
+  getChatStats
+} from '@/utils/api'
+import type {
+  ChatSession,
+  ChatMessage,
+  CreateSessionDto,
+  CreateMessageDto,
+  QuerySessionsDto,
+  ChatHistoryResponse
+} from '@/types'
 
 /**
  * 聊天历史状态管理
@@ -127,9 +52,6 @@ export const useChatHistoryStore = defineStore('chatHistory', () => {
     pagination.value.page < pagination.value.totalPages
   )
 
-  // API客户端
-  const apiClient = api
-
   /**
    * 清除错误
    */
@@ -140,23 +62,14 @@ export const useChatHistoryStore = defineStore('chatHistory', () => {
   /**
    * 获取用户的聊天会话列表
    */
-  const fetchSessions = async (params: QuerySessionsParams = {}) => {
+  const fetchSessions = async (params: QuerySessionsDto = {}) => {
     try {
       loading.value = true
       clearError()
 
-      const queryParams = new URLSearchParams()
-      if (params.page) queryParams.append('page', params.page.toString())
-      if (params.limit) queryParams.append('limit', params.limit.toString())
-      if (params.status) queryParams.append('status', params.status)
-      if (params.search) queryParams.append('search', params.search)
-      if (params.sortBy) queryParams.append('sortBy', params.sortBy)
-      if (params.sortOrder) queryParams.append('sortOrder', params.sortOrder)
+      const response = await getChatSessions(params)
 
-      const url = `${API_CONFIG.ENDPOINTS.CHAT_HISTORY_SESSIONS}?${queryParams.toString()}`
-      const response = await apiClient.get<ApiResponse<ChatSession[]>>(url)
-
-      if (response.code === 200) {
+      if (response.code === 200 && response.data) {
         if (params.page === 1) {
           sessions.value = response.data
         } else {
@@ -185,9 +98,9 @@ export const useChatHistoryStore = defineStore('chatHistory', () => {
       loading.value = true
       clearError()
 
-      const response = await apiClient.post<ApiResponse<ChatSession>>(API_CONFIG.ENDPOINTS.CHAT_HISTORY_SESSIONS, sessionData)
+      const response = await createChatSession(sessionData)
 
-      if (response.code === 200) {
+      if (response.code === 200 && response.data) {
         const newSession = response.data
         sessions.value.unshift(newSession)
         return newSession
@@ -211,9 +124,9 @@ export const useChatHistoryStore = defineStore('chatHistory', () => {
       loading.value = true
       clearError()
 
-      const response = await apiClient.get<ApiResponse<ChatSession>>(`${API_CONFIG.ENDPOINTS.CHAT_HISTORY_SESSION_DETAIL}/${sessionId}`)
+      const response = await getChatSessionById(sessionId)
 
-      if (response.code === 200) {
+      if (response.code === 200 && response.data) {
         currentSession.value = response.data
         return response.data
       } else {
@@ -236,11 +149,9 @@ export const useChatHistoryStore = defineStore('chatHistory', () => {
       loading.value = true
       clearError()
 
-      const response = await apiClient.get<ApiResponse<ChatMessage[]>>(
-        `${API_CONFIG.ENDPOINTS.CHAT_HISTORY_SESSION_MESSAGES}/${sessionId}/messages?page=${page}&limit=${limit}`
-      )
+      const response = await getChatSessionMessages(sessionId, page, limit)
 
-      if (response.code === 200) {
+      if (response.code === 200 && response.data) {
         if (page === 1) {
           currentMessages.value = response.data
         } else {
@@ -264,12 +175,9 @@ export const useChatHistoryStore = defineStore('chatHistory', () => {
    */
   const addMessage = async (sessionId: string, messageData: Omit<CreateMessageDto, 'sessionId'>): Promise<ChatMessage | null> => {
     try {
-      const response = await apiClient.post<ApiResponse<ChatMessage>>(
-        `${API_CONFIG.ENDPOINTS.CHAT_HISTORY_SESSION_MESSAGES}/${sessionId}/messages`,
-        messageData
-      )
+      const response = await addChatMessage(sessionId, messageData)
 
-      if (response.code === 200) {
+      if (response.code === 200 && response.data) {
         const newMessage = response.data
         currentMessages.value.push(newMessage)
         
@@ -299,9 +207,9 @@ export const useChatHistoryStore = defineStore('chatHistory', () => {
       loading.value = true
       clearError()
 
-      const response = await apiClient.post<ApiResponse<ChatMessage[]>>(API_CONFIG.ENDPOINTS.CHAT_HISTORY_MESSAGES_BATCH, messages)
+      const response = await addChatMessagesBatch(messages)
 
-      if (response.code === 200) {
+      if (response.code === 200 && response.data) {
         return response.data
       } else {
         throw new Error(response.msg || '批量添加消息失败')
@@ -320,9 +228,9 @@ export const useChatHistoryStore = defineStore('chatHistory', () => {
    */
   const updateSession = async (sessionId: string, updateData: Partial<CreateSessionDto>) => {
     try {
-      const response = await apiClient.put<ApiResponse<ChatSession>>(`${API_CONFIG.ENDPOINTS.CHAT_HISTORY_SESSION_DETAIL}/${sessionId}`, updateData)
+      const response = await updateChatSession(sessionId, updateData)
 
-      if (response.code === 200) {
+      if (response.code === 200 && response.data) {
         const updatedSession = response.data
         const sessionIndex = sessions.value.findIndex(s => s.id === sessionId)
         if (sessionIndex !== -1) {
@@ -347,7 +255,7 @@ export const useChatHistoryStore = defineStore('chatHistory', () => {
    */
   const deleteSession = async (sessionId: string) => {
     try {
-      const response = await apiClient.delete<ApiResponse>(`${API_CONFIG.ENDPOINTS.CHAT_HISTORY_SESSION_DETAIL}/${sessionId}`)
+      const response = await deleteChatSession(sessionId)
 
       if (response.code === 200) {
         sessions.value = sessions.value.filter(s => s.id !== sessionId)
@@ -371,9 +279,9 @@ export const useChatHistoryStore = defineStore('chatHistory', () => {
    */
   const archiveSession = async (sessionId: string) => {
     try {
-      const response = await apiClient.put<ApiResponse<ChatSession>>(`${API_CONFIG.ENDPOINTS.CHAT_HISTORY_SESSION_DETAIL}/${sessionId}/archive`)
+      const response = await archiveChatSession(sessionId)
 
-      if (response.code === 200) {
+      if (response.code === 200 && response.data) {
         const updatedSession = response.data
         const sessionIndex = sessions.value.findIndex(s => s.id === sessionId)
         if (sessionIndex !== -1) {
@@ -395,9 +303,9 @@ export const useChatHistoryStore = defineStore('chatHistory', () => {
    */
   const restoreSession = async (sessionId: string) => {
     try {
-      const response = await apiClient.put<ApiResponse<ChatSession>>(`${API_CONFIG.ENDPOINTS.CHAT_HISTORY_SESSION_DETAIL}/${sessionId}/restore`)
+      const response = await restoreChatSession(sessionId)
 
-      if (response.code === 200) {
+      if (response.code === 200 && response.data) {
         const updatedSession = response.data
         const sessionIndex = sessions.value.findIndex(s => s.id === sessionId)
         if (sessionIndex !== -1) {
@@ -419,9 +327,9 @@ export const useChatHistoryStore = defineStore('chatHistory', () => {
    */
   const fetchChatStats = async () => {
     try {
-      const response = await apiClient.get<ApiResponse<any>>(API_CONFIG.ENDPOINTS.CHAT_HISTORY_STATS)
+      const response = await getChatStats()
 
-      if (response.code === 200) {
+      if (response.code === 200 && response.data) {
         return response.data
       } else {
         throw new Error(response.msg || '获取统计信息失败')
@@ -489,3 +397,6 @@ export const useChatHistoryStore = defineStore('chatHistory', () => {
     reset
   }
 }) 
+
+// 重新导出类型以保持向后兼容性
+export type { ChatSession, ChatMessage, CreateSessionDto, CreateMessageDto, QuerySessionsDto } from '@/types' 

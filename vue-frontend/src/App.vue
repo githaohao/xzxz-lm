@@ -91,8 +91,8 @@ useTheme()
 // 初始化对话系统
 const conversationStore = useConversationStore()
 
-onMounted(() => {
-  // 初始化对话store
-  conversationStore.initialize()
+onMounted(async () => {
+  // 初始化对话store，从后端同步对话列表
+  await conversationStore.initialize()
 })
 </script> 

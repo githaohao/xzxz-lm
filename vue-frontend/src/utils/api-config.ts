@@ -48,13 +48,20 @@ export const API_CONFIG = {
     SYSTEM_USER_INFO: '/api/system/user/getInfo',
     SYSTEM_ROUTER_LIST: '/api/system/getRouters',
     
-    // 聊天历史服务 (使用/chat前缀)
-    CHAT_HISTORY_SESSIONS: '/api/chat/sessions',
-    CHAT_HISTORY_SESSION_DETAIL: '/api/chat/sessions',
-    CHAT_HISTORY_SESSION_MESSAGES: '/api/chat/sessions',
-    CHAT_HISTORY_MESSAGES_BATCH: '/api/chat/messages/batch',
-    CHAT_HISTORY_STATS: '/api/chat/stats',
-    CHAT_HISTORY_HEALTH: '/api/chat/health',
+    // 用户聊天历史服务 (使用/api/user/chat前缀)
+    CHAT_HISTORY_SESSIONS: '/api/lm/user/chat/sessions',
+    CHAT_HISTORY_SESSION_DETAIL: '/api/lm/user/chat/sessions',
+    CHAT_HISTORY_SESSION_MESSAGES: '/api/lm/user/chat/sessions',
+    CHAT_HISTORY_MESSAGES_BATCH: '/api/lm/user/chat/messages/batch',
+    CHAT_HISTORY_STATS: '/api/lm/user/chat/stats',
+    CHAT_HISTORY_HEALTH: '/api/lm/user/chat/health',
+
+    // 用户RAG服务 (使用/api/user/rag前缀)
+    USER_RAG_UPLOAD: '/api/lm/user/rag/documents/upload',
+    USER_RAG_DOCUMENTS: '/api/lm/user/rag/documents',
+    USER_RAG_SEARCH: '/api/lm/user/rag/search',
+    USER_RAG_STATS: '/api/lm/user/rag/stats',
+    USER_RAG_HEALTH: '/api/lm/user/rag/health',
   },
   
   // 请求头配置
