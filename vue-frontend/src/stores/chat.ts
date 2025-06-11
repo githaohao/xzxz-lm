@@ -4,12 +4,9 @@ import type { Message, ProcessedFile, StreamEvent, RAGSearchRequest } from '@/ty
 import { generateId } from '@/utils/voice-utils'
 import { sendTextMessage, sendMultimodalMessage, searchDocuments } from '@/utils/api'
 import { useConversationStore } from './conversation'
-import { useChatHistoryStore } from './chatHistory'
-import type { CreateMessageDto } from './chatHistory'
 
 export const useChatStore = defineStore('chat', () => {
   const conversationStore = useConversationStore()
-  const chatHistoryStore = useChatHistoryStore()
 
   // 状态
   const isLoading = ref(false)
@@ -40,30 +37,6 @@ export const useChatStore = defineStore('chat', () => {
     return newMessage
   }
 
-  // 将Message转换为CreateMessageDto
-  function messageToDto(
-    message: Message, 
-    sessionId: string, 
-    role: 'user' | 'assistant' | 'system' = 'user'
-  ): CreateMessageDto {
-    return {
-      sessionId,
-      role,
-      content: message.content,
-      messageType: message.fileInfo ? 'multimodal' : 'text',
-      metadata: message.fileInfo ? {
-        fileName: message.fileInfo.name,
-        fileSize: message.fileInfo.size,
-        fileType: message.fileInfo.type,
-        ragEnabled: message.fileInfo.rag_enabled,
-        docId: message.fileInfo.doc_id,
-        ocrCompleted: message.fileInfo.ocrCompleted,
-        // 如果有其他附件信息也可以添加
-        attachments: message.fileInfo.attachments || []
-      } : undefined
-    }
-  }
-
   // 保存消息到聊天历史服务
   async function saveMessageToHistory(
     message: Message, 
@@ -75,22 +48,7 @@ export const useChatStore = defineStore('chat', () => {
       return true
     }
 
-    try {
-      const messageDto = messageToDto(message, sessionId, role)
-      const savedMessage = await chatHistoryStore.addMessage(sessionId, messageDto)
-      
-      if (savedMessage) {
-        console.log(`💾 ${role === 'user' ? '用户' : 'AI'}消息已保存到聊天历史服务:`, message.content.substring(0, 50) + '...')
-        return true
-      } else {
-        console.warn('⚠️ 消息保存返回空结果')
-        return false
-      }
-    } catch (error) {
-      console.error('❌ 保存消息到聊天历史服务失败:', error)
-      // 不抛出错误，继续聊天流程
-      return false
-    }
+    return conversationStore.saveMessageToRemote(message, sessionId, role)
   }
 
   // 批量保存消息到聊天历史服务
@@ -98,28 +56,12 @@ export const useChatStore = defineStore('chat', () => {
     messages: { message: Message, role: 'user' | 'assistant' | 'system' }[],
     sessionId: string
   ): Promise<boolean> {
-    if (!isHistorySyncEnabled.value || messages.length === 0) {
+    if (!isHistorySyncEnabled.value) {
+      console.log('🔄 聊天历史同步已禁用，跳过批量保存')
       return true
     }
 
-    try {
-      const messageDtos = messages.map(({ message, role }) => 
-        messageToDto(message, sessionId, role)
-      )
-      
-      const savedMessages = await chatHistoryStore.addMessagesBatch(messageDtos)
-      
-      if (savedMessages && savedMessages.length > 0) {
-        console.log(`💾 批量保存${savedMessages.length}条消息到聊天历史服务`)
-        return true
-      } else {
-        console.warn('⚠️ 批量消息保存返回空结果')
-        return false
-      }
-    } catch (error) {
-      console.error('❌ 批量保存消息到聊天历史服务失败:', error)
-      return false
-    }
+    return conversationStore.saveMessagesBatchToRemote(messages, sessionId)
   }
 
   // 确保有活跃的聊天会话
@@ -136,31 +78,22 @@ export const useChatStore = defineStore('chat', () => {
       return null
     }
 
-    // 创建新的聊天历史会话
+    // 创建新的聊天历史会话（通过conversation store处理）
     try {
       const currentConv = conversationStore.currentConversation
-      const sessionData = {
-        title: currentConv?.title || `智能对话 ${new Date().toLocaleString()}`,
-        description: '多模态AI智能聊天对话',
-        tags: ['chat', 'ai', 'multimodal']
-      }
-
-      console.log('🆕 创建新的聊天历史会话...', sessionData)
-      const newSession = await chatHistoryStore.createSession(sessionData)
-      
-      if (newSession) {
-        // 将历史会话ID关联到当前对话
-        if (currentConv) {
-          conversationStore.updateConversationHistorySession(currentConv.id, newSession.id)
-          console.log('✅ 新聊天历史会话创建成功:', newSession.id)
-          
+      if (currentConv) {
+        console.log('🆕 为当前对话创建远程会话...')
+        await conversationStore.createRemoteSession(currentConv)
+        
+        // 如果创建成功，返回会话ID
+        if (currentConv.historySessionId) {
           // 如果当前对话已有消息，批量保存到历史记录
           if (messages.value.length > 0) {
             console.log(`🔄 当前对话已有${messages.value.length}条消息，准备同步到历史服务...`)
-            await syncExistingMessagesToHistory(newSession.id)
+            await syncExistingMessagesToHistory(currentConv.historySessionId)
           }
+          return currentConv.historySessionId
         }
-        return newSession.id
       }
     } catch (error) {
       console.error('❌ 创建聊天历史会话失败:', error)
@@ -193,8 +126,10 @@ export const useChatStore = defineStore('chat', () => {
     if (!isHistorySyncEnabled.value) return
 
     try {
-      await chatHistoryStore.updateSession(sessionId, { title: newTitle })
-      console.log('✅ 会话标题已更新:', newTitle)
+      const success = await conversationStore.updateRemoteSession(sessionId, { title: newTitle })
+      if (success) {
+        console.log('✅ 会话标题已更新:', newTitle)
+      }
     } catch (error) {
       console.error('❌ 更新会话标题失败:', error)
     }
@@ -476,7 +411,7 @@ export const useChatStore = defineStore('chat', () => {
   async function loadSessionMessages(sessionId: string, page: number = 1, limit: number = 50) {
     try {
       console.log('📜 加载聊天历史会话消息:', sessionId)
-      const historyMessages = await chatHistoryStore.fetchSessionMessages(sessionId, page, limit)
+      const historyMessages = await conversationStore.fetchRemoteSessionMessages(sessionId, page, limit)
       
       if (historyMessages && historyMessages.length > 0) {
         // 清除当前消息
@@ -548,4 +483,4 @@ export const useChatStore = defineStore('chat', () => {
     loadSessionMessages,
     toggleHistorySync
   }
-}) 
+})

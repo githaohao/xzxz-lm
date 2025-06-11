@@ -1,7 +1,27 @@
 import { defineStore } from 'pinia'
 import { ref, computed } from 'vue'
-import type { Conversation, ConversationData, CreateConversationRequest, Message, RAGDocument } from '@/types'
+import type { 
+  Conversation, 
+  ConversationData, 
+  CreateConversationRequest, 
+  Message, 
+  RAGDocument,
+  ChatSession,
+  ChatMessage,
+  CreateSessionDto,
+  CreateMessageDto,
+  QuerySessionsDto,
+  ChatHistoryResponse
+} from '@/types'
 import { generateId } from '@/utils/voice-utils'
+import { 
+  getChatSessions,
+  createChatSession,
+  getChatSessionMessages,
+  addChatMessage,
+  addChatMessagesBatch,
+  updateChatSession
+} from '@/utils/api'
 
 export const useConversationStore = defineStore('conversation', () => {
   // 状态
@@ -39,7 +59,7 @@ export const useConversationStore = defineStore('conversation', () => {
   }
 
   // 创建新对话
-  function createConversation(request?: CreateConversationRequest): Conversation {
+  async function createConversation(request?: CreateConversationRequest): Promise<Conversation> {
     const now = new Date()
     const conversation: Conversation = {
       id: generateId(),
@@ -65,7 +85,169 @@ export const useConversationStore = defineStore('conversation', () => {
     // 保存到本地缓存
     saveToCache()
 
+    // 自动创建云端会话（如果启用了历史同步）
+    await createRemoteSession(conversation)
+
     return conversation
+  }
+
+  // 创建远程会话
+  async function createRemoteSession(conversation: Conversation) {
+    try {
+      // 动态导入避免循环依赖
+      const { useChatStore } = await import('@/stores/chat')
+      const chatStore = useChatStore()
+
+      // 检查是否启用了历史同步
+      if (!chatStore.isHistorySyncEnabled) {
+        console.log('📝 历史同步已禁用，跳过远程会话创建')
+        return
+      }
+
+      console.log('🔄 正在为对话创建远程会话...', conversation.title)
+      
+      const sessionData: CreateSessionDto = {
+        title: conversation.title,
+        description: '多模态AI智能聊天对话',
+        tags: ['chat', 'ai', 'conversation']
+      }
+
+      const response = await createChatSession(sessionData)
+      
+      if (response.code === 200 && response.data) {
+        const remoteSession = response.data
+        // 将远程会话ID关联到本地对话
+        updateConversationHistorySession(conversation.id, remoteSession.id)
+        console.log('✅ 远程会话创建成功:', remoteSession.id)
+      } else {
+        console.warn('⚠️ 远程会话创建失败，仅保留本地对话')
+      }
+
+    } catch (error) {
+      console.error('❌ 创建远程会话时出错:', error)
+      // 即使远程创建失败，也不影响本地对话的使用
+    }
+  }
+
+  // 创建会话消息DTO
+  function createMessageDto(
+    message: Message, 
+    sessionId: string, 
+    role: 'user' | 'assistant' | 'system' = 'user'
+  ): CreateMessageDto {
+    return {
+      sessionId,
+      role,
+      content: message.content,
+      messageType: message.fileInfo ? 'multimodal' : 'text',
+      metadata: message.fileInfo ? {
+        fileName: message.fileInfo.name,
+        fileSize: message.fileInfo.size,
+        fileType: message.fileInfo.type,
+        ragEnabled: message.fileInfo.rag_enabled,
+        docId: message.fileInfo.doc_id,
+        ocrCompleted: message.fileInfo.ocrCompleted,
+        attachments: message.fileInfo.attachments || []
+      } : undefined
+    }
+  }
+
+  // 保存消息到远程会话
+  async function saveMessageToRemote(
+    message: Message, 
+    sessionId: string, 
+    role: 'user' | 'assistant' | 'system' = 'user'
+  ): Promise<boolean> {
+    try {
+      const messageDto = createMessageDto(message, sessionId, role)
+      const response = await addChatMessage(sessionId, messageDto)
+      
+      if (response.code === 200 && response.data) {
+        console.log(`💾 ${role === 'user' ? '用户' : 'AI'}消息已保存到远程会话:`, message.content.substring(0, 50) + '...')
+        return true
+      } else {
+        console.warn('⚠️ 消息保存返回空结果')
+        return false
+      }
+    } catch (error) {
+      console.error('❌ 保存消息到远程会话失败:', error)
+      return false
+    }
+  }
+
+  // 批量保存消息到远程会话
+  async function saveMessagesBatchToRemote(
+    messages: { message: Message, role: 'user' | 'assistant' | 'system' }[],
+    sessionId: string
+  ): Promise<boolean> {
+    try {
+      const messageDtos = messages.map(({ message, role }) => 
+        createMessageDto(message, sessionId, role)
+      )
+      
+      const response = await addChatMessagesBatch(messageDtos)
+      
+      if (response.code === 200 && response.data) {
+        console.log(`✅ 批量保存${messages.length}条消息到远程会话成功`)
+        return true
+      } else {
+        console.warn('⚠️ 批量保存消息失败')
+        return false
+      }
+    } catch (error) {
+      console.error('❌ 批量保存消息到远程会话失败:', error)
+      return false
+    }
+  }
+
+  // 获取远程会话列表
+  async function fetchRemoteSessions(queryParams: QuerySessionsDto = {}): Promise<ChatSession[]> {
+    try {
+      const response = await getChatSessions(queryParams)
+      
+      if (response.code === 200 && response.data) {
+        return response.data
+      } else {
+        throw new Error(response.msg || '获取远程会话列表失败')
+      }
+    } catch (error) {
+      console.error('❌ 获取远程会话列表失败:', error)
+      return []
+    }
+  }
+
+  // 获取远程会话消息
+  async function fetchRemoteSessionMessages(sessionId: string, page: number = 1, limit: number = 50): Promise<ChatMessage[]> {
+    try {
+      const response = await getChatSessionMessages(sessionId, page, limit)
+      
+      if (response.code === 200 && response.data) {
+        return response.data
+      } else {
+        throw new Error(response.msg || '获取远程会话消息失败')
+      }
+    } catch (error) {
+      console.error('❌ 获取远程会话消息失败:', error)
+      return []
+    }
+  }
+
+  // 更新远程会话信息
+  async function updateRemoteSession(sessionId: string, updateData: Partial<CreateSessionDto>): Promise<boolean> {
+    try {
+      const response = await updateChatSession(sessionId, updateData)
+      
+      if (response.code === 200 && response.data) {
+        console.log('✅ 远程会话更新成功')
+        return true
+      } else {
+        console.warn('⚠️ 远程会话更新失败')
+        return false
+      }
+    } catch (error) {
+      console.error('❌ 更新远程会话失败:', error)
+      return false
+    }
   }
 
   // 设置当前对话
@@ -286,10 +468,7 @@ export const useConversationStore = defineStore('conversation', () => {
   async function syncFromBackend() {
     try {
       const { useChatStore } = await import('@/stores/chat')
-      const { useChatHistoryStore } = await import('@/stores/chatHistory')
-      
       const chatStore = useChatStore()
-      const chatHistoryStore = useChatHistoryStore()
       
       // 检查是否启用了历史同步
       if (!chatStore.isHistorySyncEnabled) {
@@ -300,12 +479,19 @@ export const useConversationStore = defineStore('conversation', () => {
       console.log('🔄 正在从后端同步对话列表...')
       
       // 获取用户的聊天会话列表
-      await chatHistoryStore.fetchSessions({ page: 1, limit: 100 })
+      const remoteSessions = await fetchRemoteSessions({ page: 1, limit: 100 })
       
-      const remoteSessions = chatHistoryStore.sessions
       console.log(`📥 从后端获取到 ${remoteSessions.length} 个会话`)
       
-      // 将后端会话转换为本地对话格式
+      // 记录同步统计
+      let addedCount = 0
+      let updatedCount = 0
+      let removedCount = 0
+      
+      // 创建远程会话ID集合，用于后续清理
+      const remoteSessionIds = new Set(remoteSessions.map((session: ChatSession) => session.id))
+      
+      // 处理远程会话：新增或更新本地对话
       for (const session of remoteSessions) {
         // 检查本地是否已存在相同的对话
         const existingConv = conversations.value.find(c => c.historySessionId === session.id)
@@ -332,30 +518,129 @@ export const useConversationStore = defineStore('conversation', () => {
             ragDocuments: []
           })
           
-          console.log(`✅ 同步会话: ${session.title} (${session.id})`)
+          addedCount++
+          console.log(`➕ 新增会话: ${session.title} (${session.id})`)
         } else {
-          // 更新现有对话的信息
-          existingConv.title = session.title
-          existingConv.updatedAt = new Date(session.updatedAt)
-          existingConv.messageCount = session.messageCount || 0
+          // 检查是否需要更新现有对话
+          const remoteUpdatedTime = new Date(session.updatedAt).getTime()
+          const localUpdatedTime = existingConv.updatedAt.getTime()
           
-          // 更新对话数据中的conversation引用
-          const data = conversationData.value.get(existingConv.id)
-          if (data) {
-            data.conversation = existingConv
+          if (remoteUpdatedTime > localUpdatedTime || 
+              existingConv.title !== session.title ||
+              existingConv.messageCount !== (session.messageCount || 0)) {
+            
+            // 更新现有对话的信息
+            existingConv.title = session.title
+            existingConv.updatedAt = new Date(session.updatedAt)
+            existingConv.messageCount = session.messageCount || 0
+            existingConv.lastMessage = session.description
+            
+            // 更新对话数据中的conversation引用
+            const data = conversationData.value.get(existingConv.id)
+            if (data) {
+              data.conversation = existingConv
+            }
+            
+            updatedCount++
+            console.log(`🔄 更新会话: ${session.title} (${session.id})`)
           }
         }
+      }
+      
+      // 处理本地对话：移除云端不存在的所有会话（包括纯本地对话）
+      // 选项B：彻底清理所有云端没有的对话
+      const conversationsToRemove = conversations.value.filter(conv => {
+        // 如果对话有historySessionId，检查云端是否存在
+        if (conv.historySessionId) {
+          return !remoteSessionIds.has(conv.historySessionId)
+        }
+        // 如果是纯本地对话（没有historySessionId），也删除
+        return true
+      })
+      
+      // 统计要删除的对话类型
+      const syncedButMissing = conversationsToRemove.filter(conv => conv.historySessionId)
+      const pureLocalConversations = conversationsToRemove.filter(conv => !conv.historySessionId)
+      
+      console.log(`🧹 将清除所有云端不存在的对话:`)
+      console.log(`   - 云端已删除的对话: ${syncedButMissing.length} 个`)
+      console.log(`   - 纯本地对话: ${pureLocalConversations.length} 个`)
+      
+      for (const conv of conversationsToRemove) {
+        const reason = conv.historySessionId 
+          ? `云端已删除 (${conv.historySessionId})` 
+          : '纯本地对话'
+        console.log(`🗑️ 移除本地会话 (${reason}): ${conv.title}`)
+        
+        // 从对话列表中移除
+        const index = conversations.value.findIndex(c => c.id === conv.id)
+        if (index > -1) {
+          conversations.value.splice(index, 1)
+        }
+        
+        // 清理对话数据
+        conversationData.value.delete(conv.id)
+        
+        // 如果删除的是当前对话，需要切换到其他对话
+        if (currentConversation.value?.id === conv.id) {
+          if (conversations.value.length > 0) {
+            setCurrentConversation(conversations.value[0].id)
+          } else {
+            currentConversation.value = null
+          }
+        }
+        
+        removedCount++
       }
       
       // 按更新时间排序
       conversations.value.sort((a, b) => b.updatedAt.getTime() - a.updatedAt.getTime())
       
-      console.log(`✅ 对话同步完成，总计 ${conversations.value.length} 个对话`)
+      // 立即保存到缓存
+      saveToCache()
+      
+      // 输出同步统计
+      const syncedConversations = conversations.value.filter(conv => conv.historySessionId)
+      
+      console.log(`✅ 对话同步完成 (彻底清理模式)`)
+      console.log(`   📊 云端同步: 新增 ${addedCount} | 更新 ${updatedCount} | 清除 ${removedCount}`)
+      console.log(`   📁 对话统计: 云端同步 ${syncedConversations.length} 个 | 总计 ${conversations.value.length} 个`)
+      console.log(`   🧹 清理详情: 云端已删除 ${syncedButMissing.length} 个 | 纯本地对话 ${pureLocalConversations.length} 个`)
+      
       return true
       
     } catch (error) {
       console.error('❌ 从后端同步对话失败:', error)
       return false
+    }
+  }
+
+  // 强制同步：用户主动触发的完整同步
+  async function forceSync(options: { clearLocalOnly?: boolean } = {}) {
+    try {
+      console.log('🔄 用户触发强制同步...')
+      
+      // 如果选择清理纯本地对话，先清理
+      if (options.clearLocalOnly) {
+        const clearResult = clearLocalOnlyConversations()
+        console.log(`🧹 强制同步：已清理 ${clearResult.removedCount} 个纯本地对话`)
+      }
+      
+      const success = await syncFromBackend()
+      
+      if (success) {
+        console.log('✅ 强制同步完成')
+        return { success: true, message: '同步成功' }
+      } else {
+        console.log('❌ 强制同步失败')
+        return { success: false, message: '同步失败，请检查网络连接' }
+      }
+    } catch (error) {
+      console.error('❌ 强制同步错误:', error)
+      return { 
+        success: false, 
+        message: error instanceof Error ? error.message : '同步过程中发生未知错误' 
+      }
     }
   }
 
@@ -370,17 +655,59 @@ export const useConversationStore = defineStore('conversation', () => {
     
     // 3. 如果没有对话，创建默认对话
     if (conversations.value.length === 0) {
-      createConversation({ title: '默认对话' })
+      await createConversation({ title: '默认对话' })
       console.log('📝 创建了默认对话')
-    } else if (syncSuccess) {
-      // 同步成功后保存到缓存
-      saveToCache()
     }
     
     // 4. 设置当前对话（如果没有活跃对话）
     if (!currentConversation.value && conversations.value.length > 0) {
       setCurrentConversation(conversations.value[0].id)
     }
+    
+    // 5. 输出初始化完成状态
+    // console.log(`🎯 对话存储初始化完成，共 ${conversations.value.length} 个对话${syncSuccess ? '(已同步)' : '(仅本地)'}`)
+  }
+
+  // 清理纯本地对话（没有同步到云端的对话）
+  function clearLocalOnlyConversations() {
+    const localOnlyConversations = conversations.value.filter(conv => !conv.historySessionId)
+    
+    if (localOnlyConversations.length === 0) {
+      console.log('📝 没有需要清理的纯本地对话')
+      return { success: true, removedCount: 0 }
+    }
+    
+    let removedCount = 0
+    
+    for (const conv of localOnlyConversations) {
+      console.log(`🗑️ 清理纯本地对话: ${conv.title}`)
+      
+      // 从对话列表中移除
+      const index = conversations.value.findIndex(c => c.id === conv.id)
+      if (index > -1) {
+        conversations.value.splice(index, 1)
+      }
+      
+      // 清理对话数据
+      conversationData.value.delete(conv.id)
+      
+      // 如果删除的是当前对话，需要切换到其他对话
+      if (currentConversation.value?.id === conv.id) {
+        if (conversations.value.length > 0) {
+          setCurrentConversation(conversations.value[0].id)
+        } else {
+          currentConversation.value = null
+        }
+      }
+      
+      removedCount++
+    }
+    
+    // 保存到缓存
+    saveToCache()
+    
+    console.log(`✅ 已清理 ${removedCount} 个纯本地对话`)
+    return { success: true, removedCount }
   }
 
   return {
@@ -409,7 +736,18 @@ export const useConversationStore = defineStore('conversation', () => {
     saveToCache,
     loadFromCache,
     clearAllConversations,
+    clearLocalOnlyConversations,
     syncFromBackend,
-    initialize
+    initialize,
+    forceSync,
+    
+    // 远程会话管理方法
+    createRemoteSession,
+    saveMessageToRemote,
+    saveMessagesBatchToRemote,
+    fetchRemoteSessions,
+    fetchRemoteSessionMessages,
+    updateRemoteSession,
+    createMessageDto
   }
-}) 
+})

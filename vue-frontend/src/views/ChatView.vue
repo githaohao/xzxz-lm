@@ -519,7 +519,6 @@ import { Separator } from '@/components/ui/separator'
 import { Avatar, AvatarFallback } from '@/components/ui/avatar'
 import { useChatStore } from '@/stores/chat'
 import { useRAGStore } from '@/stores/rag'
-import { useChatHistoryStore } from '@/stores/chatHistory'
 import { formatTime, formatFileSize, hasThinkTags, extractThinkContent } from '@/utils/voice-utils'
 import { uploadFile, getDocumentInfo } from '@/utils/api'
 import { getRagSuggestion, isFileRagSuitable } from '@/utils/rag-utils'
@@ -545,10 +544,6 @@ const {
   cancelRequest, 
   setProcessedFile,
 } = chatStore
-
-// 聊天历史Store
-const chatHistoryStore = useChatHistoryStore()
-const { sessions, loading: historyLoading } = storeToRefs(chatHistoryStore)
 
 const inputMessage = ref('')
 const fileInput = ref<HTMLInputElement>()

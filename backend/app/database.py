@@ -26,23 +26,7 @@ class Database:
                 # 启用外键约束
                 await db.execute("PRAGMA foreign_keys = ON")
                 
-                # 创建用户表
-                await db.execute("""
-                    CREATE TABLE IF NOT EXISTS users (
-                        id INTEGER PRIMARY KEY,
-                        user_id INTEGER UNIQUE NOT NULL,
-                        username TEXT,
-                        nickname TEXT,
-                        email TEXT,
-                        avatar TEXT,
-                        first_login_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                        last_login_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-                    )
-                """)
-                
-                # 创建聊天会话表
+                # 创建聊天会话表（直接使用用户ID，不依赖用户表）
                 await db.execute("""
                     CREATE TABLE IF NOT EXISTS chat_sessions (
                         id TEXT PRIMARY KEY,
@@ -54,12 +38,11 @@ class Database:
                         message_count INTEGER DEFAULT 0,
                         last_message_at TIMESTAMP,
                         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                        FOREIGN KEY (user_id) REFERENCES users (user_id) ON DELETE CASCADE
+                        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
                     )
                 """)
                 
-                # 创建聊天消息表
+                # 创建聊天消息表（直接使用用户ID，不依赖用户表）
                 await db.execute("""
                     CREATE TABLE IF NOT EXISTS chat_messages (
                         id TEXT PRIMARY KEY,
@@ -74,12 +57,11 @@ class Database:
                         sequence_number INTEGER NOT NULL,
                         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                         FOREIGN KEY (session_id) REFERENCES chat_sessions (id) ON DELETE CASCADE,
-                        FOREIGN KEY (user_id) REFERENCES users (user_id) ON DELETE CASCADE,
                         FOREIGN KEY (parent_message_id) REFERENCES chat_messages (id) ON DELETE SET NULL
                     )
                 """)
                 
-                # 创建知识库表
+                # 创建知识库表（直接使用用户ID，不依赖用户表）
                 await db.execute("""
                     CREATE TABLE IF NOT EXISTS knowledge_bases (
                         id TEXT PRIMARY KEY,
@@ -90,12 +72,11 @@ class Database:
                         is_default BOOLEAN DEFAULT FALSE,
                         document_count INTEGER DEFAULT 0,
                         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                        FOREIGN KEY (user_id) REFERENCES users (user_id) ON DELETE CASCADE
+                        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
                     )
                 """)
                 
-                # 创建文档表
+                # 创建文档表（直接使用用户ID，不依赖用户表）
                 await db.execute("""
                     CREATE TABLE IF NOT EXISTS documents (
                         id TEXT PRIMARY KEY,
@@ -112,12 +93,11 @@ class Database:
                         upload_path TEXT,
                         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                         updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                        FOREIGN KEY (user_id) REFERENCES users (user_id) ON DELETE CASCADE,
                         FOREIGN KEY (knowledge_base_id) REFERENCES knowledge_bases (id) ON DELETE SET NULL
                     )
                 """)
                 
-                # 创建用户RAG文档表（专门用于用户独立的RAG服务）
+                # 创建用户RAG文档表（直接使用用户ID，不依赖用户表）
                 await db.execute("""
                     CREATE TABLE IF NOT EXISTS user_documents (
                         id TEXT PRIMARY KEY DEFAULT (lower(hex(randomblob(16)))),
@@ -129,8 +109,7 @@ class Database:
                         file_size INTEGER,
                         chunk_count INTEGER DEFAULT 0,
                         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                        FOREIGN KEY (user_id) REFERENCES users (user_id) ON DELETE CASCADE
+                        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
                     )
                 """)
                 
@@ -164,52 +143,6 @@ class Database:
             yield db
         finally:
             await db.close()
-    
-    async def ensure_user_exists(self, user_id: int, user_info: Optional[Dict] = None) -> bool:
-        """确保用户存在，如果不存在则创建"""
-        try:
-            async with self.get_connection() as db:
-                # 检查用户是否存在
-                cursor = await db.execute(
-                    "SELECT id FROM users WHERE user_id = ?",
-                    (user_id,)
-                )
-                user = await cursor.fetchone()
-                
-                if not user:
-                    # 创建新用户
-                    username = user_info.get('username', f'user_{user_id}') if user_info else f'user_{user_id}'
-                    nickname = user_info.get('nickname', username) if user_info else username
-                    email = user_info.get('email', '') if user_info else ''
-                    avatar = user_info.get('avatar', '') if user_info else ''
-                    
-                    await db.execute("""
-                        INSERT INTO users (user_id, username, nickname, email, avatar)
-                        VALUES (?, ?, ?, ?, ?)
-                    """, (user_id, username, nickname, email, avatar))
-                    
-                    # 创建默认知识库
-                    kb_id = str(uuid.uuid4())
-                    await db.execute("""
-                        INSERT INTO knowledge_bases (id, user_id, name, description, is_default)
-                        VALUES (?, ?, ?, ?, ?)
-                    """, (kb_id, user_id, "默认知识库", "用户默认知识库", True))
-                    
-                    await db.commit()
-                    logger.info(f"✅ 创建新用户: {user_id} ({username})")
-                else:
-                    # 更新最后登录时间
-                    await db.execute(
-                        "UPDATE users SET last_login_at = CURRENT_TIMESTAMP WHERE user_id = ?",
-                        (user_id,)
-                    )
-                    await db.commit()
-                
-                return True
-                
-        except Exception as e:
-            logger.error(f"❌ 确保用户存在失败: {e}")
-            return False
 
 # 全局数据库实例
 database = Database()

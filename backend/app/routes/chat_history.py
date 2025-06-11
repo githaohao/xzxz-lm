@@ -20,6 +20,7 @@ async def create_session(
 ):
     """创建聊天会话"""
     try:
+        print(f"session_data: {user_id}")
         logger.info(f"用户 {user_id} 创建会话: {session_data.title}")
         
         session = await chat_history_service.create_session(user_id, session_data)

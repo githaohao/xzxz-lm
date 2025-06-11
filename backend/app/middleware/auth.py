@@ -4,7 +4,6 @@ from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.responses import Response
 from typing import Optional, Dict, Any, Callable
 import logging
-from app.database import database
 
 logger = logging.getLogger(__name__)
 
@@ -77,7 +76,7 @@ class UserAuthMiddleware(BaseHTTPMiddleware):
                 logger.error(f"无效的用户ID格式: {user_id}")
                 return self._get_default_user()
             
-            # 构建用户信息
+            # 构建用户信息（仅用于请求处理，不存储到数据库）
             user_info = {
                 "user_id": user_id,
                 "username": username or f"user_{user_id}",
@@ -85,13 +84,6 @@ class UserAuthMiddleware(BaseHTTPMiddleware):
                 "email": email or "",
                 "avatar": avatar or ""
             }
-            
-            # 确保用户在数据库中存在
-            try:
-                await database.ensure_user_exists(user_id, user_info)
-            except Exception as e:
-                logger.warning(f"确保用户存在失败: {e}")
-                # 继续使用提取的用户信息
             
             return user_info
             
