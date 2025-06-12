@@ -13,6 +13,7 @@ from app.models.schemas import (
     RAGSearchResponse, 
     DocumentInfo
 )
+from app.models.chat_history import ChatHistoryResponse
 
 from app.services.rag_service import rag_service
 from app.config import settings
@@ -129,3 +130,35 @@ async def delete_document(doc_id: str):
     except Exception as e:
         logger.error(f"删除文档失败: {e}")
         raise HTTPException(status_code=500, detail=f"删除文档失败: {str(e)}")
+
+
+@router.get("/documents/{doc_id}/chunks", response_model=ChatHistoryResponse)
+async def get_document_chunks(doc_id: str):
+    """获取文档的分块内容"""
+    try:
+        start_time = time.time()
+        
+        # 获取文档分块数据
+        chunks_data = await rag_service.get_document_chunks(doc_id)
+        
+        if not chunks_data:
+            raise HTTPException(status_code=404, detail="文档不存在或没有分块数据")
+        
+        processing_time = time.time() - start_time
+        
+        return ChatHistoryResponse(
+            code=200,
+            msg="获取文档分块成功",
+            data={
+                "doc_id": doc_id,
+                "chunks": chunks_data,
+                "total_chunks": len(chunks_data),
+                "processing_time": processing_time
+            }
+        )
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"获取文档分块失败: {e}")
+        raise HTTPException(status_code=500, detail=f"获取文档分块失败: {str(e)}")

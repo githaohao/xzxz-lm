@@ -545,21 +545,21 @@
             v-for="document in enhancedFilteredDocuments"
             :key="document.doc_id"
             :class="[
-              'group p-4 rounded-lg border cursor-pointer transition-all duration-200 flex items-center gap-4',
+              'group p-4 rounded-lg border transition-all duration-200 flex items-center gap-4',
               selectedDocuments.has(document.doc_id)
                 ? 'border-2 border-purple-500 bg-purple-50 dark:border-purple-400 dark:bg-purple-950/30 shadow-lg'
                 : 'border border-slate-200 hover:border-slate-300 dark:border-slate-700 dark:hover:border-slate-600 hover:bg-slate-50 dark:hover:bg-slate-800/50 hover:shadow-md'
             ]"
-            @click="toggleDocument(document.doc_id)"
           >
             <!-- 选择指示器 -->
             <div
               :class="[
-                'w-5 h-5 rounded border-2 flex items-center justify-center transition-all duration-200 flex-shrink-0',
+                'w-5 h-5 rounded border-2 flex items-center justify-center transition-all duration-200 flex-shrink-0 cursor-pointer',
                 selectedDocuments.has(document.doc_id)
                   ? 'border-purple-500 bg-purple-500 scale-110'
-                  : 'border-slate-300 dark:border-slate-600 group-hover:border-purple-400'
+                  : 'border-slate-300 dark:border-slate-600 hover:border-purple-400'
               ]"
+              @click="toggleDocument(document.doc_id)"
             >
               <Check v-if="selectedDocuments.has(document.doc_id)" class="h-3 w-3 text-white" />
             </div>
@@ -613,36 +613,39 @@
               </Badge>
             </div>
 
-            <!-- 文档操作 -->
-            <DropdownMenu>
-              <DropdownMenuTrigger asChild>
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  class="opacity-0 group-hover:opacity-100 transition-opacity p-1 h-7 w-7 flex-shrink-0"
-                  @click.stop
-                >
-                  <MoreVertical class="h-4 w-4" />
-                </Button>
-              </DropdownMenuTrigger>
-              <DropdownMenuContent align="end">
-                <DropdownMenuItem @click="previewDocument(document)">
-                  <Eye class="h-4 w-4 mr-2" />
-                  预览
-                </DropdownMenuItem>
-                <DropdownMenuItem @click="showMoveDialog(document)">
-                  <Folder class="h-4 w-4 mr-2" />
-                  移动
-                </DropdownMenuItem>
-                <DropdownMenuItem 
-                  @click="deleteDocument(document.doc_id)"
-                  class="text-red-600 focus:text-red-600"
-                >
-                  <Trash2 class="h-4 w-4 mr-2" />
-                  删除
-                </DropdownMenuItem>
-              </DropdownMenuContent>
-            </DropdownMenu>
+            <!-- 文档操作按钮 - 直接显示在外面 -->
+            <div class="flex items-center gap-1 flex-shrink-0">
+              <Button
+                @click="previewDocument(document)"
+                variant="outline"
+                size="sm"
+                class="h-8 px-2 text-xs hover:bg-blue-50 hover:border-blue-200 dark:hover:bg-blue-950"
+                title="预览文档"
+              >
+                <Eye class="h-3 w-3 mr-1" />
+                预览
+              </Button>
+              <Button
+                @click="showMoveDialog(document)"
+                variant="outline"
+                size="sm"
+                class="h-8 px-2 text-xs hover:bg-green-50 hover:border-green-200 dark:hover:bg-green-950"
+                title="移动到其他知识库"
+              >
+                <Folder class="h-3 w-3 mr-1" />
+                移动
+              </Button>
+              <Button
+                @click="deleteDocument(document.doc_id)"
+                variant="outline"
+                size="sm"
+                class="h-8 px-2 text-xs text-red-600 hover:bg-red-50 hover:border-red-200 hover:text-red-700 dark:hover:bg-red-950"
+                title="删除文档"
+              >
+                <Trash2 class="h-3 w-3 mr-1" />
+                删除
+              </Button>
+            </div>
           </div>
         </div>
       </ScrollArea>
@@ -819,6 +822,57 @@
       </div>
     </DialogContent>
   </Dialog>
+
+  <!-- 文档预览对话框 -->
+  <DocumentPreviewDialog
+    v-model:is-open="showPreviewDialog"
+    :document="previewingDocument"
+    :knowledge-bases="getDocumentKnowledgeBases(previewingDocument?.doc_id || '')"
+    @move="handlePreviewMove"
+    @delete="handlePreviewDelete"
+  />
+
+  <!-- 删除知识库确认对话框 -->
+  <ConfirmDialog
+    v-model:open="showDeleteKbDialog"
+    type="danger"
+    title="删除知识库"
+    description="确定要删除以下知识库吗？"
+    :details="deletingKnowledgeBase?.name"
+    :sub-details="`包含 ${knowledgeBaseStats[deletingKnowledgeBase?.id || '']?.totalDocuments || 0} 个文档`"
+    warning-text="此操作无法撤销，知识库中的所有文档都将被永久删除"
+    confirm-text="确认删除"
+    :confirm-icon="Trash2"
+    :loading="isDeleting"
+    @confirm="handleDeleteKnowledgeBase"
+  />
+
+  <!-- 删除单个文档确认对话框 -->
+  <ConfirmDialog
+    v-model:open="showDeleteDocDialog"
+    type="danger"
+    title="删除文档"
+    description="确定要删除这个文档吗？"
+    warning-text="此操作无法撤销，文档将被永久删除"
+    confirm-text="确认删除"
+    :confirm-icon="Trash2"
+    :loading="isDeleting"
+    @confirm="confirmDeleteDocument"
+  />
+
+  <!-- 批量删除文档确认对话框 -->
+  <ConfirmDialog
+    v-model:open="showBatchDeleteDialog"
+    type="danger"
+    title="批量删除文档"
+    description="确定要删除选中的文档吗？"
+    :details="`已选择 ${selectedDocuments.size} 个文档`"
+    warning-text="此操作无法撤销，所有选中的文档都将被永久删除"
+    confirm-text="确认删除"
+    :confirm-icon="Trash2"
+    :loading="isDeleting"
+    @confirm="confirmBatchDelete"
+  />
 </template>
 
 <script setup lang="ts">
@@ -859,6 +913,8 @@ import { Textarea } from '@/components/ui/textarea'
 import { useKnowledgeBaseStore } from '@/stores/knowledgeBase'
 import { deleteDocument as apiDeleteDocument, uploadFile } from '@/utils/api'
 import type { KnowledgeBase, RAGDocument } from '@/types'
+import DocumentPreviewDialog from '@/components/DocumentPreviewDialog.vue'
+import ConfirmDialog from '@/components/ui/ConfirmDialog.vue'
 
 // 引入RAG搜索相关API和类型
 import { searchDocuments } from '@/utils/api'
@@ -902,13 +958,15 @@ const showCreateDialog = ref(false)
 const showUncategorized = ref(false)
 const showFilterDialog = ref(false)
 const showUploadProgress = ref(false)
+const showPreviewDialog = ref(false)
+const previewingDocument = ref<RAGDocument | null>(null)
 const editingKnowledgeBase = ref<KnowledgeBase | null>(null)
 const batchMoveTarget = ref('')
 const fileInputRef = ref<HTMLInputElement | null>(null)
 const isUploading = ref(false)
 const searchType = ref('filename')
 const isSearching = ref(false)
-const viewMode = ref<'grid' | 'list'>('grid')
+const viewMode = ref<'grid' | 'list'>('list')
 
 // RAG内容搜索相关状态
 const semanticSearchResults = ref<RAGSearchResponse | null>(null)
@@ -923,6 +981,14 @@ interface UploadProgress {
 }
 
 const uploadProgress = ref<UploadProgress[]>([])
+
+// 确认对话框状态
+const showDeleteKbDialog = ref(false)
+const showDeleteDocDialog = ref(false)
+const showBatchDeleteDialog = ref(false)
+const deletingKnowledgeBase = ref<KnowledgeBase | null>(null)
+const deletingDocumentId = ref<string | null>(null)
+const isDeleting = ref(false)
 
 // 新建/编辑知识库表单
 const newKnowledgeBase = ref({
@@ -1067,9 +1133,24 @@ async function handleCreateKnowledgeBase() {
 }
 
 // 删除知识库
-async function confirmDeleteKnowledgeBase(kb: KnowledgeBase) {
-  if (confirm(`确定要删除知识库"${kb.name}"吗？删除后无法恢复。`)) {
-    await deleteKnowledgeBase(kb.id)
+function confirmDeleteKnowledgeBase(kb: KnowledgeBase) {
+  deletingKnowledgeBase.value = kb
+  showDeleteKbDialog.value = true
+}
+
+async function handleDeleteKnowledgeBase() {
+  if (!deletingKnowledgeBase.value) return
+  
+  isDeleting.value = true
+  try {
+    await deleteKnowledgeBase(deletingKnowledgeBase.value.id)
+    showDeleteKbDialog.value = false
+    deletingKnowledgeBase.value = null
+  } catch (error) {
+    console.error('删除知识库失败:', error)
+    alert('删除知识库失败，请重试')
+  } finally {
+    isDeleting.value = false
   }
 }
 
@@ -1088,29 +1169,36 @@ async function handleBatchMove(targetKbId: string) {
   }
 }
 
-async function handleBatchDelete() {
+function handleBatchDelete() {
+  if (selectedDocuments.value.size === 0) return
+  showBatchDeleteDialog.value = true
+}
+
+async function confirmBatchDelete() {
   if (selectedDocuments.value.size === 0) return
   
-  const count = selectedDocuments.value.size
-  if (confirm(`确定要删除选中的 ${count} 个文档吗？删除后无法恢复。`)) {
-    try {
-      const docIds = Array.from(selectedDocuments.value)
-      await Promise.all(docIds.map(docId => apiDeleteDocument(docId)))
-      
-      // 重新获取文档列表
-      await fetchAllDocuments()
-      clearSelection()
-    } catch (error) {
-      console.error('删除文档失败:', error)
-      alert('删除文档失败，请重试')
-    }
+  isDeleting.value = true
+  try {
+    const docIds = Array.from(selectedDocuments.value)
+    await Promise.all(docIds.map(docId => apiDeleteDocument(docId)))
+    
+    // 重新获取文档列表
+    await fetchAllDocuments()
+    clearSelection()
+    showBatchDeleteDialog.value = false
+  } catch (error) {
+    console.error('删除文档失败:', error)
+    alert('删除文档失败，请重试')
+  } finally {
+    isDeleting.value = false
   }
 }
 
 // 文档操作
 function previewDocument(document: RAGDocument) {
-  // TODO: 实现文档预览功能
-  console.log('预览文档:', document.filename)
+  previewingDocument.value = document
+  showPreviewDialog.value = true
+  console.log('📖 打开文档预览:', document.filename)
 }
 
 function showMoveDialog(document: RAGDocument) {
@@ -1118,15 +1206,34 @@ function showMoveDialog(document: RAGDocument) {
   console.log('移动文档:', document.filename)
 }
 
-async function deleteDocument(docId: string) {
-  if (confirm('确定要删除这个文档吗？删除后无法恢复。')) {
-    try {
-      await apiDeleteDocument(docId)
-      await fetchAllDocuments()
-    } catch (error) {
-      console.error('删除文档失败:', error)
-      alert('删除文档失败，请重试')
-    }
+// 处理文档预览相关事件
+function handlePreviewMove(document: RAGDocument) {
+  showMoveDialog(document)
+}
+
+function handlePreviewDelete(docId: string) {
+  deleteDocument(docId)
+}
+
+function deleteDocument(docId: string) {
+  deletingDocumentId.value = docId
+  showDeleteDocDialog.value = true
+}
+
+async function confirmDeleteDocument() {
+  if (!deletingDocumentId.value) return
+  
+  isDeleting.value = true
+  try {
+    await apiDeleteDocument(deletingDocumentId.value)
+    await fetchAllDocuments()
+    showDeleteDocDialog.value = false
+    deletingDocumentId.value = null
+  } catch (error) {
+    console.error('删除文档失败:', error)
+    alert('删除文档失败，请重试')
+  } finally {
+    isDeleting.value = false
   }
 }
 

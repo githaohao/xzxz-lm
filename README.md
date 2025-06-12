@@ -300,15 +300,6 @@ export default defineConfig({
 - `GET /api/user/chat/stats` - 获取用户聊天统计信息
 - `GET /api/user/chat/health` - 聊天历史服务健康检查
 
-### 📚 用户知识库服务 (/api/user/rag/*)
-- `POST /api/user/rag/documents/upload` - 上传文档到个人知识库
-- `GET /api/user/rag/documents` - 获取用户文档列表
-- `POST /api/user/rag/search` - 在用户知识库中搜索文档
-- `DELETE /api/user/rag/documents/{id}` - 删除用户文档
-- `GET /api/user/rag/documents/{id}/chunks` - 获取文档分块内容
-- `GET /api/user/rag/stats` - 获取用户RAG统计信息
-- `GET /api/user/rag/health` - 用户RAG服务健康检查
-
 ### 👤 若依用户系统 (/api/system/*)
 - `GET /api/system/captcha` - 获取验证码
 - `POST /api/system/login` - 用户登录
@@ -519,7 +510,6 @@ docker-compose up -d
 ```
 传统架构: /api/chat/* (全局共享)
 新架构: /api/user/chat/* (用户绑定)
-       /api/user/rag/* (个人知识库)
 ```
 
 #### 🎯 核心改进

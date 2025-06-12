@@ -219,6 +219,33 @@
       </div>
     </DialogContent>
   </Dialog>
+
+  <!-- 删除单个文档确认对话框 -->
+  <ConfirmDialog
+    v-model:open="showDeleteDocDialog"
+    type="danger"
+    title="移除文档"
+    description="确定要从当前对话中移除这个文档吗？"
+    warning-text="此操作会将文档从对话的知识库中移除，但不会删除原始文档"
+    confirm-text="确认移除"
+    :confirm-icon="Trash2"
+    :loading="isDeleting"
+    @confirm="confirmDeleteDocument"
+  />
+
+  <!-- 批量删除文档确认对话框 -->
+  <ConfirmDialog
+    v-model:open="showBatchDeleteDialog"
+    type="danger"
+    title="批量移除文档"
+    description="确定要从当前对话中移除选中的文档吗？"
+    :details="`已选择 ${selectedCount} 个文档`"
+    warning-text="此操作会将这些文档从对话的知识库中移除，但不会删除原始文档"
+    confirm-text="确认移除"
+    :confirm-icon="Trash2"
+    :loading="isDeleting"
+    @confirm="confirmBatchDelete"
+  />
 </template>
 
 <script setup lang="ts">
@@ -251,6 +278,7 @@ import { ScrollArea } from '@/components/ui/scroll-area'
 import { useRAGStore } from '@/stores/rag'
 import { useConversationStore } from '@/stores/conversation'
 import type { RAGDocument } from '@/types'
+import ConfirmDialog from '@/components/ui/ConfirmDialog.vue'
 
 // Props
 interface Props {
@@ -270,6 +298,12 @@ const emit = defineEmits<{
 // State
 const isOpen = ref(props.open)
 const searchQuery = ref('')
+
+// 确认对话框状态
+const showDeleteDocDialog = ref(false)
+const showBatchDeleteDialog = ref(false)
+const deletingDocumentId = ref<string | null>(null)
+const isDeleting = ref(false)
 
 // Stores
 const ragStore = useRAGStore()
@@ -341,18 +375,46 @@ async function refreshDocuments() {
 
 // 从对话中删除文档
 function handleRemoveFromConversation(docId: string) {
-  if (conversationStore.currentConversation && confirm('确定要删除这个文档吗？删除后无法恢复。')) {
-    conversationStore.removeRagDocumentFromConversation(conversationStore.currentConversation.id, docId)
+  if (!conversationStore.currentConversation) return
+  deletingDocumentId.value = docId
+  showDeleteDocDialog.value = true
+}
+
+async function confirmDeleteDocument() {
+  if (!deletingDocumentId.value || !conversationStore.currentConversation) return
+  
+  isDeleting.value = true
+  try {
+    conversationStore.removeRagDocumentFromConversation(conversationStore.currentConversation.id, deletingDocumentId.value)
+    showDeleteDocDialog.value = false
+    deletingDocumentId.value = null
+  } catch (error) {
+    console.error('删除文档失败:', error)
+  } finally {
+    isDeleting.value = false
   }
 }
 
 // 批量删除文档
 function handleBatchRemove() {
-  if (conversationStore.currentConversation && confirm(`确定要删除选中的 ${selectedCount.value} 个文档吗？删除后无法恢复。`)) {
+  if (!conversationStore.currentConversation || selectedCount.value === 0) return
+  showBatchDeleteDialog.value = true
+}
+
+async function confirmBatchDelete() {
+  if (!conversationStore.currentConversation || selectedCount.value === 0) return
+  
+  isDeleting.value = true
+  try {
     const docIds = Array.from(selectedDocuments.value)
     docIds.forEach(docId => {
       conversationStore.removeRagDocumentFromConversation(conversationStore.currentConversation!.id, docId)
     })
+    showBatchDeleteDialog.value = false
+  } catch (error) {
+    console.error('批量删除文档失败:', error)
+  } finally {
+    isDeleting.value = false
   }
 }
 

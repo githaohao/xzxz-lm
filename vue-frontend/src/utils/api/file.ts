@@ -122,4 +122,11 @@ export async function processDocumentForRAG(
  */
 export async function getDocumentInfo(docId: string): Promise<any> {
   return api.get(`${API_CONFIG.ENDPOINTS.RAG_DOCUMENTS}/${docId}`)
+}
+
+/**
+ * 获取文档分块内容
+ */
+export async function getDocumentChunks(docId: string): Promise<any> {
+  return api.get(`${API_CONFIG.ENDPOINTS.RAG_DOCUMENTS}/${docId}/chunks`)
 } 
