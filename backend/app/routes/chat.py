@@ -365,8 +365,32 @@ async def multimodal_chat_stream_with_processed_data(
                     logger.info("启用RAG模式，进行智能检索...")
                     yield f"data: {json.dumps({'type': 'file_processing', 'message': '🧠 启用智能检索模式'})}\n\n"
                     
-                    # 如果文件还没有进行RAG处理，先进行处理
-                    if not request.file_data.doc_id and request.file_data.content:
+                    # 检查是否为多文档处理
+                    doc_ids_to_search = []
+                    is_multiple_docs = False
+                    
+                    try:
+                        # 尝试解析doc_id是否为多文档JSON格式
+                        if request.file_data.doc_id and request.file_data.doc_id.startswith('{'):
+                            multi_doc_data = json.loads(request.file_data.doc_id)
+                            if multi_doc_data.get('type') == 'multiple' and 'doc_ids' in multi_doc_data:
+                                doc_ids_to_search = multi_doc_data['doc_ids']
+                                is_multiple_docs = True
+                                doc_count = len(doc_ids_to_search)
+                                logger.info(f"检测到多文档处理: {doc_count} 个文档")
+                                yield f"data: {json.dumps({'type': 'file_processing', 'message': f'📚 检测到 {doc_count} 个文档，开始多文档检索'})}\n\n"
+                            else:
+                                # 单文档处理
+                                doc_ids_to_search = [request.file_data.doc_id]
+                        else:
+                            # 传统单文档处理
+                            doc_ids_to_search = [request.file_data.doc_id] if request.file_data.doc_id else []
+                    except json.JSONDecodeError:
+                        # 如果解析失败，按单文档处理
+                        doc_ids_to_search = [request.file_data.doc_id] if request.file_data.doc_id else []
+                    
+                    # 如果文件还没有进行RAG处理，先进行处理（仅适用于单文档）
+                    if not doc_ids_to_search and request.file_data.content and not is_multiple_docs:
                         logger.info("开始RAG文档处理...")
                         yield f"data: {json.dumps({'type': 'file_processing', 'message': '正在对文档进行智能索引...'})}\n\n"
                         
@@ -376,17 +400,21 @@ async def multimodal_chat_stream_with_processed_data(
                             filename=request.file_data.name,
                             file_type=request.file_data.type
                         )
-                        request.file_data.doc_id = doc_id
+                        doc_ids_to_search = [doc_id]
                         yield f"data: {json.dumps({'type': 'file_processing', 'message': f'文档索引完成: {request.file_data.name}'})}\n\n"
                     
                     # 如果有doc_id，使用RAG检索相关内容
-                    if request.file_data.doc_id:
-                        logger.info("开始RAG检索相关内容...")
-                        yield f"data: {json.dumps({'type': 'file_processing', 'message': '正在检索相关文档片段...'})}\n\n"
+                    if doc_ids_to_search:
+                        if is_multiple_docs:
+                            logger.info(f"开始多文档RAG检索: {len(doc_ids_to_search)} 个文档")
+                            yield f"data: {json.dumps({'type': 'file_processing', 'message': f'🔍 正在从 {len(doc_ids_to_search)} 个文档中检索相关片段...'})}\n\n"
+                        else:
+                            logger.info("开始单文档RAG检索...")
+                            yield f"data: {json.dumps({'type': 'file_processing', 'message': '正在检索相关文档片段...'})}\n\n"
                         
                         relevant_chunks = await rag_service.search_relevant_chunks(
                             query=request.message,
-                            doc_ids=[request.file_data.doc_id],
+                            doc_ids=doc_ids_to_search,
                             top_k=settings.rag_default_top_k,
                             min_similarity=settings.rag_default_min_similarity
                         )
@@ -394,15 +422,39 @@ async def multimodal_chat_stream_with_processed_data(
                         if relevant_chunks:
                             # 构建RAG上下文
                             rag_context = "\n\n[相关文档内容]\n"
-                            for i, chunk in enumerate(relevant_chunks, 1):
-                                rag_context += f"片段{i} (相似度: {chunk['similarity']:.2f}):\n{chunk['content']}\n\n"
+                            
+                            # 按文档分组显示片段
+                            doc_chunks = {}
+                            for chunk in relevant_chunks:
+                                doc_id = chunk['metadata'].get('doc_id', 'unknown')
+                                if doc_id not in doc_chunks:
+                                    doc_chunks[doc_id] = []
+                                doc_chunks[doc_id].append(chunk)
+                            
+                            chunk_index = 1
+                            for doc_id, chunks in doc_chunks.items():
+                                # 获取文档名称
+                                doc_name = chunks[0]['metadata'].get('filename', f'文档{doc_id[:8]}')
+                                rag_context += f"\n--- 来自文档: {doc_name} ---\n"
+                                
+                                for chunk in chunks:
+                                    rag_context += f"片段{chunk_index} (相似度: {chunk['similarity']:.2f}):\n{chunk['content']}\n\n"
+                                    chunk_index += 1
                             
                             full_message = request.message + rag_context
                             chunk_count = len(relevant_chunks)
-                            yield f"data: {json.dumps({'type': 'file_processing', 'message': f'🔍 检索到 {chunk_count} 个相关片段'})}\n\n"
+                            doc_count = len(doc_chunks)
+                            
+                            if is_multiple_docs:
+                                yield f"data: {json.dumps({'type': 'file_processing', 'message': f'✅ 从 {doc_count} 个文档中检索到 {chunk_count} 个相关片段'})}\n\n"
+                            else:
+                                yield f"data: {json.dumps({'type': 'file_processing', 'message': f'🔍 检索到 {chunk_count} 个相关片段'})}\n\n"
                         else:
                             # 如果没有找到相关内容，提示无相关内容
-                            yield f"data: {json.dumps({'type': 'file_processing', 'message': '⚠️ 未找到相关片段'})}\n\n"
+                            if is_multiple_docs:
+                                yield f"data: {json.dumps({'type': 'file_processing', 'message': f'⚠️ 在 {len(doc_ids_to_search)} 个文档中未找到相关片段'})}\n\n"
+                            else:
+                                yield f"data: {json.dumps({'type': 'file_processing', 'message': '⚠️ 未找到相关片段'})}\n\n"
                     else:
                         # 没有doc_id且没有content，无法处理
                         yield f"data: {json.dumps({'type': 'file_processing', 'message': '❌ 文档处理失败：缺少内容'})}\n\n"

@@ -264,7 +264,7 @@ export default defineConfig({
 
 ### 🤖 AI聊天服务 (/api/lm/*)
 - `POST /api/lm/chat/stream` - 流式文本聊天
-- `POST /api/lm/chat/multimodal/stream/processed` - 多模态流式聊天
+- `POST /api/lm/chat/multimodal/stream/processed` - 多模态流式聊天（支持多文档RAG）
 
 ### 🎤 语音功能 (/voice/*)
 - `POST /voice/chat` - 语音对话

@@ -149,9 +149,7 @@ export const useChatStore = defineStore('chat', () => {
           isUser: false,
           fileInfo: completedMessage.fileInfo
         })
-        
-        // 不再需要手动保存AI回复，后端stream接口会自动处理
-        
+      
         currentStreamingMessage.value = null
       }
     }

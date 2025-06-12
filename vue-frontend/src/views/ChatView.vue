@@ -136,6 +136,63 @@
           </div>
         </div>
 
+        <!-- 选中文档显示 -->
+        <div v-if="selectedDocumentCount > 0" class="
+          flex items-center gap-3 p-3 mb-4
+          bg-gradient-to-r from-purple-50 to-indigo-50 dark:from-purple-900/20 dark:to-indigo-900/20
+          border border-purple-200/50 dark:border-purple-800/50
+          rounded-xl shadow-lg backdrop-blur-sm
+          transition-all duration-300
+        ">
+          <!-- 多文档图标 -->
+          <div class="flex-shrink-0">
+            <div class="w-10 h-10 rounded-lg bg-purple-100 dark:bg-purple-900/50 flex items-center justify-center shadow-sm">
+              <FileText class="h-5 w-5 text-purple-600 dark:text-purple-400" />
+            </div>
+          </div>
+          
+          <!-- 文档详情 -->
+          <div class="flex-1 min-w-0">
+            <p class="font-semibold text-sm text-slate-900 dark:text-slate-100">
+              已选择 {{ selectedDocumentCount }} 个文档
+            </p>
+            <p class="text-xs text-slate-600 dark:text-slate-400 truncate">
+              {{ selectedDocumentsList.map(doc => doc.filename).join(', ') }}
+            </p>
+            
+            <!-- RAG状态显示 -->
+            <div v-if="ragEnabled" class="flex items-center gap-2 mt-1">
+              <div class="w-1.5 h-1.5 rounded-full bg-purple-500"></div>
+              <span class="text-xs text-purple-600 dark:text-purple-400 font-medium">
+                🧠 多文档智能检索已启用
+              </span>
+              <Badge variant="secondary" class="text-xs px-1.5 py-0.5">
+                多文档RAG
+              </Badge>
+            </div>
+            <div v-else class="flex items-center gap-2 mt-1">
+              <div class="w-1.5 h-1.5 rounded-full bg-gray-400"></div>
+              <span class="text-xs text-gray-500 dark:text-gray-400 font-medium">
+                📄 常规文本模式
+              </span>
+            </div>
+          </div>
+          
+          <!-- 管理按钮 -->
+          <button
+            @click="showDocumentDialog = true"
+            class="
+              flex-shrink-0 p-1.5 rounded-lg
+              hover:bg-purple-50 dark:hover:bg-purple-900/20
+              text-purple-500 hover:text-purple-600 dark:text-purple-400 dark:hover:text-purple-300
+              transition-all duration-200
+              focus:outline-none focus:ring-2 focus:ring-purple-500/20
+            "
+          >
+            <Settings class="h-4 w-4" />
+          </button>
+        </div>
+
         <!-- 消息列表 -->
         <ScrollArea 
           ref="scrollAreaRef"
@@ -517,7 +574,8 @@ import {
   FileText,
   Database,
   History,
-  CloudOff
+  CloudOff,
+  Settings
 } from 'lucide-vue-next'
 import { Card, CardContent } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
@@ -619,19 +677,47 @@ async function handleSend() {
   // 优先使用选中的文档
   let fileToSend = processedFile.value
   
-  // 如果有选中的文档，使用第一个选中的文档（或者可以扩展为多文档支持）
+  // 如果有选中的文档，支持多文档处理
   if (selectedDocumentCount.value > 0) {
     const selectedDocs = selectedDocumentsList.value
     if (selectedDocs.length > 0) {
-      const firstDoc = selectedDocs[0]
-      fileToSend = {
-        name: firstDoc.filename,
-        type: firstDoc.file_type,
-        size: firstDoc.total_length,
-        content: '', // 内容会在后端检索时获取
-        doc_id: firstDoc.doc_id,
-        ocrCompleted: true,
-        rag_enabled: ragEnabled.value
+      if (selectedDocs.length === 1) {
+        // 单文档处理
+        const doc = selectedDocs[0]
+        fileToSend = {
+          name: doc.filename,
+          type: doc.file_type,
+          size: doc.total_length,
+          content: '', // 内容会在后端检索时获取
+          doc_id: doc.doc_id,
+          ocrCompleted: true,
+          rag_enabled: ragEnabled.value
+        }
+      } else {
+        // 多文档处理 - 将多个文档信息合并
+        const docIds = selectedDocs.map(doc => doc.doc_id)
+        const totalSize = selectedDocs.reduce((sum, doc) => sum + doc.total_length, 0)
+        const docNames = selectedDocs.map(doc => doc.filename).join(', ')
+        
+        // 创建多文档ProcessedFile，使用JSON格式存储多文档信息
+        fileToSend = {
+          name: `${selectedDocs.length}个文档: ${docNames}`,
+          type: 'multimodal/documents',
+          size: totalSize,
+          content: '', // 内容会在后端检索时获取
+          doc_id: JSON.stringify({
+            type: 'multiple',
+            doc_ids: docIds,
+            documents: selectedDocs.map(doc => ({
+              doc_id: doc.doc_id,
+              filename: doc.filename,
+              file_type: doc.file_type,
+              total_length: doc.total_length
+            }))
+          }),
+          ocrCompleted: true,
+          rag_enabled: ragEnabled.value
+        }
       }
     }
   } else if (selectedKnowledgeBase.value) {

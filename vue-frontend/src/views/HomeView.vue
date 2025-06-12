@@ -52,28 +52,6 @@
           </ul>
         </CardContent>
       </Card>
-
-      <!-- 简洁语音卡片 -->
-      <Card class="hover:shadow-lg transition-shadow cursor-pointer" @click="$router.push('/simple-voice-chat')">
-        <CardHeader>
-          <CardTitle class="flex items-center gap-2">
-            <Phone class="h-6 w-6" />
-            简洁语音
-          </CardTitle>
-        </CardHeader>
-        <CardContent>
-          <p class="text-muted-foreground mb-4">
-            类似ChatGPT的简洁语音通话界面
-          </p>
-          <ul class="text-sm space-y-1">
-            <li>• 简洁设计风格</li>
-            <li>• 按住说话模式</li>
-            <li>• 动画效果</li>
-            <li>• 移动端适配</li>
-          </ul>
-        </CardContent>
-      </Card>
-
       <!-- 知识库管理卡片 -->
       <Card class="hover:shadow-lg transition-shadow cursor-pointer" @click="$router.push('/knowledge-base')">
         <CardHeader>

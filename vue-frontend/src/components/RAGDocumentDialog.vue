@@ -227,6 +227,14 @@
             点击文档可选择，支持批量操作
           </span>
         </div>
+        <!-- 确认按钮 -->
+        <Button
+          @click="isOpen = false"
+          variant="default"
+          size="sm"
+        >
+          确认
+        </Button>
       </div>
     </DialogContent>
   </Dialog>
