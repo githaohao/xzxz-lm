@@ -55,13 +55,6 @@ export const API_CONFIG = {
     CHAT_HISTORY_MESSAGES_BATCH: '/api/lm/user/chat/messages/batch',
     CHAT_HISTORY_STATS: '/api/lm/user/chat/stats',
     CHAT_HISTORY_HEALTH: '/api/lm/user/chat/health',
-
-    // 用户RAG服务 (使用/api/user/rag前缀)
-    USER_RAG_UPLOAD: '/api/lm/user/rag/documents/upload',
-    USER_RAG_DOCUMENTS: '/api/lm/user/rag/documents',
-    USER_RAG_SEARCH: '/api/lm/user/rag/search',
-    USER_RAG_STATS: '/api/lm/user/rag/stats',
-    USER_RAG_HEALTH: '/api/lm/user/rag/health',
   },
   
   // 请求头配置

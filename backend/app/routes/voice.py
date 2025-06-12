@@ -13,9 +13,9 @@ from pydantic import BaseModel
 # 创建 FunAudioLLM 服务实例
 funaudio_service = FunAudioLLMService()
 
-logger = logging.getLogger(__name__)
+router = APIRouter(prefix="/voice", tags=["voice"])
 
-router = APIRouter()
+logger = logging.getLogger(__name__)
 
 # WebSocket连接管理器
 class VoiceConnectionManager:

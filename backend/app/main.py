@@ -12,7 +12,7 @@ import sys
 import traceback
 
 from .config import settings
-from .routes import chat, health, voice, chat_history, user_rag
+from .routes import chat, health, voice, chat_history, rag
 from .database import Database
 from .middleware.auth import UserAuthMiddleware
 
@@ -86,9 +86,10 @@ if os.path.exists(settings.upload_dir):
 # 注册路由
 app.include_router(chat.router)
 app.include_router(health.router)
-app.include_router(voice.router, prefix="/voice", tags=["voice"])
+app.include_router(voice.router)
 app.include_router(chat_history.router)
-app.include_router(user_rag.router)
+app.include_router(rag.router)
+
 
 @app.exception_handler(Exception)
 async def global_exception_handler(request: Request, exc: Exception):

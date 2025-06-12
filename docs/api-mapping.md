@@ -38,16 +38,6 @@
 | `/api/user/chat/stats` | `chat_history.router` | 聊天统计 |
 | `/api/user/chat/health` | `chat_history.router` | 服务健康检查 |
 
-### 4. 用户知识库服务
-| 前端配置 | 后端路由 | 说明 |
-|---------|---------|------|
-| `/api/user/rag/documents/upload` | `user_rag.router` (prefix="/api/user/rag") | 文档上传 |
-| `/api/user/rag/documents` | `user_rag.router` | 文档列表 |
-| `/api/user/rag/search` | `user_rag.router` | 文档搜索 |
-| `/api/user/rag/documents/{id}/chunks` | `user_rag.router` | 文档分块 |
-| `/api/user/rag/stats` | `user_rag.router` | RAG统计 |
-| `/api/user/rag/health` | `user_rag.router` | 服务健康检查 |
-
 ### 5. 若依用户系统
 | 前端配置 | 后端路由 | 说明 |
 |---------|---------|------|

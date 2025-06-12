@@ -26,31 +26,9 @@ from app.config import settings
 from app.middleware.auth import get_current_user_id
 
 logger = logging.getLogger(__name__)
-router = APIRouter(prefix="", tags=["chat"])
+router = APIRouter(prefix="/chat", tags=["chat"])
 
-@router.post("/chat", response_model=ChatResponse)
-async def chat_completion(request: ChatRequest):
-    """处理聊天请求"""
-    try:
-        start_time = time.time()
-        
-        # 调用LM Studio服务
-        response_text = await lm_studio_service.chat_completion(request)
-        
-        processing_time = time.time() - start_time
-        message_id = str(uuid.uuid4())
-        
-        return ChatResponse(
-            response=response_text,
-            message_id=message_id,
-            processing_time=processing_time
-        )
-        
-    except Exception as e:
-        logger.error(f"聊天请求处理失败: {e}")
-        raise HTTPException(status_code=500, detail=f"处理请求失败: {str(e)}")
-
-@router.post("/chat/stream")
+@router.post("/stream")
 async def chat_completion_stream(
     request: ChatRequest,
     user_id: int = Depends(get_current_user_id)
@@ -230,7 +208,7 @@ async def get_tts_audio(filename: str):
         raise HTTPException(status_code=500, detail=f"获取音频文件失败: {str(e)}")
 
 # 新增：处理已预处理文件数据的流式聊天接口
-@router.post("/chat/multimodal/stream/processed")
+@router.post("/multimodal/stream/processed")
 async def multimodal_chat_stream_with_processed_data(
     request: MultimodalStreamRequest,
     user_id: int = Depends(get_current_user_id)
@@ -408,113 +386,3 @@ async def multimodal_chat_stream_with_processed_data(
             "X-Accel-Buffering": "no"
         }
     )
-
-@router.post("/rag/process")
-async def process_document_for_rag(
-    content: str = Form(...),
-    filename: str = Form(...),
-    file_type: str = Form(...)
-):
-    """处理文档进行RAG索引"""
-    try:
-        start_time = time.time()
-        
-        # 处理文档并生成doc_id
-        doc_id = await rag_service.process_document(
-            content=content,
-            filename=filename,
-            file_type=file_type
-        )
-        
-        processing_time = time.time() - start_time
-        
-        return {
-            "doc_id": doc_id,
-            "message": "文档处理完成",
-            "processing_time": processing_time
-        }
-        
-    except Exception as e:
-        logger.error(f"RAG文档处理失败: {e}")
-        raise HTTPException(status_code=500, detail=f"文档处理失败: {str(e)}")
-
-@router.get("/rag/documents")
-async def get_all_documents():
-    """获取所有RAG文档列表"""
-    try:
-        start_time = time.time()
-        
-        # 获取文档列表
-        documents = await rag_service.get_all_documents()
-        
-        processing_time = time.time() - start_time
-        
-        return {
-            "documents": documents,
-            "total_count": len(documents),
-            "processing_time": processing_time
-        }
-        
-    except Exception as e:
-        logger.error(f"获取文档列表失败: {e}")
-        raise HTTPException(status_code=500, detail=f"获取文档列表失败: {str(e)}")
-
-@router.post("/rag/search", response_model=RAGSearchResponse)
-async def search_documents(request: RAGSearchRequest):
-    """RAG文档检索接口"""
-    try:
-        start_time = time.time()
-        
-        # 执行检索
-        chunks = await rag_service.search_relevant_chunks(
-            query=request.query,
-            doc_ids=request.doc_ids,
-            top_k=request.top_k,
-            min_similarity=request.min_similarity
-        )
-        
-        search_time = time.time() - start_time
-        
-        return RAGSearchResponse(
-            chunks=chunks,
-            total_found=len(chunks),
-            search_time=search_time
-        )
-        
-    except Exception as e:
-        logger.error(f"RAG检索失败: {e}")
-        raise HTTPException(status_code=500, detail=f"检索失败: {str(e)}")
-
-@router.get("/rag/documents/{doc_id}", response_model=DocumentInfo)
-async def get_document_info(doc_id: str):
-    """获取文档信息"""
-    try:
-        doc_info = await rag_service.get_document_info(doc_id)
-        
-        if not doc_info:
-            raise HTTPException(status_code=404, detail="文档不存在")
-        
-        return DocumentInfo(**doc_info)
-        
-    except HTTPException:
-        raise
-    except Exception as e:
-        logger.error(f"获取文档信息失败: {e}")
-        raise HTTPException(status_code=500, detail=f"获取文档信息失败: {str(e)}")
-
-@router.delete("/rag/documents/{doc_id}")
-async def delete_document(doc_id: str):
-    """删除文档及其索引"""
-    try:
-        success = await rag_service.delete_document(doc_id)
-        
-        if not success:
-            raise HTTPException(status_code=404, detail="文档不存在")
-        
-        return {"message": "文档删除成功", "doc_id": doc_id}
-        
-    except HTTPException:
-        raise
-    except Exception as e:
-        logger.error(f"删除文档失败: {e}")
-        raise HTTPException(status_code=500, detail=f"删除文档失败: {str(e)}")

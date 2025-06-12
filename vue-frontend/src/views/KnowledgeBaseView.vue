@@ -1,7 +1,7 @@
 <template>
   <div class="flex h-full bg-gradient-to-br from-slate-50 to-slate-100 dark:from-slate-900 dark:to-slate-800">
     <!-- 知识库列表侧边栏 -->
-    <div class="w-72 lg:w-80 xl:w-96 shrink-0 border-r border-slate-200 dark:border-slate-700 bg-white/80 dark:bg-slate-900/80 backdrop-blur-sm flex flex-col">
+    <div class="w-79 lg:w-80 xl:w-79 shrink-0 border-r border-slate-200 dark:border-slate-700 bg-white/80 dark:bg-slate-900/80 backdrop-blur-sm flex flex-col">
       <!-- 头部 -->
       <div class="p-6 border-b border-slate-200 dark:border-slate-700">
         <div class="flex items-center justify-between mb-4">
@@ -283,6 +283,26 @@
                 <Filter class="h-4 w-4 mr-1" />
                 <span class="hidden sm:inline">筛选</span>
               </Button>
+              
+              <!-- 视图切换 -->
+              <div class="flex items-center gap-1 border border-slate-200 dark:border-slate-700 rounded-lg p-1 shrink-0">
+                <Button
+                  @click="viewMode = 'grid'"
+                  :variant="viewMode === 'grid' ? 'default' : 'ghost'"
+                  size="sm"
+                  class="h-8 px-2 lg:px-3"
+                >
+                  <Grid3X3 class="h-4 w-4" />
+                </Button>
+                <Button
+                  @click="viewMode = 'list'"
+                  :variant="viewMode === 'list' ? 'default' : 'ghost'"
+                  size="sm"
+                  class="h-8 px-2 lg:px-3"
+                >
+                  <List class="h-4 w-4" />
+                </Button>
+              </div>
             </div>
 
             <!-- 批量操作 -->
@@ -397,15 +417,16 @@
           </div>
         </div>
 
-        <div v-else class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5 gap-4">
+        <!-- 网格视图 -->
+        <div v-if="viewMode === 'grid'" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5 gap-4">
           <div
             v-for="document in enhancedFilteredDocuments"
             :key="document.doc_id"
             :class="[
               'group p-4 rounded-lg border cursor-pointer transition-all duration-200',
               selectedDocuments.has(document.doc_id)
-                ? 'border-purple-300 bg-purple-50 dark:border-purple-700 dark:bg-purple-950/30 shadow-md transform scale-105'
-                : 'border-slate-200 hover:border-slate-300 dark:border-slate-700 dark:hover:border-slate-600 hover:bg-slate-50 dark:hover:bg-slate-800/50 hover:shadow-lg'
+                ? 'border-2 border-purple-500 bg-purple-50 dark:border-purple-400 dark:bg-purple-950/30 shadow-lg'
+                : 'border border-slate-200 hover:border-slate-300 dark:border-slate-700 dark:hover:border-slate-600 hover:bg-slate-50 dark:hover:bg-slate-800/50 hover:shadow-md'
             ]"
             @click="toggleDocument(document.doc_id)"
           >
@@ -515,6 +536,113 @@
                 </Badge>
               </div>
             </div>
+          </div>
+        </div>
+
+        <!-- 列表视图 -->
+        <div v-else class="space-y-2">
+          <div
+            v-for="document in enhancedFilteredDocuments"
+            :key="document.doc_id"
+            :class="[
+              'group p-4 rounded-lg border cursor-pointer transition-all duration-200 flex items-center gap-4',
+              selectedDocuments.has(document.doc_id)
+                ? 'border-2 border-purple-500 bg-purple-50 dark:border-purple-400 dark:bg-purple-950/30 shadow-lg'
+                : 'border border-slate-200 hover:border-slate-300 dark:border-slate-700 dark:hover:border-slate-600 hover:bg-slate-50 dark:hover:bg-slate-800/50 hover:shadow-md'
+            ]"
+            @click="toggleDocument(document.doc_id)"
+          >
+            <!-- 选择指示器 -->
+            <div
+              :class="[
+                'w-5 h-5 rounded border-2 flex items-center justify-center transition-all duration-200 flex-shrink-0',
+                selectedDocuments.has(document.doc_id)
+                  ? 'border-purple-500 bg-purple-500 scale-110'
+                  : 'border-slate-300 dark:border-slate-600 group-hover:border-purple-400'
+              ]"
+            >
+              <Check v-if="selectedDocuments.has(document.doc_id)" class="h-3 w-3 text-white" />
+            </div>
+
+            <!-- 文件图标和类型 -->
+            <div class="flex items-center gap-3 flex-shrink-0">
+              <FileText class="h-8 w-8 text-blue-500" />
+              <Badge variant="outline" class="text-xs">
+                {{ getFileTypeDisplay(document.file_type) }}
+              </Badge>
+            </div>
+
+            <!-- 文档信息 -->
+            <div class="flex-1 min-w-0">
+              <div class="flex items-center gap-2 mb-1">
+                <h3 class="font-medium text-slate-900 dark:text-slate-100 truncate" :title="document.filename">
+                  {{ document.filename }}
+                </h3>
+                
+                <!-- 相关度显示（仅在语义搜索时显示） -->
+                <div v-if="searchType === 'content' && semanticSearchResults && getDocumentRelevance(document.doc_id)" class="flex items-center gap-2">
+                  <Badge variant="secondary" class="text-xs bg-green-100 text-green-700 dark:bg-green-900 dark:text-green-300">
+                    🎯 {{ (getDocumentRelevance(document.doc_id)!.maxSimilarity * 100).toFixed(1) }}%
+                  </Badge>
+                </div>
+              </div>
+              
+              <div class="flex items-center gap-4 text-xs text-slate-500 dark:text-slate-400">
+                <span class="flex items-center gap-1">
+                  <Hash class="h-3 w-3" />
+                  {{ document.chunk_count }} 片段
+                </span>
+                <span>{{ formatFileSize(document.total_length) }}</span>
+                <span class="flex items-center gap-1">
+                  <Clock class="h-3 w-3" />
+                  {{ formatDate(document.created_at) }}
+                </span>
+              </div>
+            </div>
+
+            <!-- 所属知识库 -->
+            <div class="flex flex-wrap gap-1 flex-shrink-0 max-w-xs">
+              <Badge
+                v-for="kb in getDocumentKnowledgeBases(document.doc_id)"
+                :key="kb.id"
+                variant="secondary"
+                class="text-xs px-1.5 py-0.5"
+                :style="{ backgroundColor: `${kb.color}20`, borderColor: kb.color }"
+              >
+                {{ kb.name }}
+              </Badge>
+            </div>
+
+            <!-- 文档操作 -->
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  class="opacity-0 group-hover:opacity-100 transition-opacity p-1 h-7 w-7 flex-shrink-0"
+                  @click.stop
+                >
+                  <MoreVertical class="h-4 w-4" />
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end">
+                <DropdownMenuItem @click="previewDocument(document)">
+                  <Eye class="h-4 w-4 mr-2" />
+                  预览
+                </DropdownMenuItem>
+                <DropdownMenuItem @click="showMoveDialog(document)">
+                  <Folder class="h-4 w-4 mr-2" />
+                  移动
+                </DropdownMenuItem>
+                <DropdownMenuItem 
+                  @click="deleteDocument(document.doc_id)"
+                  class="text-red-600 focus:text-red-600"
+                >
+                  <Trash2 class="h-4 w-4 mr-2" />
+                  删除
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
           </div>
         </div>
       </ScrollArea>
@@ -715,7 +843,9 @@ import {
   AlertTriangle,
   HardDrive,
   Upload,
-  X
+  X,
+  Grid3X3,
+  List
 } from 'lucide-vue-next'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -778,6 +908,7 @@ const fileInputRef = ref<HTMLInputElement | null>(null)
 const isUploading = ref(false)
 const searchType = ref('filename')
 const isSearching = ref(false)
+const viewMode = ref<'grid' | 'list'>('grid')
 
 // RAG内容搜索相关状态
 const semanticSearchResults = ref<RAGSearchResponse | null>(null)
