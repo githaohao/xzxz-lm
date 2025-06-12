@@ -31,6 +31,7 @@ class ChatRequest(BaseModel):
     temperature: float = Field(default=0.7, ge=0.0, le=2.0)
     max_tokens: int = Field(default=2048, ge=1, le=4096)
     stream: bool = False
+    session_id: Optional[str] = None  # 可选的会话ID，用于保存聊天历史
 
 class FileData(BaseModel):
     name: str
@@ -75,6 +76,7 @@ class MultimodalStreamRequest(BaseModel):
     file_data: Optional[FileData] = None
     temperature: float = Field(default=0.7, ge=0.0, le=2.0)
     max_tokens: int = Field(default=2048, ge=1, le=4096)
+    session_id: Optional[str] = None  # 可选的会话ID，用于保存聊天历史
 
 class ChatResponse(BaseModel):
     response: str

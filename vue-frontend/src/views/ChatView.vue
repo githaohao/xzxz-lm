@@ -13,7 +13,7 @@
     <!-- 主要内容区域 -->
     <div class="flex-1 flex flex-col min-w-0">
       <!-- 顶部工具栏 -->
-      <div class="flex items-center justify-between p-4 border-b border-slate-200 dark:border-slate-700 bg-white/80 dark:bg-slate-900/80 backdrop-blur-sm">
+      <div class="flex items-center justify-between p-3 border-b border-slate-200 dark:border-slate-700 bg-white/80 dark:bg-slate-900/80 backdrop-blur-sm">
         <div class="flex items-center gap-3">
           <button
             @click="toggleConversationList"

@@ -11,13 +11,15 @@ export async function sendTextMessage(
   history: Message[],
   temperature: number = 0.7,
   maxTokens: number = 2048,
-  signal?: AbortSignal
+  signal?: AbortSignal,
+  sessionId?: string
 ): Promise<Response> {
   return api.stream(API_CONFIG.ENDPOINTS.CHAT_STREAM, {
     message,
     history: convertToBackendMessages(history),
     temperature,
-    max_tokens: maxTokens
+    max_tokens: maxTokens,
+    session_id: sessionId
   }, signal)
 }
 
@@ -30,7 +32,8 @@ export async function sendMultimodalMessage(
   fileData: ProcessedFile,
   temperature: number = 0.7,
   maxTokens: number = 2048,
-  signal?: AbortSignal
+  signal?: AbortSignal,
+  sessionId?: string
 ): Promise<Response> {
   return api.stream(API_CONFIG.ENDPOINTS.MULTIMODAL_STREAM, {
     message,
@@ -45,7 +48,8 @@ export async function sendMultimodalMessage(
       rag_enabled: fileData.rag_enabled || false
     },
     temperature,
-    max_tokens: maxTokens
+    max_tokens: maxTokens,
+    session_id: sessionId
   }, signal)
 }
 

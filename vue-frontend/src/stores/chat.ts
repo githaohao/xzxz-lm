@@ -150,14 +150,7 @@ export const useChatStore = defineStore('chat', () => {
           fileInfo: completedMessage.fileInfo
         })
         
-        // 保存AI回复到聊天历史服务
-        if (conversationStore.currentConversation?.historySessionId) {
-          saveMessageToHistory(
-            completedMessage, 
-            conversationStore.currentConversation.historySessionId, 
-            'assistant'
-          )
-        }
+        // 不再需要手动保存AI回复，后端stream接口会自动处理
         
         currentStreamingMessage.value = null
       }
@@ -280,11 +273,6 @@ export const useChatStore = defineStore('chat', () => {
         fileInfo: file
       })
 
-      // 保存用户消息到聊天历史服务
-      if (sessionId) {
-        await saveMessageToHistory(userMessage, sessionId, 'user')
-      }
-
       // 创建中断控制器
       abortController.value = new AbortController()
       
@@ -301,7 +289,8 @@ export const useChatStore = defineStore('chat', () => {
           file,
           0.7,
           2048,
-          abortController.value.signal
+          abortController.value.signal,
+          sessionId || undefined  // 传入sessionId，让后端自动保存
         )
       } else {
         // 纯文本消息
@@ -313,7 +302,8 @@ export const useChatStore = defineStore('chat', () => {
           messages.value.slice(0, -1), // 排除刚添加的用户消息
           0.7,
           2048,
-          abortController.value.signal
+          abortController.value.signal,
+          sessionId || undefined  // 传入sessionId，让后端自动保存
         )
       }
 
@@ -423,7 +413,7 @@ export const useChatStore = defineStore('chat', () => {
             id: historyMsg.id,
             content: historyMsg.content,
             isUser: historyMsg.role === 'user',
-            timestamp: new Date(historyMsg.createdAt),
+            timestamp: new Date(historyMsg.created_at),
             fileInfo: historyMsg.metadata ? {
               name: historyMsg.metadata.fileName || '',
               size: historyMsg.metadata.fileSize || 0,

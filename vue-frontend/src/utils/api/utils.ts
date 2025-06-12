@@ -50,7 +50,7 @@ export function convertToMessage(chatMessage: ChatMessage): Message {
     id: chatMessage.id,
     content: chatMessage.content,
     isUser: chatMessage.role === 'user',
-    timestamp: new Date(chatMessage.createdAt),
+    timestamp: new Date(chatMessage.created_at),
     fileInfo: chatMessage.metadata?.fileName ? {
       name: chatMessage.metadata.fileName,
       size: chatMessage.metadata.fileSize || 0,

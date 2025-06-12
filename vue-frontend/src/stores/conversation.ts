@@ -20,7 +20,8 @@ import {
   getChatSessionMessages,
   addChatMessage,
   addChatMessagesBatch,
-  updateChatSession
+  updateChatSession,
+  deleteChatSession
 } from '@/utils/api'
 
 export const useConversationStore = defineStore('conversation', () => {
@@ -100,11 +101,10 @@ export const useConversationStore = defineStore('conversation', () => {
 
       // 检查是否启用了历史同步
       if (!chatStore.isHistorySyncEnabled) {
-        console.log('📝 历史同步已禁用，跳过远程会话创建')
         return
       }
 
-      console.log('🔄 正在为对话创建远程会话...', conversation.title)
+      // 创建远程会话
       
       const sessionData: CreateSessionDto = {
         title: conversation.title,
@@ -118,7 +118,6 @@ export const useConversationStore = defineStore('conversation', () => {
         const remoteSession = response.data
         // 将远程会话ID关联到本地对话
         updateConversationHistorySession(conversation.id, remoteSession.id)
-        console.log('✅ 远程会话创建成功:', remoteSession.id)
       } else {
         console.warn('⚠️ 远程会话创建失败，仅保留本地对话')
       }
@@ -163,7 +162,6 @@ export const useConversationStore = defineStore('conversation', () => {
       const response = await addChatMessage(sessionId, messageDto)
       
       if (response.code === 200 && response.data) {
-        console.log(`💾 ${role === 'user' ? '用户' : 'AI'}消息已保存到远程会话:`, message.content.substring(0, 50) + '...')
         return true
       } else {
         console.warn('⚠️ 消息保存返回空结果')
@@ -252,6 +250,7 @@ export const useConversationStore = defineStore('conversation', () => {
 
   // 设置当前对话
   function setCurrentConversation(conversationId: string) {
+    debugger
     const conversation = conversations.value.find(c => c.id === conversationId)
     if (conversation) {
       // 将之前的对话设为非活跃状态
@@ -267,22 +266,53 @@ export const useConversationStore = defineStore('conversation', () => {
   }
 
   // 删除对话
-  function deleteConversation(conversationId: string) {
-    const index = conversations.value.findIndex(c => c.id === conversationId)
-    if (index > -1) {
-      conversations.value.splice(index, 1)
-      conversationData.value.delete(conversationId)
-      
-      // 如果删除的是当前对话，切换到其他对话
-      if (currentConversation.value?.id === conversationId) {
-        if (conversations.value.length > 0) {
-          setCurrentConversation(conversations.value[0].id)
-        } else {
-          currentConversation.value = null
+  async function deleteConversation(conversationId: string) {
+    const conversation = conversations.value.find(c => c.id === conversationId)
+    if (!conversation) {
+      console.warn('⚠️ 要删除的对话不存在:', conversationId)
+      return
+    }
+
+    try {
+      // 如果对话有关联的远程会话，先删除远程会话
+      if (conversation.historySessionId) {
+        console.log('🗑️ 正在删除远程会话...', conversation.historySessionId)
+        
+        try {
+          const response = await deleteChatSession(conversation.historySessionId)
+          if (response.code === 200) {
+            console.log('✅ 远程会话删除成功')
+          } else {
+            console.warn('⚠️ 远程会话删除返回非200状态:', response.msg)
+          }
+        } catch (remoteError) {
+          // 远程删除失败不阻止本地删除（可能会话已经被删除或网络问题）
+          console.warn('⚠️ 删除远程会话失败，继续删除本地数据:', remoteError)
         }
       }
-      
-      saveToCache()
+
+      // 删除本地数据
+      const index = conversations.value.findIndex(c => c.id === conversationId)
+      if (index > -1) {
+        conversations.value.splice(index, 1)
+        conversationData.value.delete(conversationId)
+        
+        // 如果删除的是当前对话，切换到其他对话
+        if (currentConversation.value?.id === conversationId) {
+          if (conversations.value.length > 0) {
+            setCurrentConversation(conversations.value[0].id)
+          } else {
+            currentConversation.value = null
+          }
+        }
+        
+        saveToCache()
+        console.log('✅ 本地对话删除成功:', conversation.title)
+      }
+
+    } catch (error) {
+      console.error('❌ 删除对话时发生错误:', error)
+      throw error // 抛出错误以便UI层处理
     }
   }
 
@@ -480,7 +510,6 @@ export const useConversationStore = defineStore('conversation', () => {
       
       // 获取用户的聊天会话列表
       const remoteSessions = await fetchRemoteSessions({ page: 1, limit: 100 })
-      
       console.log(`📥 从后端获取到 ${remoteSessions.length} 个会话`)
       
       // 记录同步统计
@@ -490,20 +519,18 @@ export const useConversationStore = defineStore('conversation', () => {
       
       // 创建远程会话ID集合，用于后续清理
       const remoteSessionIds = new Set(remoteSessions.map((session: ChatSession) => session.id))
-      
       // 处理远程会话：新增或更新本地对话
       for (const session of remoteSessions) {
         // 检查本地是否已存在相同的对话
         const existingConv = conversations.value.find(c => c.historySessionId === session.id)
-        
         if (!existingConv) {
           // 创建新的本地对话
           const newConversation: Conversation = {
             id: generateId(),
             title: session.title,
-            createdAt: new Date(session.createdAt),
-            updatedAt: new Date(session.updatedAt),
-            messageCount: session.messageCount || 0,
+            createdAt: new Date(session.created_at),
+            updatedAt: new Date(session.updated_at),
+            messageCount: session.message_count || 0,
             isActive: false,
             historySessionId: session.id,
             lastMessage: session.description
@@ -517,22 +544,21 @@ export const useConversationStore = defineStore('conversation', () => {
             messages: [],
             ragDocuments: []
           })
-          
           addedCount++
           console.log(`➕ 新增会话: ${session.title} (${session.id})`)
         } else {
           // 检查是否需要更新现有对话
-          const remoteUpdatedTime = new Date(session.updatedAt).getTime()
+          const remoteUpdatedTime = new Date(session.updated_at).getTime()
           const localUpdatedTime = existingConv.updatedAt.getTime()
           
           if (remoteUpdatedTime > localUpdatedTime || 
               existingConv.title !== session.title ||
-              existingConv.messageCount !== (session.messageCount || 0)) {
+              existingConv.messageCount !== (session.message_count || 0)) {
             
             // 更新现有对话的信息
             existingConv.title = session.title
-            existingConv.updatedAt = new Date(session.updatedAt)
-            existingConv.messageCount = session.messageCount || 0
+            existingConv.updatedAt = new Date(session.updated_at)
+            existingConv.messageCount = session.message_count || 0
             existingConv.lastMessage = session.description
             
             // 更新对话数据中的conversation引用
@@ -644,7 +670,7 @@ export const useConversationStore = defineStore('conversation', () => {
     }
   }
 
-  // 初始化：先从缓存加载数据，然后从后端同步，最后创建默认对话
+  // 初始化：先从缓存加载数据，然后从后端同步，最后创建
   async function initialize() {
     // 1. 从本地缓存加载
     loadFromCache()
@@ -653,19 +679,10 @@ export const useConversationStore = defineStore('conversation', () => {
     // 2. 尝试从后端同步
     const syncSuccess = await syncFromBackend()
     
-    // 3. 如果没有对话，创建默认对话
-    if (conversations.value.length === 0) {
-      await createConversation({ title: '默认对话' })
-      console.log('📝 创建了默认对话')
-    }
-    
-    // 4. 设置当前对话（如果没有活跃对话）
+    // 3. 设置当前对话（如果没有活跃对话）
     if (!currentConversation.value && conversations.value.length > 0) {
       setCurrentConversation(conversations.value[0].id)
     }
-    
-    // 5. 输出初始化完成状态
-    // console.log(`🎯 对话存储初始化完成，共 ${conversations.value.length} 个对话${syncSuccess ? '(已同步)' : '(仅本地)'}`)
   }
 
   // 清理纯本地对话（没有同步到云端的对话）

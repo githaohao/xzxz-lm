@@ -20,7 +20,10 @@ from app.services.lm_studio_service import lm_studio_service
 from app.services.ocr_service import ocr_service
 from app.services.tts_service import tts_service
 from app.services.rag_service import rag_service
+from app.services.chat_history_service import chat_history_service
+from app.models.chat_history import CreateMessageDto, MessageRole, MessageType as ChatMessageType
 from app.config import settings
+from app.middleware.auth import get_current_user_id
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="", tags=["chat"])
@@ -48,13 +51,51 @@ async def chat_completion(request: ChatRequest):
         raise HTTPException(status_code=500, detail=f"处理请求失败: {str(e)}")
 
 @router.post("/chat/stream")
-async def chat_completion_stream(request: ChatRequest):
-    """流式聊天响应"""
+async def chat_completion_stream(
+    request: ChatRequest,
+    user_id: int = Depends(get_current_user_id)
+):
+    """流式聊天响应 - 支持自动保存聊天历史"""
     try:
         async def generate():
+            ai_response_content = ""  # 收集AI回复内容
+            
+            # 如果提供了session_id，先保存用户消息
+            if request.session_id:
+                try:
+                    user_message_dto = CreateMessageDto(
+                        session_id=request.session_id,
+                        role=MessageRole.USER,
+                        content=request.message,
+                        message_type=ChatMessageType.TEXT
+                    )
+                    await chat_history_service.add_message(user_id, user_message_dto)
+                    logger.info(f"✅ 用户消息已保存到会话 {request.session_id}")
+                except Exception as e:
+                    logger.warning(f"⚠️ 保存用户消息失败: {e}")
+                    # 不中断流程，继续处理
+            
+            # 生成AI回复
             async for chunk in lm_studio_service.chat_completion_stream(request):
                 if chunk.strip():
+                    ai_response_content += chunk  # 收集内容
                     yield f"data: {json.dumps({'type': 'content', 'content': chunk})}\n\n"
+            
+            # 如果提供了session_id，保存AI回复
+            if request.session_id and ai_response_content.strip():
+                try:
+                    ai_message_dto = CreateMessageDto(
+                        session_id=request.session_id,
+                        role=MessageRole.ASSISTANT,
+                        content=ai_response_content.strip(),
+                        message_type=ChatMessageType.TEXT
+                    )
+                    await chat_history_service.add_message(user_id, ai_message_dto)
+                    logger.info(f"✅ AI回复已保存到会话 {request.session_id}")
+                except Exception as e:
+                    logger.warning(f"⚠️ 保存AI回复失败: {e}")
+                    # 不影响用户体验
+            
             yield f"data: {json.dumps({'type': 'complete'})}\n\n"
             yield "data: [DONE]\n\n"
         
@@ -191,12 +232,45 @@ async def get_tts_audio(filename: str):
 # 新增：处理已预处理文件数据的流式聊天接口
 @router.post("/chat/multimodal/stream/processed")
 async def multimodal_chat_stream_with_processed_data(
-    request: MultimodalStreamRequest
+    request: MultimodalStreamRequest,
+    user_id: int = Depends(get_current_user_id)
 ):
-    """处理已预处理文件数据的流式多模态聊天接口"""
+    """处理已预处理文件数据的流式多模态聊天接口 - 支持自动保存聊天历史"""
     async def generate():
         try:
             logger.info(f"开始处理流式多模态聊天请求: {request.message[:50]}...")
+            
+            ai_response_content = ""  # 收集AI回复内容
+            
+            # 如果提供了session_id，先保存用户消息
+            if request.session_id:
+                try:
+                    # 构建文件元数据
+                    metadata = None
+                    message_type = ChatMessageType.TEXT
+                    if request.file_data:
+                        message_type = ChatMessageType.MULTIMODAL
+                        metadata = {
+                            "fileName": request.file_data.name,
+                            "fileSize": request.file_data.size,
+                            "fileType": request.file_data.type,
+                            "ragEnabled": request.file_data.rag_enabled,
+                            "docId": request.file_data.doc_id,
+                            "ocrCompleted": request.file_data.ocr_completed
+                        }
+                    
+                    user_message_dto = CreateMessageDto(
+                        session_id=request.session_id,
+                        role=MessageRole.USER,
+                        content=request.message,
+                        message_type=message_type,
+                        metadata=metadata
+                    )
+                    await chat_history_service.add_message(user_id, user_message_dto)
+                    logger.info(f"✅ 多模态用户消息已保存到会话 {request.session_id}")
+                except Exception as e:
+                    logger.warning(f"⚠️ 保存多模态用户消息失败: {e}")
+                    # 不中断流程，继续处理
             
             # 构建完整消息
             full_message = request.message
@@ -297,7 +371,23 @@ async def multimodal_chat_stream_with_processed_data(
             # 流式获取AI响应
             async for chunk in lm_studio_service.chat_completion_stream(chat_request):
                 if chunk.strip():
+                    ai_response_content += chunk  # 收集内容
                     yield f"data: {json.dumps({'type': 'content', 'content': chunk})}\n\n"
+            
+            # 如果提供了session_id，保存AI回复
+            if request.session_id and ai_response_content.strip():
+                try:
+                    ai_message_dto = CreateMessageDto(
+                        session_id=request.session_id,
+                        role=MessageRole.ASSISTANT,
+                        content=ai_response_content.strip(),
+                        message_type=ChatMessageType.TEXT
+                    )
+                    await chat_history_service.add_message(user_id, ai_message_dto)
+                    logger.info(f"✅ 多模态AI回复已保存到会话 {request.session_id}")
+                except Exception as e:
+                    logger.warning(f"⚠️ 保存多模态AI回复失败: {e}")
+                    # 不影响用户体验
             
             # 发送完成信号
             yield f"data: {json.dumps({'type': 'complete'})}\n\n"

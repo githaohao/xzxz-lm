@@ -1,5 +1,11 @@
 <template>
   <div id="app" class="h-screen flex flex-col bg-background">
+    <!-- Stagewise工具栏 - 仅在开发模式下显示 -->
+    <StagewiseToolbar 
+      v-if="isDev"
+      :config="stagewiseConfig" 
+    />
+    
     <nav class="border-b border-border bg-card">
       <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         <div class="flex justify-between h-16">
@@ -75,14 +81,22 @@
 </template>
 
 <script setup lang="ts">
-import { onMounted } from 'vue'
+import { onMounted, computed } from 'vue'
 import { ThemeSelector } from '@/components/ui/theme-selector'
 import { useTheme } from '@/composables/useTheme'
 import { useConversationStore } from '@/stores/conversation'
 import { useAuthStore } from '@/stores/auth'
 import UserProfile from '@/components/UserProfile.vue'
+import { StagewiseToolbar } from '@stagewise/toolbar-vue'
+import { VuePlugin } from '@stagewise-plugins/vue'
 
 const authStore = useAuthStore()
+
+// Stagewise配置 - 仅在开发模式下启用
+const isDev = computed(() => import.meta.env.DEV)
+const stagewiseConfig = {
+  plugins: [VuePlugin]
+}
 
 
 // 初始化主题系统

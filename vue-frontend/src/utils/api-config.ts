@@ -51,7 +51,6 @@ export const API_CONFIG = {
     // 用户聊天历史服务 (使用/api/user/chat前缀)
     CHAT_HISTORY_SESSIONS: '/api/lm/user/chat/sessions',
     CHAT_HISTORY_SESSION_DETAIL: '/api/lm/user/chat/sessions',
-    CHAT_HISTORY_SESSION_MESSAGES: '/api/lm/user/chat/sessions',
     CHAT_HISTORY_MESSAGES_BATCH: '/api/lm/user/chat/messages/batch',
     CHAT_HISTORY_STATS: '/api/lm/user/chat/stats',
     CHAT_HISTORY_HEALTH: '/api/lm/user/chat/health',

@@ -1,7 +1,7 @@
 <template>
   <!-- 包装所有内容在一个根元素中以解决 v-show 指令警告 -->
   <div>
-    <div class="h-full flex flex-col bg-white dark:bg-slate-900 border-r border-slate-200 dark:border-slate-700">
+    <div class="h-full max-h-full flex flex-col bg-white dark:bg-slate-900 border-r border-slate-200 dark:border-slate-700">
       <!-- 顶部操作栏 -->
       <div class="p-4 border-b border-slate-200 dark:border-slate-700">
         <div class="flex items-center justify-between mb-3">
@@ -41,7 +41,7 @@
       </div>
 
       <!-- 对话列表 -->
-      <div class="flex-1 overflow-y-auto scrollbar-thin scrollbar-track-slate-100 scrollbar-thumb-slate-300 dark:scrollbar-track-slate-800 dark:scrollbar-thumb-slate-600 hover:scrollbar-thumb-slate-400 dark:hover:scrollbar-thumb-slate-500">
+      <div class="flex-1 min-h-0 overflow-y-auto scrollbar-thin scrollbar-track-slate-100 scrollbar-thumb-slate-300 dark:scrollbar-track-slate-800 dark:scrollbar-thumb-slate-600 hover:scrollbar-thumb-slate-400 dark:hover:scrollbar-thumb-slate-500">
         <div v-if="filteredConversations.length === 0" class="flex items-center justify-center min-h-[200px] p-8 text-center text-slate-500">
           <div>
             <MessageCircle class="h-12 w-12 mx-auto mb-3 opacity-50" />
@@ -54,7 +54,7 @@
           v-for="conversation in filteredConversations"
           :key="conversation.id"
           :class="[
-            'group relative p-4 border-b border-slate-100 dark:border-slate-800 cursor-pointer transition-colors',
+            'group relative p-3 border-b border-slate-100 dark:border-slate-800 cursor-pointer transition-colors',
             conversation.isActive 
               ? 'bg-blue-50 dark:bg-blue-900/20 border-l-4 border-l-blue-500' 
               : 'hover:bg-slate-50 dark:hover:bg-slate-800'
@@ -108,7 +108,7 @@
               variant="ghost" 
               size="sm" 
               class="h-6 w-6 p-0 hover:bg-red-100 dark:hover:bg-red-800"
-              @click.stop="deleteConversation(conversation.id)"
+              @click.stop="showDeleteConfirm(conversation.id)"
               title="删除对话"
             >
               <X class="h-3 w-3 text-red-600 dark:text-red-400" />
@@ -118,7 +118,7 @@
       </div>
 
       <!-- 底部统计 -->
-      <div class="p-4 border-t border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-center">
+      <div class="p-2 border-t border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-center">
         <p class="text-xs text-slate-500">
           总计 {{ conversationStore.conversations.length }} 个对话
         </p>
@@ -149,6 +149,45 @@
         </div>
       </DialogContent>
     </Dialog>
+
+    <!-- 删除确认对话框 -->
+    <Dialog v-model:open="showDeleteDialog">
+      <DialogContent class="sm:max-w-md">
+        <DialogHeader>
+          <DialogTitle class="flex items-center gap-2">
+            <div class="flex h-10 w-10 items-center justify-center rounded-full bg-red-100 dark:bg-red-900/20">
+              <X class="h-6 w-6 text-red-600 dark:text-red-400" />
+            </div>
+            <span>删除对话</span>
+          </DialogTitle>
+        </DialogHeader>
+        <div class="space-y-4">
+          <div>
+            <p class="text-sm text-slate-600 dark:text-slate-400 mb-2">
+              确定要删除以下对话吗？
+            </p>
+            <div class="p-3 bg-slate-50 dark:bg-slate-800 rounded-lg border">
+              <p class="text-sm font-medium text-slate-900 dark:text-slate-100 truncate">
+                {{ deletingConversation?.title }}
+              </p>
+              <p class="text-xs text-slate-500 mt-1">
+                包含 {{ deletingConversation?.messageCount || 0 }} 条消息
+              </p>
+            </div>
+            <p class="text-xs text-red-600 dark:text-red-400 mt-2">
+              ⚠️ 此操作无法撤销，对话中的所有消息都将被永久删除
+            </p>
+          </div>
+          <div class="flex justify-end gap-2">
+            <Button variant="outline" @click="showDeleteDialog = false">取消</Button>
+            <Button variant="destructive" @click="confirmDelete">
+              <X class="h-4 w-4 mr-1" />
+              确认删除
+            </Button>
+          </div>
+        </div>
+      </DialogContent>
+    </Dialog>
   </div>
 </template>
 
@@ -167,6 +206,7 @@ import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { useConversationStore } from '@/stores/conversation'
+import type { Conversation } from '@/types'
 
 const conversationStore = useConversationStore()
 const { conversations } = storeToRefs(conversationStore)
@@ -177,6 +217,11 @@ const showRenameDialog = ref(false)
 const editingConversationId = ref<string | null>(null)
 const newTitle = ref('')
 const isSyncing = ref(false)
+
+// 删除确认对话框状态
+const showDeleteDialog = ref(false)
+const deletingConversationId = ref<string | null>(null)
+const deletingConversation = ref<Conversation | null>(null)
 
 // 计算属性
 const filteredConversations = computed(() => {
@@ -244,10 +289,27 @@ function confirmRename() {
   }
 }
 
-function deleteConversation(conversationId: string) {
+function showDeleteConfirm(conversationId: string) {
   const conversation = conversations.value.find(c => c.id === conversationId)
-  if (conversation && confirm(`确定要删除对话"${conversation.title}"吗？`)) {
-    conversationStore.deleteConversation(conversationId)
+  if (conversation) {
+    deletingConversationId.value = conversationId
+    deletingConversation.value = conversation
+    showDeleteDialog.value = true
+  }
+}
+
+async function confirmDelete() {
+  if (deletingConversationId.value) {
+    try {
+      await conversationStore.deleteConversation(deletingConversationId.value)
+      showDeleteDialog.value = false
+      deletingConversationId.value = null
+      deletingConversation.value = null
+    } catch (error) {
+      console.error('❌ 删除对话失败:', error)
+      // 可以在这里添加错误提示，比如toast通知
+      // 暂时不关闭对话框，让用户知道删除失败
+    }
   }
 }
 

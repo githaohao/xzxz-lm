@@ -412,26 +412,26 @@ export interface TokenInfo {
 // 聊天会话类型
 export interface ChatSession {
   id: string
-  userId: number
+  user_id: number
   title: string
   description?: string
   status: 'active' | 'archived' | 'deleted'
   tags?: string[]
-  lastMessageAt?: Date
-  messageCount: number
-  createdAt: Date
-  updatedAt: Date
+  last_message_at?: string
+  message_count: number
+  created_at: string
+  updated_at: string
   messages?: ChatMessage[]
 }
 
 // 聊天消息类型
 export interface ChatMessage {
   id: string
-  sessionId: string
-  userId: number
+  session_id: string
+  user_id: number
   role: 'user' | 'assistant' | 'system'
   content: string
-  messageType: 'text' | 'voice' | 'image' | 'file' | 'multimodal'
+  message_type: 'text' | 'voice' | 'image' | 'file' | 'multimodal'
   metadata?: {
     filePath?: string
     fileName?: string
@@ -449,9 +449,9 @@ export interface ChatMessage {
     [key: string]: any
   }
   status: 'sent' | 'delivered' | 'read' | 'failed'
-  parentMessageId?: string
-  sequenceNumber: number
-  createdAt: Date
+  parent_message_id?: string
+  sequence_number: number
+  created_at: string
 }
 
 // 创建会话DTO
