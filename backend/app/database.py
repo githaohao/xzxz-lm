@@ -113,6 +113,23 @@ class Database:
                     )
                 """)
                 
+                # 创建会话文档关联表
+                await db.execute("""
+                    CREATE TABLE IF NOT EXISTS session_documents (
+                        id TEXT PRIMARY KEY DEFAULT (lower(hex(randomblob(16)))),
+                        session_id TEXT NOT NULL,
+                        doc_id TEXT NOT NULL,
+                        user_id INTEGER NOT NULL,
+                        filename TEXT NOT NULL,
+                        file_type TEXT NOT NULL,
+                        file_size INTEGER,
+                        chunk_count INTEGER DEFAULT 0,
+                        upload_time TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                        FOREIGN KEY (session_id) REFERENCES chat_sessions (id) ON DELETE CASCADE,
+                        UNIQUE(session_id, doc_id)
+                    )
+                """)
+                
                 # 创建索引
                 await db.execute("CREATE INDEX IF NOT EXISTS idx_chat_sessions_user_id ON chat_sessions (user_id)")
                 await db.execute("CREATE INDEX IF NOT EXISTS idx_chat_sessions_status ON chat_sessions (status)")
@@ -126,6 +143,9 @@ class Database:
                 await db.execute("CREATE INDEX IF NOT EXISTS idx_documents_doc_id ON documents (doc_id)")
                 await db.execute("CREATE INDEX IF NOT EXISTS idx_user_documents_user_id ON user_documents (user_id)")
                 await db.execute("CREATE INDEX IF NOT EXISTS idx_user_documents_doc_id ON user_documents (doc_id)")
+                await db.execute("CREATE INDEX IF NOT EXISTS idx_session_documents_session_id ON session_documents (session_id)")
+                await db.execute("CREATE INDEX IF NOT EXISTS idx_session_documents_doc_id ON session_documents (doc_id)")
+                await db.execute("CREATE INDEX IF NOT EXISTS idx_session_documents_user_id ON session_documents (user_id)")
                 
                 await db.commit()
                 logger.info("✅ 数据库初始化成功")

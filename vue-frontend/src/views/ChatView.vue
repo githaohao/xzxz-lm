@@ -492,6 +492,13 @@
     v-model:open="showDocumentDialog"
     @preview-document="handlePreviewDocument"
   />
+
+  <!-- 文档预览弹窗 -->
+  <DocumentPreviewDialog
+    :is-open="showDocumentPreview"
+    :document="selectedDocumentForPreview"
+    @update:is-open="showDocumentPreview = $event"
+  />
 </template>
 
 <script setup lang="ts">
@@ -525,6 +532,7 @@ import { formatTime, formatFileSize, hasThinkTags, extractThinkContent } from '@
 import { uploadFile, getDocumentInfo } from '@/utils/api'
 import { getRagSuggestion, isFileRagSuitable } from '@/utils/rag-utils'
 import RAGDocumentDialog from '@/components/RAGDocumentDialog.vue'
+import DocumentPreviewDialog from '@/components/DocumentPreviewDialog.vue'
 import ConversationList from '@/components/ConversationList.vue'
 import KnowledgeBaseSelector from '@/components/KnowledgeBaseSelector.vue'
 import { useConversationStore } from '@/stores/conversation'
@@ -552,6 +560,8 @@ const fileInput = ref<HTMLInputElement>()
 const isDragging = ref(false)
 const ragEnabled = ref(true) // 默认启用RAG
 const showDocumentDialog = ref(false) // 文档管理弹窗
+const showDocumentPreview = ref(false) // 文档预览弹窗
+const selectedDocumentForPreview = ref<RAGDocument | null>(null) // 要预览的文档
 const showConversationList = ref(true) // 显示对话列表
 const selectedKnowledgeBase = ref<KnowledgeBase | null>(null) // 选中的知识库
 
@@ -696,66 +706,54 @@ function handleDragOver(event: DragEvent) {
 // 处理文件
 async function processFile(file: File) {
   try {
-    console.log('📎 开始处理文件:', file.name)
+    setProcessedFile(null)
     
-    // 设置处理中状态
-    setProcessedFile({
-      name: file.name,
-      size: file.size,
-      type: file.type,
-      processing: true
-    })
-
+    console.log('📁 开始处理文件:', file.name, '大小:', formatFileSize(file.size))
+    
+    // 获取当前会话的session_id
+    const sessionId = conversationStore.currentConversation?.historySessionId
+    
     // 上传并处理文件
-    const result = await uploadFile(file)
+    const result = await uploadFile(file, sessionId)
     
-    // 设置文件状态（uploadFile函数已经处理了ocrCompleted和processing状态）
+    // 设置文件状态
     setProcessedFile(result)
     
     if (result.ocrCompleted && result.doc_id) {
-      console.log('✅ OCR处理完成，文件已准备就绪（支持RAG智能检索）:', result)
+      console.log('✅ 文件处理完成，已自动关联到当前会话:', result)
       
-      // 如果有当前对话，自动将文档关联到对话
-      if (conversationStore.currentConversation && result.doc_id) {
-        try {
-          // 从后端获取文档的完整信息，包括正确的chunk_count
-          const docInfo = await getDocumentInfo(result.doc_id)
-          
-          const uploadedDoc: RAGDocument = {
-            doc_id: result.doc_id,
-            filename: result.name,
-            file_type: result.type,
-            chunk_count: docInfo?.chunk_count || 0,
-            total_length: docInfo?.total_length || result.size,
-            created_at: docInfo?.created_at || new Date().toISOString()
+      // 如果有session_id，文档已经在后端自动关联到会话
+      if (sessionId) {
+        console.log('📚 文档已通过后端自动关联到会话:', sessionId)
+      } else {
+        console.log('⚠️ 当前会话未关联到云端，文档仅保存在本地')
+        
+        // 只有在没有session_id时才手动添加到本地对话
+        if (conversationStore.currentConversation && result.doc_id) {
+          try {
+            const docInfo = await getDocumentInfo(result.doc_id)
+            
+            const uploadedDoc: RAGDocument = {
+              doc_id: result.doc_id,
+              filename: result.name,
+              file_type: result.type,
+              chunk_count: docInfo?.chunk_count || 0,
+              total_length: docInfo?.total_length || result.size,
+              created_at: docInfo?.created_at || new Date().toISOString()
+            }
+            
+            conversationStore.addRagDocumentToConversation(
+              conversationStore.currentConversation.id, 
+              uploadedDoc
+            )
+            console.log('📚 文档已手动关联到本地对话:', uploadedDoc.filename)
+          } catch (error) {
+            console.warn('⚠️ 获取文档信息失败:', error)
           }
-          
-          conversationStore.addRagDocumentToConversation(
-            conversationStore.currentConversation.id, 
-            uploadedDoc
-          )
-          console.log('📚 文档已自动关联到当前对话:', uploadedDoc.filename, '片段数:', uploadedDoc.chunk_count)
-        } catch (error) {
-          console.warn('⚠️ 获取文档信息失败，使用默认信息:', error)
-          // 如果获取文档信息失败，使用默认值
-          const uploadedDoc: RAGDocument = {
-            doc_id: result.doc_id,
-            filename: result.name,
-            file_type: result.type,
-            chunk_count: 0,
-            total_length: result.size,
-            created_at: new Date().toISOString()
-          }
-          
-          conversationStore.addRagDocumentToConversation(
-            conversationStore.currentConversation.id, 
-            uploadedDoc
-          )
-          console.log('📚 文档已自动关联到当前对话 (默认信息):', uploadedDoc.filename)
         }
       }
     } else {
-      console.log('⏳ 文件上传成功，OCR处理中:', result)
+      console.log('⏳ 文件上传成功，处理中:', result)
     }
   } catch (error: any) {
     console.error('❌ 文件处理失败:', error)
@@ -838,8 +836,8 @@ function openKnowledgeBaseManager() {
 // 处理预览文档
 function handlePreviewDocument(document: RAGDocument) {
   console.log('📖 预览文档:', document.filename)
-  // TODO: 实现文档预览功能，可以显示文档内容或跳转到详情页
-  alert(`预览文档: ${document.filename}\n\n文件类型: ${document.file_type}\n文档大小: ${ragStore.formatDocumentSize(document.total_length)}\n创建时间: ${ragStore.formatCreateTime(document.created_at)}\n片段数量: ${document.chunk_count}`)
+  selectedDocumentForPreview.value = document
+  showDocumentPreview.value = true
 }
 
 // 新增：初始化滚动监听

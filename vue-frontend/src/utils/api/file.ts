@@ -1,13 +1,16 @@
-import type { ProcessedFile, RAGSearchRequest, RAGSearchResponse } from '@/types'
+import type { ProcessedFile, RAGSearchRequest, RAGSearchResponse, RAGDocument } from '@/types'
 import { API_CONFIG } from '../api-config'
 import { api } from './client'
 
 /**
  * 文件上传和处理 - 支持PDF智能检测
  */
-export async function uploadFile(file: File): Promise<ProcessedFile> {
+export async function uploadFile(file: File, sessionId?: string): Promise<ProcessedFile> {
   const formData = new FormData()
   formData.append('file', file)
+  if (sessionId) {
+    formData.append('session_id', sessionId)
+  }
 
   try {
     // 使用新的智能上传接口，支持PDF自动检测和处理
@@ -136,4 +139,29 @@ export async function getDocumentInfo(docId: string): Promise<any> {
  */
 export async function getDocumentChunks(docId: string): Promise<any> {
   return api.get(`${API_CONFIG.ENDPOINTS.RAG_DOCUMENTS}/${docId}/chunks`)
+}
+
+/**
+ * 获取会话关联的文档列表
+ */
+export async function getSessionDocuments(sessionId: string): Promise<RAGDocument[]> {
+  try {
+    const response = await api.get<any>(`/api/lm/chat/sessions/${sessionId}/documents`)
+    
+    if (response.code === 200 && response.data) {
+      return response.data.map((doc: any) => ({
+        doc_id: doc.doc_id,
+        filename: doc.filename,
+        file_type: doc.file_type,
+        chunk_count: doc.chunk_count,
+        total_length: doc.file_size || 0,
+        created_at: doc.upload_time
+      }))
+    }
+    
+    return []
+  } catch (error) {
+    console.error('获取会话文档失败:', error)
+    return []
+  }
 } 

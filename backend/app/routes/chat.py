@@ -4,7 +4,7 @@ import uuid
 import os
 import time
 from datetime import datetime
-from typing import List, Optional
+from typing import List, Optional, Dict
 import aiofiles
 import logging
 import traceback
@@ -24,6 +24,7 @@ from app.services.chat_history_service import chat_history_service
 from app.models.chat_history import CreateMessageDto, MessageRole, MessageType as ChatMessageType
 from app.config import settings
 from app.middleware.auth import get_current_user_id
+from app.database import database
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/chat", tags=["chat"])
@@ -94,6 +95,7 @@ async def chat_completion_stream(
 @router.post("/upload", response_model=FileUploadResponse)
 async def upload_file(
     file: UploadFile = File(...),
+    session_id: Optional[str] = Form(None),  # 添加可选的会话ID参数
     user_id: int = Depends(get_current_user_id)
 ):
     """文件上传处理 - 支持PDF智能检测和处理"""
@@ -196,6 +198,23 @@ async def upload_file(
                 response.processing_status = f"PDF处理失败: {str(pdf_error)}"
                 # PDF处理失败不影响文件上传，文件仍然可用
         
+        # 如果提供了session_id且RAG处理成功，创建会话文档关联
+        if session_id and response.doc_id and response.rag_processed:
+            try:
+                await create_session_document_association(
+                    session_id=session_id,
+                    doc_id=response.doc_id,
+                    user_id=user_id,
+                    filename=response.file_name,
+                    file_type=response.file_type,
+                    file_size=response.file_size,
+                    chunk_count=await get_document_chunk_count(response.doc_id)
+                )
+                logger.info(f"✅ 文档已关联到会话: session_id={session_id}, doc_id={response.doc_id}")
+            except Exception as e:
+                logger.warning(f"⚠️ 创建会话文档关联失败: {e}")
+                # 不影响文件上传结果
+        
         return response
         
     except HTTPException:
@@ -203,6 +222,23 @@ async def upload_file(
     except Exception as e:
         logger.error(f"文件上传失败: {e}")
         raise HTTPException(status_code=500, detail=f"文件上传失败: {str(e)}")
+
+@router.get("/sessions/{session_id}/documents")
+async def get_session_documents_api(
+    session_id: str,
+    user_id: int = Depends(get_current_user_id)
+):
+    """获取会话关联的文档列表"""
+    try:
+        documents = await get_session_documents(session_id, user_id)
+        return {
+            "code": 200,
+            "msg": "获取成功",
+            "data": documents
+        }
+    except Exception as e:
+        logger.error(f"获取会话文档列表失败: {e}")
+        raise HTTPException(status_code=500, detail=f"获取会话文档失败: {str(e)}")
 
 @router.post("/ocr", response_model=OCRResponse)
 async def extract_text(file_path: str = Form(...)):
@@ -443,7 +479,7 @@ async def multimodal_chat_stream_with_processed_data(
             error_message = f"处理请求时出现错误: {str(e)}"
             yield f"data: {json.dumps({'type': 'error', 'message': error_message})}\n\n"
             yield "data: [DONE]\n\n"
-    
+
     return StreamingResponse(
         generate(),
         media_type="text/event-stream",
@@ -453,3 +489,67 @@ async def multimodal_chat_stream_with_processed_data(
             "X-Accel-Buffering": "no"
         }
     )
+
+# ==================== 会话文档关联管理 ====================
+
+async def create_session_document_association(
+    session_id: str,
+    doc_id: str,
+    user_id: int,
+    filename: str,
+    file_type: str,
+    file_size: int,
+    chunk_count: int = 0
+):
+    """创建会话文档关联"""
+    try:
+        async with database.get_connection() as db:
+            await db.execute("""
+                INSERT OR IGNORE INTO session_documents 
+                (session_id, doc_id, user_id, filename, file_type, file_size, chunk_count)
+                VALUES (?, ?, ?, ?, ?, ?, ?)
+            """, (session_id, doc_id, user_id, filename, file_type, file_size, chunk_count))
+            await db.commit()
+    except Exception as e:
+        logger.error(f"创建会话文档关联失败: {e}")
+        raise
+
+async def get_session_documents(session_id: str, user_id: int) -> List[Dict]:
+    """获取会话关联的文档列表"""
+    try:
+        async with database.get_connection() as db:
+            cursor = await db.execute("""
+                SELECT doc_id, filename, file_type, file_size, chunk_count, upload_time
+                FROM session_documents 
+                WHERE session_id = ? AND user_id = ?
+                ORDER BY upload_time DESC
+            """, (session_id, user_id))
+            rows = await cursor.fetchall()
+            
+            documents = []
+            for row in rows:
+                documents.append({
+                    "doc_id": row[0],
+                    "filename": row[1],
+                    "file_type": row[2],
+                    "file_size": row[3],
+                    "chunk_count": row[4],
+                    "upload_time": row[5]
+                })
+            
+            return documents
+    except Exception as e:
+        logger.error(f"获取会话文档列表失败: {e}")
+        return []
+
+async def get_document_chunk_count(doc_id: str) -> int:
+    """获取文档的分块数量"""
+    try:
+        # 从RAG服务获取文档信息
+        doc_info = await rag_service.get_document_info(doc_id)
+        if doc_info:
+            return doc_info.get('chunk_count', 0)
+        return 0
+    except Exception as e:
+        logger.warning(f"获取文档分块数量失败: {e}")
+        return 0

@@ -36,7 +36,8 @@ export {
   searchDocuments, 
   processDocumentForRAG, 
   getDocumentInfo,
-  getDocumentChunks 
+  getDocumentChunks,
+  getSessionDocuments 
 } from './file'
 
 // 用户系统相关

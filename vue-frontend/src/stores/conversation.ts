@@ -21,7 +21,8 @@ import {
   addChatMessage,
   addChatMessagesBatch,
   updateChatSession,
-  deleteChatSession
+  deleteChatSession,
+  getSessionDocuments
 } from '@/utils/api'
 
 export const useConversationStore = defineStore('conversation', () => {
@@ -268,53 +269,52 @@ export const useConversationStore = defineStore('conversation', () => {
 
   // 从云端加载消息到本地对话
   async function loadMessagesFromRemote(conversationId: string) {
+    const conversation = conversations.value.find(c => c.id === conversationId)
+    if (!conversation || !conversation.historySessionId) {
+      return // 没有关联的云端会话，跳过
+    }
+
+    const data = conversationData.value.get(conversationId)
+    if (!data || data.messages.length > 0) {
+      return // 已有本地消息，跳过加载
+    }
+
     try {
-      const conversation = conversations.value.find(c => c.id === conversationId)
-      if (!conversation || !conversation.historySessionId) {
-        return // 没有关联的云端会话，跳过
-      }
-
-      const conversationDataObj = conversationData.value.get(conversationId)
-      if (!conversationDataObj) {
-        return // 没有对话数据，跳过
-      }
-
-      // 检查本地是否已有消息
-      if (conversationDataObj.messages.length > 0) {
-        console.log(`📝 对话 ${conversation.title} 本地已有消息，跳过云端加载`)
-        return
-      }
-
-      console.log(`🔄 正在从云端加载对话消息: ${conversation.title} (${conversation.historySessionId})`)
-
-      // 获取云端消息
-      const remoteMessages = await fetchRemoteSessionMessages(conversation.historySessionId, 1, 100)
+      console.log('📜 从云端加载会话消息和文档:', conversation.historySessionId)
       
-      if (remoteMessages.length === 0) {
-        console.log(`📝 云端会话 ${conversation.historySessionId} 暂无消息`)
-        return
+      // 加载消息
+      const messages = await fetchRemoteSessionMessages(conversation.historySessionId)
+      if (messages && messages.length > 0) {
+        // 转换并添加消息
+        for (const chatMsg of messages) {
+          const message = convertChatMessageToMessage(chatMsg)
+          data.messages.push(message)
+        }
+        
+        // 更新会话统计
+        conversation.messageCount = data.messages.length
+        conversation.updatedAt = new Date()
+        
+        console.log(`✅ 成功加载${messages.length}条历史消息`)
       }
-
-      // 将ChatMessage转换为Message格式
-      const localMessages: Message[] = remoteMessages.map(chatMsg => convertChatMessageToMessage(chatMsg))
-
-      // 更新本地对话数据
-      conversationDataObj.messages = localMessages
-      conversationDataObj.conversation.messageCount = localMessages.length
       
-      // 更新最后一条消息的预览
-      if (localMessages.length > 0) {
-        const lastMessage = localMessages[localMessages.length - 1]
-        conversationDataObj.conversation.lastMessage = lastMessage.isUser 
-          ? lastMessage.content 
-          : lastMessage.content.substring(0, 50) + (lastMessage.content.length > 50 ? '...' : '')
+      // 加载会话关联的文档
+      try {
+        const sessionDocs = await getSessionDocuments(conversation.historySessionId)
+        if (sessionDocs && sessionDocs.length > 0) {
+          // 添加文档到对话
+          data.ragDocuments = sessionDocs
+          console.log(`📚 成功加载${sessionDocs.length}个关联文档`)
+        }
+      } catch (docError) {
+        console.warn('⚠️ 加载会话文档失败:', docError)
+        // 文档加载失败不影响消息加载
       }
-
-      console.log(`✅ 成功从云端加载 ${localMessages.length} 条消息到对话: ${conversation.title}`)
-
+      
+      saveToCache()
+      
     } catch (error) {
-      console.error('❌ 从云端加载消息失败:', error)
-      // 加载失败不影响对话切换，用户仍可以正常使用
+      console.error('❌ 加载云端数据失败:', error)
     }
   }
 
