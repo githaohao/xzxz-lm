@@ -2,6 +2,7 @@ from pydantic import BaseModel, Field
 from typing import List, Optional, Any
 from datetime import datetime
 from enum import Enum
+from app.utils import now_china_naive
 
 class MessageType(str, Enum):
     TEXT = "text"
@@ -13,11 +14,16 @@ class ChatMessage(BaseModel):
     id: Optional[str] = None
     content: str
     message_type: MessageType = MessageType.TEXT
-    timestamp: datetime = Field(default_factory=datetime.now)
+    timestamp: datetime = Field(default_factory=now_china_naive)
     is_user: bool = True
     file_path: Optional[str] = None
     file_name: Optional[str] = None
     file_size: Optional[int] = None
+
+    class Config:
+        json_encoders = {
+            datetime: lambda v: v.strftime('%Y-%m-%d %H:%M:%S')
+        }
 
 class ChatRequest(BaseModel):
     message: str
@@ -73,9 +79,14 @@ class MultimodalStreamRequest(BaseModel):
 class ChatResponse(BaseModel):
     response: str
     message_id: str
-    timestamp: datetime = Field(default_factory=datetime.now)
+    timestamp: datetime = Field(default_factory=now_china_naive)
     tokens_used: Optional[int] = None
     processing_time: Optional[float] = None
+
+    class Config:
+        json_encoders = {
+            datetime: lambda v: v.strftime('%Y-%m-%d %H:%M:%S')
+        }
 
 class FileUploadResponse(BaseModel):
     file_id: str
@@ -83,7 +94,12 @@ class FileUploadResponse(BaseModel):
     file_path: str
     file_size: int
     file_type: str
-    upload_time: datetime = Field(default_factory=datetime.now)
+    upload_time: datetime = Field(default_factory=now_china_naive)
+
+    class Config:
+        json_encoders = {
+            datetime: lambda v: v.strftime('%Y-%m-%d %H:%M:%S')
+        }
 
 class OCRRequest(BaseModel):
     file_path: str
@@ -117,7 +133,12 @@ class STTResponse(BaseModel):
 
 class HealthResponse(BaseModel):
     status: str
-    timestamp: datetime = Field(default_factory=datetime.now)
+    timestamp: datetime = Field(default_factory=now_china_naive)
     lm_studio_status: bool
     services: dict = Field(default_factory=dict)
     nacos_info: Optional[dict] = None
+
+    class Config:
+        json_encoders = {
+            datetime: lambda v: v.strftime('%Y-%m-%d %H:%M:%S')
+        }

@@ -5,13 +5,27 @@ export function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs))
 }
 
-// 格式化时间
-export function formatTime(date: Date): string {
-  return date.toLocaleTimeString('zh-CN', {
-    hour: '2-digit',
-    minute: '2-digit',
-    second: '2-digit'
-  })
+// 格式化时间 - 支持Date对象或字符串格式
+export function formatTime(date: Date | string): string {
+  try {
+    // 如果传入的是字符串，先转换为Date对象
+    const dateObj = typeof date === 'string' ? new Date(date.replace(' ', 'T')) : date
+    
+    // 检查是否为有效日期
+    if (isNaN(dateObj.getTime())) {
+      console.warn('Invalid date provided to formatTime:', date)
+      return '无效时间'
+    }
+    
+    return dateObj.toLocaleTimeString('zh-CN', {
+      hour: '2-digit',
+      minute: '2-digit',
+      second: '2-digit'
+    })
+  } catch (error) {
+    console.error('Error formatting time:', error)
+    return '时间解析错误'
+  }
 }
 
 // 格式化文件大小

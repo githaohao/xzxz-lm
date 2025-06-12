@@ -11,6 +11,7 @@ from app.models.chat_history import (
     QuerySessionsDto, ChatStatsResponse, PaginationInfo,
     SessionStatus, MessageRole, MessageType, MessageStatus, SortOrder
 )
+from app.utils import now_china_naive, format_china_time
 
 logger = logging.getLogger(__name__)
 
@@ -25,15 +26,16 @@ class ChatHistoryService:
         """创建聊天会话"""
         try:
             session_id = str(uuid.uuid4())
-            title = session_data.title or f"对话 {datetime.now().strftime('%m-%d %H:%M')}"
+            title = session_data.title or f"对话 {now_china_naive().strftime('%m-%d %H:%M')}"
             tags_json = json.dumps(session_data.tags) if session_data.tags else None
+            current_time = format_china_time()
             
             async with database.get_connection() as db:
                 await db.execute("""
                     INSERT INTO chat_sessions (
                         id, user_id, title, description, tags, created_at, updated_at
-                    ) VALUES (?, ?, ?, ?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
-                """, (session_id, user_id, title, session_data.description, tags_json))
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?)
+                """, (session_id, user_id, title, session_data.description, tags_json, current_time, current_time))
                 
                 await db.commit()
                 
@@ -193,7 +195,8 @@ class ChatHistoryService:
                 # 没有更新字段，直接返回原会话
                 return await self.get_session_by_id(user_id, session_id)
             
-            update_fields.append("updated_at = CURRENT_TIMESTAMP")
+            update_fields.append("updated_at = ?")
+            params.append(format_china_time())
             params.extend([session_id, user_id])
             
             async with database.get_connection() as db:
@@ -220,9 +223,9 @@ class ChatHistoryService:
             async with database.get_connection() as db:
                 await db.execute("""
                     UPDATE chat_sessions 
-                    SET status = ?, updated_at = CURRENT_TIMESTAMP
+                    SET status = ?, updated_at = ?
                     WHERE id = ? AND user_id = ?
-                """, (SessionStatus.DELETED.value, session_id, user_id))
+                """, (SessionStatus.DELETED.value, format_china_time(), session_id, user_id))
                 
                 await db.commit()
                 return True
@@ -240,9 +243,9 @@ class ChatHistoryService:
             async with database.get_connection() as db:
                 await db.execute("""
                     UPDATE chat_sessions 
-                    SET status = ?, updated_at = CURRENT_TIMESTAMP
+                    SET status = ?, updated_at = ?
                     WHERE id = ? AND user_id = ?
-                """, (SessionStatus.ARCHIVED.value, session_id, user_id))
+                """, (SessionStatus.ARCHIVED.value, format_china_time(), session_id, user_id))
                 
                 await db.commit()
                 return await self.get_session_by_id(user_id, session_id)
@@ -260,9 +263,9 @@ class ChatHistoryService:
             async with database.get_connection() as db:
                 await db.execute("""
                     UPDATE chat_sessions 
-                    SET status = ?, updated_at = CURRENT_TIMESTAMP
+                    SET status = ?, updated_at = ?
                     WHERE id = ? AND user_id = ?
-                """, (SessionStatus.ACTIVE.value, session_id, user_id))
+                """, (SessionStatus.ACTIVE.value, format_china_time(), session_id, user_id))
                 
                 await db.commit()
                 return await self.get_session_by_id(user_id, session_id)
@@ -360,25 +363,26 @@ class ChatHistoryService:
                 sequence_number = (await cursor.fetchone())[0]
                 
                 # 插入消息
+                current_time = format_china_time()
                 await db.execute("""
                     INSERT INTO chat_messages (
                         id, session_id, user_id, role, content, message_type,
                         metadata, status, parent_message_id, sequence_number, created_at
-                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """, (
                     message_id, message_data.session_id, user_id, message_data.role.value,
                     message_data.content, message_data.message_type.value, metadata_json,
-                    MessageStatus.SENT.value, message_data.parent_message_id, sequence_number
+                    MessageStatus.SENT.value, message_data.parent_message_id, sequence_number, current_time
                 ))
                 
                 # 更新会话统计
                 await db.execute("""
                     UPDATE chat_sessions 
                     SET message_count = message_count + 1,
-                        last_message_at = CURRENT_TIMESTAMP,
-                        updated_at = CURRENT_TIMESTAMP
+                        last_message_at = ?,
+                        updated_at = ?
                     WHERE id = ? AND user_id = ?
-                """, (message_data.session_id, user_id))
+                """, (current_time, current_time, message_data.session_id, user_id))
                 
                 await db.commit()
                 
@@ -440,6 +444,7 @@ class ChatHistoryService:
                     base_sequence = (await cursor.fetchone())[0]
                     
                     # 批量插入消息
+                    current_time = format_china_time()
                     for i, msg_data in enumerate(session_messages):
                         message_id = str(uuid.uuid4())
                         metadata_json = json.dumps(msg_data.metadata) if msg_data.metadata else None
@@ -449,11 +454,11 @@ class ChatHistoryService:
                             INSERT INTO chat_messages (
                                 id, session_id, user_id, role, content, message_type,
                                 metadata, status, parent_message_id, sequence_number, created_at
-                            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+                            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                         """, (
                             message_id, session_id, user_id, msg_data.role.value,
                             msg_data.content, msg_data.message_type.value, metadata_json,
-                            MessageStatus.SENT.value, msg_data.parent_message_id, sequence_number
+                            MessageStatus.SENT.value, msg_data.parent_message_id, sequence_number, current_time
                         ))
                         
                         # 构建返回的消息对象
@@ -468,7 +473,7 @@ class ChatHistoryService:
                             status=MessageStatus.SENT,
                             parent_message_id=msg_data.parent_message_id,
                             sequence_number=sequence_number,
-                            created_at=datetime.now()
+                            created_at=now_china_naive()
                         )
                         result_messages.append(message)
                     
@@ -476,10 +481,10 @@ class ChatHistoryService:
                     await db.execute("""
                         UPDATE chat_sessions 
                         SET message_count = message_count + ?,
-                            last_message_at = CURRENT_TIMESTAMP,
-                            updated_at = CURRENT_TIMESTAMP
+                            last_message_at = ?,
+                            updated_at = ?
                         WHERE id = ? AND user_id = ?
-                    """, (len(session_messages), session_id, user_id))
+                    """, (len(session_messages), current_time, current_time, session_id, user_id))
                 
                 await db.commit()
                 return result_messages
@@ -513,9 +518,9 @@ class ChatHistoryService:
                 await db.execute("""
                     UPDATE chat_sessions 
                     SET message_count = message_count - 1,
-                        updated_at = CURRENT_TIMESTAMP
+                        updated_at = ?
                     WHERE id = ? AND user_id = ?
-                """, (session_id, user_id))
+                """, (format_china_time(), session_id, user_id))
                 
                 await db.commit()
                 return True

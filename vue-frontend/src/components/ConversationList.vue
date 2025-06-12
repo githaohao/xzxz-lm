@@ -94,31 +94,25 @@
           </div>
 
           <!-- 操作按钮 -->
-          <div class="absolute top-2 right-2 opacity-0 group-hover:opacity-100 transition-opacity">
-            <DropdownMenu>
-              <DropdownMenuTrigger asChild>
-                <Button variant="ghost" size="sm" class="h-6 w-6 p-0">
-                  <MoreVertical class="h-3 w-3" />
-                </Button>
-              </DropdownMenuTrigger>
-              <DropdownMenuContent align="end">
-                <DropdownMenuItem @click.stop="editConversationTitle(conversation.id)">
-                  <Edit2 class="h-4 w-4 mr-2" />
-                  重命名
-                </DropdownMenuItem>
-                <DropdownMenuItem @click.stop="clearConversationMessages(conversation.id)">
-                  <Trash2 class="h-4 w-4 mr-2" />
-                  清空消息
-                </DropdownMenuItem>
-                <DropdownMenuItem 
-                  @click.stop="deleteConversation(conversation.id)"
-                  class="text-red-600 focus:text-red-600"
-                >
-                  <X class="h-4 w-4 mr-2" />
-                  删除对话
-                </DropdownMenuItem>
-              </DropdownMenuContent>
-            </DropdownMenu>
+          <div class="absolute bottom-2 right-2 opacity-0 group-hover:opacity-100 transition-opacity flex gap-1">
+            <Button 
+              variant="ghost" 
+              size="sm" 
+              class="h-6 w-6 p-0 hover:bg-blue-100 dark:hover:bg-blue-800"
+              @click.stop="editConversationTitle(conversation.id)"
+              title="重命名对话"
+            >
+              <Edit2 class="h-3 w-3 text-blue-600 dark:text-blue-400" />
+            </Button>
+            <Button 
+              variant="ghost" 
+              size="sm" 
+              class="h-6 w-6 p-0 hover:bg-red-100 dark:hover:bg-red-800"
+              @click.stop="deleteConversation(conversation.id)"
+              title="删除对话"
+            >
+              <X class="h-3 w-3 text-red-600 dark:text-red-400" />
+            </Button>
           </div>
         </div>
       </div>
@@ -165,16 +159,13 @@ import {
   Plus, 
   Search, 
   MessageCircle, 
-  MoreVertical, 
   Edit2, 
-  Trash2, 
   X,
   RefreshCw
 } from 'lucide-vue-next'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
-import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu'
 import { useConversationStore } from '@/stores/conversation'
 
 const conversationStore = useConversationStore()
@@ -253,12 +244,6 @@ function confirmRename() {
   }
 }
 
-function clearConversationMessages(conversationId: string) {
-  if (confirm('确定要清空此对话的所有消息吗？')) {
-    conversationStore.clearConversationMessages(conversationId)
-  }
-}
-
 function deleteConversation(conversationId: string) {
   const conversation = conversations.value.find(c => c.id === conversationId)
   if (conversation && confirm(`确定要删除对话"${conversation.title}"吗？`)) {
@@ -266,18 +251,32 @@ function deleteConversation(conversationId: string) {
   }
 }
 
-function formatTime(date: Date): string {
-  const now = new Date()
-  const diffMs = now.getTime() - date.getTime()
-  const diffMins = Math.floor(diffMs / (1000 * 60))
-  const diffHours = Math.floor(diffMs / (1000 * 60 * 60))
-  const diffDays = Math.floor(diffMs / (1000 * 60 * 60 * 24))
-  
-  if (diffMins < 1) return '刚刚'
-  if (diffMins < 60) return `${diffMins}分钟前`
-  if (diffHours < 24) return `${diffHours}小时前`
-  if (diffDays < 7) return `${diffDays}天前`
-  
-  return date.toLocaleDateString('zh-CN', { month: 'short', day: 'numeric' })
+function formatTime(date: Date | string): string {
+  try {
+    // 如果传入的是字符串，先转换为Date对象
+    const dateObj = typeof date === 'string' ? new Date(date.replace(' ', 'T')) : date
+    
+    // 检查是否为有效日期
+    if (isNaN(dateObj.getTime())) {
+      console.warn('Invalid date provided to formatTime:', date)
+      return '无效时间'
+    }
+    
+    const now = new Date()
+    const diffMs = now.getTime() - dateObj.getTime()
+    const diffMins = Math.floor(diffMs / (1000 * 60))
+    const diffHours = Math.floor(diffMs / (1000 * 60 * 60))
+    const diffDays = Math.floor(diffMs / (1000 * 60 * 60 * 24))
+    
+    if (diffMins < 1) return '刚刚'
+    if (diffMins < 60) return `${diffMins}分钟前`
+    if (diffHours < 24) return `${diffHours}小时前`
+    if (diffDays < 7) return `${diffDays}天前`
+    
+    return dateObj.toLocaleDateString('zh-CN', { month: 'short', day: 'numeric' })
+  } catch (error) {
+    console.error('Error formatting time:', error)
+    return '时间解析错误'
+  }
 }
 </script> 

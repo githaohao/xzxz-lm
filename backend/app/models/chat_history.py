@@ -68,6 +68,11 @@ class ChatMessage(BaseModel):
     sequence_number: int = Field(..., description="序列号")
     created_at: datetime = Field(..., description="创建时间")
 
+    class Config:
+        json_encoders = {
+            datetime: lambda v: v.strftime('%Y-%m-%d %H:%M:%S')
+        }
+
 class ChatSession(BaseModel):
     id: str = Field(..., description="会话ID")
     user_id: int = Field(..., description="用户ID")
@@ -80,6 +85,11 @@ class ChatSession(BaseModel):
     created_at: datetime = Field(..., description="创建时间")
     updated_at: datetime = Field(..., description="更新时间")
     messages: Optional[List[ChatMessage]] = Field(None, description="消息列表")
+
+    class Config:
+        json_encoders = {
+            datetime: lambda v: v.strftime('%Y-%m-%d %H:%M:%S')
+        }
 
 class ChatStatsResponse(BaseModel):
     total_sessions: int = Field(..., description="总会话数")
@@ -110,6 +120,11 @@ class KnowledgeBase(BaseModel):
     created_at: datetime = Field(..., description="创建时间")
     updated_at: datetime = Field(..., description="更新时间")
 
+    class Config:
+        json_encoders = {
+            datetime: lambda v: v.strftime('%Y-%m-%d %H:%M:%S')
+        }
+
 class CreateKnowledgeBaseDto(BaseModel):
     name: str = Field(..., min_length=1, max_length=100, description="知识库名称")
     description: Optional[str] = Field(None, max_length=500, description="知识库描述")
@@ -134,4 +149,9 @@ class Document(BaseModel):
     content_preview: Optional[str] = Field(None, description="内容预览")
     upload_path: Optional[str] = Field(None, description="上传路径")
     created_at: datetime = Field(..., description="创建时间")
-    updated_at: datetime = Field(..., description="更新时间") 
+    updated_at: datetime = Field(..., description="更新时间")
+
+    class Config:
+        json_encoders = {
+            datetime: lambda v: v.strftime('%Y-%m-%d %H:%M:%S')
+        } 
