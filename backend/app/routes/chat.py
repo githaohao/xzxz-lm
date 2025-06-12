@@ -92,8 +92,11 @@ async def chat_completion_stream(
         raise HTTPException(status_code=500, detail=f"处理请求失败: {str(e)}")
 
 @router.post("/upload", response_model=FileUploadResponse)
-async def upload_file(file: UploadFile = File(...)):
-    """文件上传处理"""
+async def upload_file(
+    file: UploadFile = File(...),
+    user_id: int = Depends(get_current_user_id)
+):
+    """文件上传处理 - 支持PDF智能检测和处理"""
     try:
         # 检查文件类型
         file_ext = os.path.splitext(file.filename)[1].lower()
@@ -123,13 +126,77 @@ async def upload_file(file: UploadFile = File(...)):
         
         logger.info(f"文件上传成功: {safe_filename}")
         
-        return FileUploadResponse(
+        # 构建基础响应
+        response = FileUploadResponse(
             file_id=file_id,
             file_name=file.filename,
             file_path=file_path,
             file_size=len(content),
-            file_type=file_ext
+            file_type=file_ext,
+            is_pdf=(file_ext == '.pdf')
         )
+        
+        # 如果是PDF文件，进行智能检测和处理
+        if file_ext == '.pdf':
+            try:
+                logger.info(f"📄 开始处理PDF文件: {file.filename}")
+                
+                # 1. 检测PDF类型
+                is_text_pdf, extracted_text, char_count = await ocr_service.detect_pdf_text_content(file_path)
+                
+                response.is_text_pdf = is_text_pdf
+                response.char_count = char_count
+                
+                if is_text_pdf:
+                    # 文本PDF：直接进行RAG处理
+                    logger.info(f"✅ 检测为文本PDF，直接进行RAG处理")
+                    response.text_content = extracted_text
+                    response.processing_status = "文本PDF - 直接RAG处理"
+                    
+                    # 进行RAG处理
+                    doc_id = await rag_service.process_document(
+                        content=extracted_text,
+                        filename=file.filename,
+                        file_type=file_ext
+                    )
+                    response.doc_id = doc_id
+                    response.rag_processed = True
+                    
+                    logger.info(f"🚀 文本PDF RAG处理完成，doc_id: {doc_id}")
+                    
+                else:
+                    # 扫描PDF：需要OCR处理
+                    logger.info(f"🔍 检测为扫描PDF，开始OCR处理")
+                    response.processing_status = "扫描PDF - OCR处理中"
+                    
+                    # 进行OCR处理
+                    ocr_text, confidence, processing_time = await ocr_service.extract_text_from_pdf(file_path)
+                    
+                    if ocr_text.strip():
+                        logger.info(f"📝 OCR处理完成，置信度: {confidence:.2f}")
+                        response.text_content = ocr_text
+                        response.processing_status = f"扫描PDF - OCR完成 (置信度: {confidence:.2f})"
+                        
+                        # OCR完成后进行RAG处理
+                        doc_id = await rag_service.process_document(
+                            content=ocr_text,
+                            filename=file.filename,
+                            file_type=file_ext
+                        )
+                        response.doc_id = doc_id
+                        response.rag_processed = True
+                        
+                        logger.info(f"🚀 扫描PDF OCR+RAG处理完成，doc_id: {doc_id}")
+                    else:
+                        logger.warning(f"⚠️ OCR未能提取到有效文本")
+                        response.processing_status = "扫描PDF - OCR未提取到有效文本"
+                        
+            except Exception as pdf_error:
+                logger.error(f"❌ PDF处理失败: {pdf_error}")
+                response.processing_status = f"PDF处理失败: {str(pdf_error)}"
+                # PDF处理失败不影响文件上传，文件仍然可用
+        
+        return response
         
     except HTTPException:
         raise

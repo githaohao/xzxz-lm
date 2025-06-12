@@ -51,6 +51,12 @@ export interface ProcessedFile {
   content?: string  // OCR处理后的内容，用于RAG
   doc_id?: string   // RAG文档ID
   rag_enabled?: boolean  // 是否启用RAG
+  // PDF智能处理新增字段
+  is_pdf?: boolean  // 是否为PDF文件
+  is_text_pdf?: boolean | null  // true: 文本PDF, false: 扫描PDF, null: 未检测
+  char_count?: number  // 字符数量
+  processing_status?: string  // 处理状态信息
+  rag_processed?: boolean  // 是否已进行RAG处理
   attachments?: Array<{
     type: string
     url: string

@@ -3,69 +3,76 @@ import { API_CONFIG } from '../api-config'
 import { api } from './client'
 
 /**
- * 文件上传和处理
+ * 文件上传和处理 - 支持PDF智能检测
  */
 export async function uploadFile(file: File): Promise<ProcessedFile> {
   const formData = new FormData()
   formData.append('file', file)
 
-  // 1. 先上传文件
-  const uploadResult = await api.upload<any>(
-    API_CONFIG.ENDPOINTS.UPLOAD, 
-    formData, 
-    API_CONFIG.TIMEOUT.UPLOAD
-  )
+  try {
+    // 使用新的智能上传接口，支持PDF自动检测和处理
+    const uploadResult = await api.upload<any>(
+      API_CONFIG.ENDPOINTS.UPLOAD, 
+      formData, 
+      API_CONFIG.TIMEOUT.UPLOAD
+    )
 
-  let ocrCompleted = false
-  let content: string | undefined = undefined
-  let docId: string | undefined = undefined
-  let ragEnabled = false
+    console.log('📁 文件上传结果:', uploadResult)
 
-  // 2. 如果是支持OCR的文件类型，进行OCR处理
-  const fileExt = file.name.toLowerCase().split('.').pop()
-  if (fileExt && ['pdf', 'png', 'jpg', 'jpeg'].includes(fileExt)) {
-    try {
-      const ocrFormData = new FormData()
-      ocrFormData.append('file_path', uploadResult.file_path)
-
-      const ocrResponse = await api.upload<any>(
-        API_CONFIG.ENDPOINTS.OCR, 
-        ocrFormData, 
-        API_CONFIG.TIMEOUT.OCR
-      )
-      content = ocrResponse.text // 保存OCR文本用于RAG
-      ocrCompleted = true // OCR处理完成
-
-      // 3. 如果OCR成功且有内容，进行RAG文档处理
-      if (content && content.trim().length > 50) {
-        try {
-          docId = await processDocumentForRAG(content, file.name, file.type)
-          ragEnabled = true
-          console.log('✅ RAG文档处理完成，doc_id:', docId)
-        } catch (ragError) {
-          console.warn('⚠️ RAG文档处理失败:', ragError)
-          // RAG处理失败不影响文件使用
-        }
-      }
-    } catch (ocrError) {
-      console.warn('OCR处理失败:', ocrError)
-      // OCR失败不影响文件上传，继续处理
-      ocrCompleted = false
+    // 转换后端响应为前端ProcessedFile格式
+    const processedFile: ProcessedFile = {
+      name: uploadResult.file_name || file.name,
+      size: uploadResult.file_size || file.size,
+      type: uploadResult.file_type || file.type,
+      content: uploadResult.text_content,
+      doc_id: uploadResult.doc_id,
+      rag_enabled: uploadResult.rag_processed || false,
+      ocrCompleted: true, // 后端已完成所有处理
+      processing: false,  // 处理已完成
+      // PDF智能处理字段
+      is_pdf: uploadResult.is_pdf || false,
+      is_text_pdf: uploadResult.is_text_pdf,
+      char_count: uploadResult.char_count,
+      processing_status: uploadResult.processing_status,
+      rag_processed: uploadResult.rag_processed || false
     }
-  } else {
-    // 非OCR文件类型，直接标记为完成
-    ocrCompleted = true
-  }
 
-  return {
-    name: file.name,
-    size: file.size,
-    type: file.type,
-    content,
-    ocrCompleted,
-    processing: !ocrCompleted, // 如果OCR未完成，则仍处于处理中状态
-    doc_id: docId,
-    rag_enabled: ragEnabled
+    // 如果是PDF文件，记录处理状态
+    if (uploadResult.is_pdf) {
+      if (uploadResult.is_text_pdf === true) {
+        console.log('✅ 文本PDF处理完成:', {
+          fileName: file.name,
+          charCount: uploadResult.char_count,
+          docId: uploadResult.doc_id,
+          ragProcessed: uploadResult.rag_processed
+        })
+      } else if (uploadResult.is_text_pdf === false) {
+        console.log('🔍 扫描PDF OCR处理完成:', {
+          fileName: file.name,
+          charCount: uploadResult.char_count,
+          docId: uploadResult.doc_id,
+          ragProcessed: uploadResult.rag_processed,
+          status: uploadResult.processing_status
+        })
+      }
+    }
+
+    return processedFile
+
+  } catch (error) {
+    console.error('❌ 文件上传失败:', error)
+    
+    // 如果是网络错误或服务器错误，返回基础文件信息
+    return {
+      name: file.name,
+      size: file.size,
+      type: file.type,
+      processing: false,
+      ocrCompleted: false,
+      rag_enabled: false,
+      is_pdf: file.type === 'application/pdf' || file.name.toLowerCase().endsWith('.pdf'),
+      processing_status: '上传失败: ' + (error instanceof Error ? error.message : '未知错误')
+    }
   }
 }
 

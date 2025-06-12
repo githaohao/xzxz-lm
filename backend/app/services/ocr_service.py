@@ -10,6 +10,7 @@ import numpy as np
 from PIL import Image, ImageEnhance, ImageFilter
 from pdf2image import convert_from_path
 import pytesseract
+import PyPDF2
 from app.config import settings
 
 # 导入PaddleOCR相关
@@ -346,6 +347,74 @@ class OCRService:
             processing_time = time.time() - start_time
             logger.error(f"PDF文本提取失败: {e}")
             raise Exception(f"PDF文本提取失败: {str(e)}")
+
+    async def detect_pdf_text_content(self, pdf_path: str) -> Tuple[bool, str, int]:
+        """
+        检测PDF是否包含可提取的文本内容
+        
+        Args:
+            pdf_path: PDF文件路径
+            
+        Returns:
+            Tuple[bool, str, int]: (是否为文本PDF, 提取的文本内容, 字符数量)
+        """
+        try:
+            logger.info(f"开始检测PDF文本内容: {pdf_path}")
+            
+            # 使用PyPDF2尝试提取文本
+            extracted_text = ""
+            with open(pdf_path, 'rb') as file:
+                pdf_reader = PyPDF2.PdfReader(file)
+                page_count = len(pdf_reader.pages)
+                
+                # 提取前3页的文本进行检测（避免处理过长的文档）
+                max_pages_to_check = min(3, page_count)
+                
+                for i in range(max_pages_to_check):
+                    try:
+                        page = pdf_reader.pages[i]
+                        page_text = page.extract_text()
+                        if page_text:
+                            extracted_text += page_text + "\n"
+                    except Exception as e:
+                        logger.warning(f"提取第{i+1}页文本失败: {e}")
+                        continue
+            
+            # 清理文本并计算有效字符数
+            clean_text = extracted_text.strip()
+            char_count = len(clean_text)
+            
+            # 判断是否为文本PDF的标准：
+            # 1. 提取的文本长度 > 50个字符
+            # 2. 文本中包含有意义的词语（不全是符号）
+            # 3. 字符密度合理（避免乱码文档）
+            is_text_pdf = False
+            
+            if char_count >= 50:
+                # 检查文本质量
+                # 计算字母数字字符的比例
+                alphanumeric_count = sum(1 for c in clean_text if c.isalnum() or c.isspace())
+                alphanumeric_ratio = alphanumeric_count / char_count if char_count > 0 else 0
+                
+                # 检查是否包含中文字符
+                chinese_count = sum(1 for c in clean_text if '\u4e00' <= c <= '\u9fff')
+                chinese_ratio = chinese_count / char_count if char_count > 0 else 0
+                
+                # 如果字母数字字符比例 > 60% 或者中文字符比例 > 20%，认为是文本PDF
+                if alphanumeric_ratio > 0.6 or chinese_ratio > 0.2:
+                    is_text_pdf = True
+                    logger.info(f"✅ 检测为文本PDF，字符数: {char_count}, 字母数字比例: {alphanumeric_ratio:.2f}, 中文比例: {chinese_ratio:.2f}")
+                else:
+                    logger.info(f"⚠️ PDF包含文本但质量不高，字符数: {char_count}, 字母数字比例: {alphanumeric_ratio:.2f}, 中文比例: {chinese_ratio:.2f}")
+            else:
+                logger.info(f"🔍 检测为扫描PDF，提取文本字符数过少: {char_count}")
+            
+            return is_text_pdf, clean_text, char_count
+            
+        except Exception as e:
+            logger.error(f"PDF文本检测失败: {e}")
+            # 检测失败时，默认认为是扫描PDF，需要OCR处理
+            return False, "", 0
 
     def __del__(self):
         """清理资源"""

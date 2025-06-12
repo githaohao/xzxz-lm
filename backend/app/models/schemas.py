@@ -97,6 +97,14 @@ class FileUploadResponse(BaseModel):
     file_size: int
     file_type: str
     upload_time: datetime = Field(default_factory=now_china_naive)
+    # PDF处理状态信息
+    is_pdf: bool = False
+    is_text_pdf: Optional[bool] = None  # None: 未检测, True: 文本PDF, False: 扫描PDF
+    text_content: Optional[str] = None  # 提取的文本内容（仅文本PDF）
+    char_count: Optional[int] = None  # 字符数量
+    processing_status: Optional[str] = None  # 处理状态信息
+    doc_id: Optional[str] = None  # RAG文档ID
+    rag_processed: bool = False  # 是否已进行RAG处理
 
     class Config:
         json_encoders = {

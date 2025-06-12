@@ -92,9 +92,11 @@
               <div class="flex-1 min-w-0">
                 <p class="font-semibold text-sm text-slate-900 dark:text-slate-100 truncate">{{ processedFile.name }}</p>
                 <p class="text-xs text-slate-600 dark:text-slate-400">{{ formatFileSize(processedFile.size) }}</p>
+                
+                <!-- 处理状态 -->
                 <div class="flex items-center gap-2 mt-1">
                   <div v-if="processedFile.processing" class="w-1.5 h-1.5 rounded-full bg-yellow-500 animate-pulse"></div>
-                  <div v-else class="w-1.5 h-1.5 rounded-full bg-green-500 animate-pulse"></div>
+                  <div v-else class="w-1.5 h-1.5 rounded-full bg-green-500"></div>
                   <span v-if="processedFile.processing" class="text-xs text-yellow-600 dark:text-yellow-400 font-medium">处理中...</span>
                   <span v-else class="text-xs text-green-600 dark:text-green-400 font-medium">已准备就绪</span>
                 </div>

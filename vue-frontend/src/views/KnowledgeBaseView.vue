@@ -786,11 +786,45 @@
             <p class="text-sm font-medium text-slate-900 dark:text-slate-100 truncate">
               {{ progress.fileName }}
             </p>
+            
+            <!-- 基础状态 -->
             <p class="text-xs text-slate-500 dark:text-slate-400">
               <span v-if="progress.completed && !progress.error" class="text-green-600">✅ 上传完成</span>
               <span v-else-if="progress.error" class="text-red-600">❌ {{ progress.error }}</span>
               <span v-else class="text-blue-600">🔄 正在上传...</span>
             </p>
+
+            <!-- PDF智能处理状态 -->
+            <div v-if="progress.completed && progress.is_pdf && progress.processing_status" class="flex items-center gap-2 mt-1">
+              <div v-if="progress.is_text_pdf === true" class="w-1 h-1 rounded-full bg-blue-500"></div>
+              <div v-else-if="progress.is_text_pdf === false" class="w-1 h-1 rounded-full bg-orange-500"></div>
+              <div v-else class="w-1 h-1 rounded-full bg-gray-500"></div>
+              
+              <span class="text-xs" :class="{
+                'text-blue-600': progress.is_text_pdf === true,
+                'text-orange-600': progress.is_text_pdf === false,
+                'text-gray-600': progress.is_text_pdf === null
+              }">
+                <span v-if="progress.is_text_pdf === true">📝 文本PDF</span>
+                <span v-else-if="progress.is_text_pdf === false">🔍 扫描PDF</span>
+                <span v-else>📄 PDF</span>
+                
+                <span v-if="progress.char_count" class="ml-1 opacity-75">
+                  ({{ progress.char_count }}字符)
+                </span>
+              </span>
+              
+              <Badge v-if="progress.rag_processed" variant="secondary" class="text-xs px-1 py-0">
+                RAG
+              </Badge>
+            </div>
+
+            <!-- 详细处理状态 -->
+            <div v-if="progress.completed && progress.processing_status" class="mt-1">
+              <span class="text-xs text-slate-400 dark:text-slate-500">
+                {{ progress.processing_status }}
+              </span>
+            </div>
           </div>
         </div>
       </div>
@@ -978,6 +1012,12 @@ interface UploadProgress {
   fileName: string
   completed: boolean
   error?: string
+  // PDF智能处理状态
+  is_pdf?: boolean
+  is_text_pdf?: boolean | null
+  char_count?: number
+  processing_status?: string
+  rag_processed?: boolean
 }
 
 const uploadProgress = ref<UploadProgress[]>([])
@@ -1307,8 +1347,28 @@ async function handleSingleFileUpload(file: File, index: number) {
       await addDocumentsToKnowledgeBase(selectedKnowledgeBase.value.id, [processedFile.doc_id])
     }
     
-    // 更新进度
-    uploadProgress.value[index].completed = true
+    // 更新进度，包含PDF智能处理状态
+    uploadProgress.value[index] = {
+      ...uploadProgress.value[index],
+      completed: true,
+      is_pdf: processedFile.is_pdf,
+      is_text_pdf: processedFile.is_text_pdf,
+      char_count: processedFile.char_count,
+      processing_status: processedFile.processing_status,
+      rag_processed: processedFile.rag_processed
+    }
+    
+    // 记录处理结果
+    if (processedFile.is_pdf) {
+      console.log(`📄 PDF处理完成: ${file.name}`, {
+        type: processedFile.is_text_pdf === true ? '文本PDF' : 
+              processedFile.is_text_pdf === false ? '扫描PDF' : '未知类型',
+        charCount: processedFile.char_count,
+        ragProcessed: processedFile.rag_processed,
+        status: processedFile.processing_status
+      })
+    }
+    
   } catch (error) {
     console.error(`上传文件 ${file.name} 失败:`, error)
     uploadProgress.value[index].error = error instanceof Error ? error.message : '上传失败'
