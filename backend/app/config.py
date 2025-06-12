@@ -37,14 +37,10 @@ class Settings(BaseSettings):
     
     # OCR 图像预处理配置
     ocr_image_dpi: int = 300  # PDF转图片DPI
-    ocr_image_enhance: bool = False  # 图像增强 - 禁用以提升速度
+    ocr_image_enhance: bool = True  # 图像增强 - 启用以提升准确率
     ocr_parallel_pages: int = 4  # 并行处理页数
     ocr_cache_enabled: bool = True  # 启用结果缓存
     ocr_cache_ttl: int = 3600  # 缓存时间（秒）
-    
-    # OCR 性能优化配置
-    ocr_speed_mode: bool = True  # 速度优先模式
-    ocr_fast_engine: str = "tesseract"  # 快速引擎选择: tesseract, paddleocr
     
     # TTS 配置
     tts_voice: str = "zh-CN-XiaoxiaoNeural"  # Edge TTS 中文女声

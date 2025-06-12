@@ -26,8 +26,8 @@ export const API_CONFIG = {
     VOICE_CONVERSATION: '/api/lm/voice/conversation',
     
     // LM文件相关
-    UPLOAD: '/api/lm/upload',
-    OCR: '/api/lm/ocr',
+    UPLOAD: '/api/lm/chat/upload',
+    OCR: '/api/lm/chat/ocr',
     
     // LM RAG相关
     RAG_DOCUMENTS: '/api/lm/rag/documents',

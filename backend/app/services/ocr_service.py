@@ -126,12 +126,12 @@ class OCRService:
         self.paddle_ocr = None
         if PADDLEOCR_AVAILABLE and settings.ocr_engine in ["paddleocr", "auto"]:
             try:
-                # PaddleOCR 3.0版本参数配置
+                # PaddleOCR 3.0版本参数配置 - 准确率优先
                 paddle_config = {
                     'lang': settings.paddleocr_lang,
-                    'use_doc_orientation_classify': False if settings.ocr_speed_mode else settings.paddleocr_use_angle_cls,
-                    'use_doc_unwarping': False,  # 禁用文档去弯曲以提升速度
-                    'use_textline_orientation': False  # 禁用文本行方向检测以提升速度
+                    'use_doc_orientation_classify': settings.paddleocr_use_angle_cls,
+                    'use_doc_unwarping': True,  # 启用文档去弯曲以提升准确率
+                    'use_textline_orientation': True  # 启用文本行方向检测以提升准确率
                 }
                 
                 # 根据设置添加模型路径（如果指定）
@@ -141,7 +141,7 @@ class OCRService:
                     paddle_config['text_recognition_model_dir'] = settings.paddleocr_rec_model_dir
                 
                 self.paddle_ocr = PaddleOCR(**paddle_config)
-                logger.info(f"PaddleOCR初始化成功 (速度优先模式: {settings.ocr_speed_mode})")
+                logger.info(f"PaddleOCR初始化成功 (准确率优先模式)")
             except Exception as e:
                 logger.warning(f"PaddleOCR初始化失败，回退到Tesseract: {e}")
                 self.paddle_ocr = None
@@ -207,21 +207,16 @@ class OCRService:
             raise Exception(f"PaddleOCR提取失败: {str(e)}")
 
     def extract_text_tesseract(self, image_path: str) -> Tuple[str, float]:
-        """使用Tesseract提取文本 - 优化版本"""
+        """使用Tesseract提取文本 - 准确率优先版本"""
         try:
             image = Image.open(image_path)
             
-            # 图像预处理 - 仅在非速度模式下进行
-            if settings.ocr_image_enhance and not settings.ocr_speed_mode:
+            # 图像预处理
+            if settings.ocr_image_enhance:
                 image = ImagePreprocessor.preprocess_for_ocr(image)
             
-            # 根据模式选择配置
-            if settings.ocr_speed_mode:
-                # 速度优先配置：更快的PSM和简化的字符集
-                custom_config = r'--oem 1 --psm 6 -c tessedit_char_whitelist=0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz'
-            else:
-                # 准确率优先配置：包含中文字符
-                custom_config = r'--oem 3 --psm 6 -c tessedit_char_whitelist=0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz一二三四五六七八九十百千万亿的在是了不了有大这个人们我们他们我你她它是的得地都能会要可以上下左右前后来去进出东西南北年月日时分秒'
+            # 统一使用准确率优先配置：OEM 3 + PSM 6，移除字符白名单限制
+            custom_config = r'--oem 3 --psm 6'
             
             # 获取文本
             text = pytesseract.image_to_string(
@@ -230,22 +225,17 @@ class OCRService:
                 config=custom_config
             )
             
-            # 在速度模式下跳过详细置信度计算
-            if settings.ocr_speed_mode:
-                # 简化置信度估算
-                avg_confidence = 0.85 if text.strip() else 0.0
-            else:
-                # 获取详细信息以计算置信度
-                data = pytesseract.image_to_data(
-                    image,
-                    lang=self.languages,
-                    output_type=pytesseract.Output.DICT,
-                    config=custom_config
-                )
-                
-                # 计算平均置信度
-                confidences = [int(conf) for conf in data['conf'] if int(conf) > 0]
-                avg_confidence = sum(confidences) / len(confidences) / 100.0 if confidences else 0.0
+            # 获取详细信息以计算置信度
+            data = pytesseract.image_to_data(
+                image,
+                lang=self.languages,
+                output_type=pytesseract.Output.DICT,
+                config=custom_config
+            )
+            
+            # 计算平均置信度
+            confidences = [int(conf) for conf in data['conf'] if int(conf) > 0]
+            avg_confidence = sum(confidences) / len(confidences) / 100.0 if confidences else 0.0
             
             return text.strip(), avg_confidence
             
@@ -263,21 +253,15 @@ class OCRService:
             return cached_result
         
         try:
-            # 智能引擎选择 - 速度模式优先使用快速引擎
-            if settings.ocr_speed_mode and settings.ocr_fast_engine == "tesseract":
-                # 速度优先：使用Tesseract
-                text, confidence = await asyncio.get_event_loop().run_in_executor(
-                    self.executor, self.extract_text_tesseract, image_path
-                )
-                engine_used = "Tesseract (快速)"
-            elif self.paddle_ocr and settings.ocr_engine in ["paddleocr", "auto"]:
+            # 智能引擎选择 - 准确率优先
+            if self.paddle_ocr and settings.ocr_engine in ["paddleocr"]:
                 # 使用PaddleOCR
                 text, confidence = await asyncio.get_event_loop().run_in_executor(
                     self.executor, self.extract_text_paddleocr, image_path
                 )
                 engine_used = "PaddleOCR"
             else:
-                # 回退到Tesseract
+                # 使用Tesseract
                 text, confidence = await asyncio.get_event_loop().run_in_executor(
                     self.executor, self.extract_text_tesseract, image_path
                 )
