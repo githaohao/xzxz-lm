@@ -75,9 +75,9 @@
               </time>
             </div>
             
-            <p v-if="conversation.lastMessage" class="text-xs text-slate-600 dark:text-slate-400 truncate">
+            <!-- <p v-if="conversation.lastMessage" class="text-xs text-slate-600 dark:text-slate-400 truncate">
               {{ conversation.lastMessage }}
-            </p>
+            </p> -->
             
             <div class="flex items-center gap-2 mt-2">
               <Badge variant="secondary" class="text-xs">
@@ -262,8 +262,8 @@ async function createNewConversation() {
   }
 }
 
-function selectConversation(conversationId: string) {
-  conversationStore.setCurrentConversation(conversationId)
+async function selectConversation(conversationId: string) {
+  await conversationStore.setCurrentConversation(conversationId)
 }
 
 function getConversationRagDocsCount(conversationId: string): number {

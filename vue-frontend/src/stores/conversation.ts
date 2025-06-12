@@ -81,7 +81,7 @@ export const useConversationStore = defineStore('conversation', () => {
     })
 
     // 设置为当前对话
-    setCurrentConversation(conversation.id)
+    await setCurrentConversation(conversation.id)
 
     // 保存到本地缓存
     saveToCache()
@@ -108,7 +108,6 @@ export const useConversationStore = defineStore('conversation', () => {
       
       const sessionData: CreateSessionDto = {
         title: conversation.title,
-        description: '多模态AI智能聊天对话',
         tags: ['chat', 'ai', 'conversation']
       }
 
@@ -249,8 +248,7 @@ export const useConversationStore = defineStore('conversation', () => {
   }
 
   // 设置当前对话
-  function setCurrentConversation(conversationId: string) {
-    debugger
+  async function setCurrentConversation(conversationId: string) {
     const conversation = conversations.value.find(c => c.id === conversationId)
     if (conversation) {
       // 将之前的对话设为非活跃状态
@@ -261,8 +259,89 @@ export const useConversationStore = defineStore('conversation', () => {
       currentConversation.value = conversation
       conversation.isActive = true
       
+      // 如果对话有关联的云端会话，且本地消息为空，则从云端加载消息
+      await loadMessagesFromRemote(conversationId)
+      
       saveToCache()
     }
+  }
+
+  // 从云端加载消息到本地对话
+  async function loadMessagesFromRemote(conversationId: string) {
+    try {
+      const conversation = conversations.value.find(c => c.id === conversationId)
+      if (!conversation || !conversation.historySessionId) {
+        return // 没有关联的云端会话，跳过
+      }
+
+      const conversationDataObj = conversationData.value.get(conversationId)
+      if (!conversationDataObj) {
+        return // 没有对话数据，跳过
+      }
+
+      // 检查本地是否已有消息
+      if (conversationDataObj.messages.length > 0) {
+        console.log(`📝 对话 ${conversation.title} 本地已有消息，跳过云端加载`)
+        return
+      }
+
+      console.log(`🔄 正在从云端加载对话消息: ${conversation.title} (${conversation.historySessionId})`)
+
+      // 获取云端消息
+      const remoteMessages = await fetchRemoteSessionMessages(conversation.historySessionId, 1, 100)
+      
+      if (remoteMessages.length === 0) {
+        console.log(`📝 云端会话 ${conversation.historySessionId} 暂无消息`)
+        return
+      }
+
+      // 将ChatMessage转换为Message格式
+      const localMessages: Message[] = remoteMessages.map(chatMsg => convertChatMessageToMessage(chatMsg))
+
+      // 更新本地对话数据
+      conversationDataObj.messages = localMessages
+      conversationDataObj.conversation.messageCount = localMessages.length
+      
+      // 更新最后一条消息的预览
+      if (localMessages.length > 0) {
+        const lastMessage = localMessages[localMessages.length - 1]
+        conversationDataObj.conversation.lastMessage = lastMessage.isUser 
+          ? lastMessage.content 
+          : lastMessage.content.substring(0, 50) + (lastMessage.content.length > 50 ? '...' : '')
+      }
+
+      console.log(`✅ 成功从云端加载 ${localMessages.length} 条消息到对话: ${conversation.title}`)
+
+    } catch (error) {
+      console.error('❌ 从云端加载消息失败:', error)
+      // 加载失败不影响对话切换，用户仍可以正常使用
+    }
+  }
+
+  // 将ChatMessage转换为Message格式
+  function convertChatMessageToMessage(chatMsg: ChatMessage): Message {
+    const message: Message = {
+      id: chatMsg.id,
+      content: chatMsg.content,
+      isUser: chatMsg.role === 'user',
+      timestamp: new Date(chatMsg.created_at),
+      isStreaming: false
+    }
+
+    // 处理多模态消息的文件信息
+    if (chatMsg.message_type === 'multimodal' && chatMsg.metadata) {
+      message.fileInfo = {
+        name: chatMsg.metadata.fileName || '',
+        size: chatMsg.metadata.fileSize || 0,
+        type: chatMsg.metadata.fileType || '',
+        rag_enabled: chatMsg.metadata.ragEnabled || false,
+        doc_id: chatMsg.metadata.docId,
+        ocrCompleted: chatMsg.metadata.ocrCompleted || false,
+        attachments: chatMsg.metadata.attachments || []
+      }
+    }
+
+    return message
   }
 
   // 删除对话
@@ -300,7 +379,7 @@ export const useConversationStore = defineStore('conversation', () => {
         // 如果删除的是当前对话，切换到其他对话
         if (currentConversation.value?.id === conversationId) {
           if (conversations.value.length > 0) {
-            setCurrentConversation(conversations.value[0].id)
+            await setCurrentConversation(conversations.value[0].id)
           } else {
             currentConversation.value = null
           }
@@ -440,7 +519,7 @@ export const useConversationStore = defineStore('conversation', () => {
   }
 
   // 从本地缓存加载
-  function loadFromCache() {
+  async function loadFromCache() {
     try {
       const cached = localStorage.getItem('conversations')
       if (cached) {
@@ -476,7 +555,7 @@ export const useConversationStore = defineStore('conversation', () => {
         
         // 恢复当前对话
         if (cacheData.currentConversationId) {
-          setCurrentConversation(cacheData.currentConversationId)
+          await setCurrentConversation(cacheData.currentConversationId)
         }
         
         console.log(`✅ 从缓存加载了 ${conversations.value.length} 个对话`)
@@ -610,7 +689,7 @@ export const useConversationStore = defineStore('conversation', () => {
         // 如果删除的是当前对话，需要切换到其他对话
         if (currentConversation.value?.id === conv.id) {
           if (conversations.value.length > 0) {
-            setCurrentConversation(conversations.value[0].id)
+            await setCurrentConversation(conversations.value[0].id)
           } else {
             currentConversation.value = null
           }
@@ -648,7 +727,7 @@ export const useConversationStore = defineStore('conversation', () => {
       
       // 如果选择清理纯本地对话，先清理
       if (options.clearLocalOnly) {
-        const clearResult = clearLocalOnlyConversations()
+        const clearResult = await clearLocalOnlyConversations()
         console.log(`🧹 强制同步：已清理 ${clearResult.removedCount} 个纯本地对话`)
       }
       
@@ -673,7 +752,7 @@ export const useConversationStore = defineStore('conversation', () => {
   // 初始化：先从缓存加载数据，然后从后端同步，最后创建
   async function initialize() {
     // 1. 从本地缓存加载
-    loadFromCache()
+    await loadFromCache()
     console.log(`📁 从缓存加载了 ${conversations.value.length} 个对话`)
     
     // 2. 尝试从后端同步
@@ -681,12 +760,12 @@ export const useConversationStore = defineStore('conversation', () => {
     
     // 3. 设置当前对话（如果没有活跃对话）
     if (!currentConversation.value && conversations.value.length > 0) {
-      setCurrentConversation(conversations.value[0].id)
+      await setCurrentConversation(conversations.value[0].id)
     }
   }
 
   // 清理纯本地对话（没有同步到云端的对话）
-  function clearLocalOnlyConversations() {
+  async function clearLocalOnlyConversations() {
     const localOnlyConversations = conversations.value.filter(conv => !conv.historySessionId)
     
     if (localOnlyConversations.length === 0) {
@@ -711,7 +790,7 @@ export const useConversationStore = defineStore('conversation', () => {
       // 如果删除的是当前对话，需要切换到其他对话
       if (currentConversation.value?.id === conv.id) {
         if (conversations.value.length > 0) {
-          setCurrentConversation(conversations.value[0].id)
+          await setCurrentConversation(conversations.value[0].id)
         } else {
           currentConversation.value = null
         }
@@ -765,6 +844,10 @@ export const useConversationStore = defineStore('conversation', () => {
     fetchRemoteSessions,
     fetchRemoteSessionMessages,
     updateRemoteSession,
-    createMessageDto
+    createMessageDto,
+    
+    // 消息加载方法
+    loadMessagesFromRemote,
+    convertChatMessageToMessage
   }
 })
