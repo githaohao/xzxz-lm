@@ -72,8 +72,6 @@ POST /rag/search
 {
   "query": "搜索查询",
   "doc_ids": ["文档ID列表"],
-  "top_k": 5,
-  "min_similarity": 0.6
 }
 ```
 
@@ -96,7 +94,7 @@ separators=["\n\n", "\n", "。", "！", "？", "；", " ", ""]
 ```python
 top_k=5                 # 返回片段数
 min_similarity=0.6      # 最小相似度
-embedding_model='sentence-transformers/all-MiniLM-L6-v2'
+embedding_model='moka-ai/m3e-base'  # 中文友好的嵌入模型
 ```
 
 ## 🎯 使用场景

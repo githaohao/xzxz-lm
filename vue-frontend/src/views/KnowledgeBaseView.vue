@@ -598,6 +598,28 @@
                   {{ formatDate(document.created_at) }}
                 </span>
               </div>
+              
+              <!-- 相关片段内容（仅在语义搜索时显示） -->
+              <div v-if="searchType === 'content' && semanticSearchResults && getDocumentRelevantChunks(document.doc_id).length > 0" class="mt-2 space-y-1">
+                <div
+                  v-for="(chunk, index) in getDocumentRelevantChunks(document.doc_id)"
+                  :key="index"
+                  class="p-2 bg-blue-50 dark:bg-blue-950/20 rounded border-l-2 border-blue-400"
+                >
+                  <div class="flex items-center justify-between mb-1">
+                    <span class="text-xs text-blue-600 dark:text-blue-400 font-medium">
+                      片段 {{ index + 1 }}
+                    </span>
+                    <span class="text-xs text-slate-500">
+                      {{ (chunk.similarity * 100).toFixed(1) }}%
+                    </span>
+                  </div>
+                  <div 
+                    class="text-xs text-slate-700 dark:text-slate-300 leading-relaxed"
+                    v-html="highlightSearchTerms(truncateText(chunk.content), documentSearch)"
+                  ></div>
+                </div>
+              </div>
             </div>
 
             <!-- 所属知识库 -->
@@ -1409,8 +1431,6 @@ async function performSemanticSearch(query: string) {
     const request: RAGSearchRequest = {
       query,
       doc_ids: docIds,
-      top_k: 20, // 增加返回数量以获得更多相关文档
-      min_similarity: 0.3 // 降低相似度阈值以获得更多结果
     }
 
     console.log('🔍 执行知识库内容检索:', {
@@ -1463,5 +1483,40 @@ function getDocumentRelevance(docId: string) {
     }
   }
   return null
+}
+
+// 获取文档的相关片段
+function getDocumentRelevantChunks(docId: string) {
+  if (searchType.value === 'content' && semanticSearchResults.value) {
+    return semanticSearchResults.value.chunks
+      .filter(c => c.metadata.doc_id === docId)
+      .sort((a, b) => b.similarity - a.similarity) // 按相似度降序排列
+      .slice(0, 10) // 最多显示3个片段
+  }
+  return []
+}
+
+// 高亮搜索关键词
+function highlightSearchTerms(text: string, query: string): string {
+  if (!query.trim()) return text
+  
+  // 简单的关键词高亮，支持多个关键词
+  const keywords = query.trim().split(/\s+/)
+  let highlightedText = text
+  
+  keywords.forEach(keyword => {
+    if (keyword.length > 1) { // 忽略单字符关键词
+      const regex = new RegExp(`(${keyword})`, 'gi')
+      highlightedText = highlightedText.replace(regex, '<mark class="bg-yellow-200 dark:bg-yellow-800 px-0.5 rounded">$1</mark>')
+    }
+  })
+  
+  return highlightedText
+}
+
+// 截断文本
+function truncateText(text: string, maxLength: number = 150): string {
+  if (text.length <= maxLength) return text
+  return text.slice(0, maxLength) + '...'
 }
 </script> 

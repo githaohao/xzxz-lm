@@ -120,10 +120,7 @@ export function useDocumentSearch(documents: Ref<RAGDocument[]>) {
     try {
       const request: RAGSearchRequest = {
         query,
-        doc_ids: docIds,
-        top_k: 10,
-        min_similarity: 0.3
-      }
+        doc_ids: docIds      }
       
       const response = await searchDocuments(request)
       semanticResults.value = response

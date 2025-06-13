@@ -76,11 +76,15 @@ class RAGService:
                 self.embedding_model = SentenceTransformer(model_name)
                 logger.info(f"嵌入模型加载成功: {model_name}")
             except Exception as e:
-                logger.warning(f"加载 {model_name} 失败，回退到备用模型: {e}")
-                # 保持与用户RAG服务一致的回退模型
-                fallback_model = 'sentence-transformers/all-MiniLM-L6-v2'
-                self.embedding_model = SentenceTransformer(fallback_model)
-                logger.info(f"备用嵌入模型加载成功: {fallback_model}")
+                logger.error(f"加载嵌入模型 {model_name} 失败: {e}")
+                # 使用中文友好的备用模型
+                fallback_model = 'shibing624/text2vec-base-chinese'
+                try:
+                    self.embedding_model = SentenceTransformer(fallback_model)
+                    logger.info(f"备用嵌入模型加载成功: {fallback_model}")
+                except Exception as fallback_error:
+                    logger.error(f"备用模型也加载失败: {fallback_error}")
+                    raise RuntimeError(f"无法加载任何嵌入模型: 主模型={model_name}, 备用模型={fallback_model}")
             
             # 初始化文本分割器
             self.text_splitter = RecursiveCharacterTextSplitter(
@@ -143,7 +147,7 @@ class RAGService:
         query: str, 
         doc_ids: Optional[List[str]] = None,
         top_k: int = 5,
-        min_similarity: float = 0.6
+        min_similarity: float = 0.5
     ) -> List[Dict]:
         """
         检索相关文档块
@@ -199,14 +203,13 @@ class RAGService:
                 for i, chunk_id in enumerate(results['ids'][0]):
                     distance = results['distances'][0][i]
                     
-                    # 改进的相似度计算
-                    # ChromaDB使用L2距离，需要根据实际距离范围调整计算方式
-                    if distance <= 2.0:  # 对于归一化向量，L2距离通常在0-2之间
-                        similarity = max(0, 1 - distance / 2)
-                    else:  # 对于未归一化向量，使用指数衰减
-                        similarity = max(0, 1.0 / (1 + distance / 100))  # 调整衰减因子2
+                    # 正确的相似度计算：L2距离转余弦相似度
+                    # 对于归一化向量: cos_similarity = 1 - (L2_distance² / 2)
+                    cos_similarity = 1 - (distance * distance) / 2
+                    # 确保相似度在[0,1]范围内
+                    similarity = max(0, min(1, cos_similarity))
                     
-                    logger.debug(f"候选结果 {i+1}: 距离={distance:.4f}, 相似度={similarity:.4f}")
+                    logger.debug(f"候选结果 {i+1}: L2距离={distance:.4f}, 余弦相似度={similarity:.4f}")
                     
                     if similarity >= min_similarity:
                         relevant_chunks.append({
@@ -223,14 +226,15 @@ class RAGService:
             
             logger.info(f"最终检索到 {len(relevant_chunks)} 个相关文档块")
             
-            # 如果没有结果，降低阈值重试一次
-            if not relevant_chunks and min_similarity > 0.3:
-                logger.info(f"没有找到结果，尝试降低相似度阈值从 {min_similarity} 到 0.3")
+            # 如果没有结果，逐步降低阈值重试
+            if not relevant_chunks and min_similarity > 0.6:
+                retry_threshold = max(0.6, min_similarity - 0.1)
+                logger.info(f"没有找到结果，尝试降低相似度阈值从 {min_similarity} 到 {retry_threshold}")
                 return await self.search_relevant_chunks(
                     query=query,
                     doc_ids=doc_ids,
                     top_k=top_k,
-                    min_similarity=0.3
+                    min_similarity=retry_threshold
                 )
             
             return relevant_chunks

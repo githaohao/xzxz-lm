@@ -58,7 +58,7 @@ MPS_MEMORY_FRACTION=0.8
 # RAG配置
 RAG_ENABLED=true
 CHROMA_DB_PATH=uploads/chroma_db
-EMBEDDING_MODEL=sentence-transformers/all-MiniLM-L6-v2
+EMBEDDING_MODEL=moka-ai/m3e-base
 EOF
     
     echo "✅ 环境变量已配置到 .env 文件"

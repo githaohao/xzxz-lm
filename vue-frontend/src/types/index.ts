@@ -78,8 +78,6 @@ export interface DocumentChunk {
 export interface RAGSearchRequest {
   query: string
   doc_ids?: string[]
-  top_k?: number
-  min_similarity?: number
   similarity_threshold?: number
 }
 

@@ -46,16 +46,14 @@ class Settings(BaseSettings):
     tts_voice: str = "zh-CN-XiaoxiaoNeural"  # Edge TTS 中文女声
     
     # RAG 配置
-    embedding_model: str = "moka-ai/m3e-base"  # 中文友好的嵌入模型
-    # 可选模型:
-    # - "sentence-transformers/all-MiniLM-L6-v2" (英文为主，原有)
+    embedding_model: str = "moka-ai/m3e-base"  # 中文友好的嵌入模型，支持多语言
+    # 其他可选模型:
     # - "GanymedeNil/text2vec-large-chinese" (中文专用，较大)
     # - "shibing624/text2vec-base-chinese" (中文专用，中等)
-    # - "moka-ai/m3e-base" (多语言，中文友好，推荐)
     rag_chunk_size: int = 1000
     rag_chunk_overlap: int = 200
     rag_default_top_k: int = 5
-    rag_default_min_similarity: float = 0.3  # 降低默认阈值以适应中文
+    rag_default_min_similarity: float = 0.5  # 进一步提高默认阈值以确保准确性
     tts_rate: str = "+0%"
     tts_volume: str = "+0%"
     
