@@ -40,7 +40,7 @@ class RAGService:
         self.text_splitter = None
         self.executor = ThreadPoolExecutor(max_workers=4)
         self.db = Database()  # 数据库连接
-        # 移除内存存储，改用数据库
+        # 文档-知识库关联关系缓存，从数据库加载
         self.document_kb_mapping = {}  # doc_id -> [kb_id1, kb_id2, ...]  
         self._initialize()
     
@@ -93,6 +93,9 @@ class RAGService:
                 length_function=len,
                 separators=["\n\n", "\n", "。", "！", "？", "；", " ", ""]
             )
+            
+            # 延迟加载文档-知识库关联关系（在首次需要时加载）
+            self._mapping_loaded = False
             
             logger.info("RAG服务初始化成功")
             
@@ -147,7 +150,8 @@ class RAGService:
         query: str, 
         doc_ids: Optional[List[str]] = None,
         top_k: int = 5,
-        min_similarity: float = 0.5
+        min_similarity: float = 0.355,
+        _retry_count: int = 0  # 内部重试计数器
     ) -> List[Dict]:
         """
         检索相关文档块
@@ -155,18 +159,26 @@ class RAGService:
         Args:
             query: 查询文本
             doc_ids: 限定搜索的文档ID列表
-            top_k: 返回top-k个结果
-            min_similarity: 最小相似度阈值
+            top_k: 最大返回数量（不保证返回这么多，会根据相似度筛选）
+            min_similarity: 最小相似度阈值，只返回相似度达到此阈值的结果
+            _retry_count: 内部重试计数器，防止无限递归
             
         Returns:
-            相关文档块列表
+            相关文档块列表（按相似度降序排列，数量可能少于top_k）
         """
         try:
             if not query.strip():
                 logger.warning("查询字符串为空")
                 return []
             
-            logger.info(f"开始RAG检索: query='{query}', doc_ids={doc_ids}, top_k={top_k}, min_similarity={min_similarity}")
+            # 限制最大重试次数
+            max_retries = 2
+            if _retry_count > max_retries:
+                logger.warning(f"已达到最大重试次数 {max_retries}，停止搜索")
+                return []
+            
+            retry_info = f", 重试第{_retry_count}次" if _retry_count > 0 else ""
+            logger.info(f"开始RAG检索{retry_info}: query='{query}', doc_ids={doc_ids}, max_results={top_k}, min_similarity={min_similarity}")
             
             # 生成查询向量
             query_embedding = await self._generate_embedding(query)
@@ -186,10 +198,13 @@ class RAGService:
                 logger.warning("数据库中没有文档块，请先上传并处理文档")
                 return []
             
+            # 增加检索数量以获得更多候选结果进行筛选
+            search_count = min(max(top_k * 2, 20), total_docs)
+            
             # 向量检索
             results = self.collection.query(
                 query_embeddings=[query_embedding.tolist()],
-                n_results=top_k,
+                n_results=search_count,
                 where=where_clause
             )
             
@@ -203,14 +218,19 @@ class RAGService:
                 for i, chunk_id in enumerate(results['ids'][0]):
                     distance = results['distances'][0][i]
                     
-                    # 正确的相似度计算：L2距离转余弦相似度
-                    # 对于归一化向量: cos_similarity = 1 - (L2_distance² / 2)
-                    cos_similarity = 1 - (distance * distance) / 2
-                    # 确保相似度在[0,1]范围内
-                    similarity = max(0, min(1, cos_similarity))
+                    # 修复相似度计算：正确处理ChromaDB的L2距离
+                    # ChromaDB使用平方L2距离，对于归一化向量的正确转换如下：
+                    if distance >= 0:
+                        similarity = max(0.0, 1.0 - distance)
+                    else:
+                        similarity = 1.0  # 距离为负数时设为最高相似度
                     
-                    logger.debug(f"候选结果 {i+1}: L2距离={distance:.4f}, 余弦相似度={similarity:.4f}")
+                    # 确保相似度在合理范围内
+                    similarity = max(0.0, min(1.0, similarity))
                     
+                    logger.debug(f"候选结果 {i+1}: L2距离={distance:.4f}, 计算相似度={similarity:.4f}")
+                    
+                    # 只保留达到相似度阈值的结果
                     if similarity >= min_similarity:
                         relevant_chunks.append({
                             'chunk_id': chunk_id,
@@ -221,21 +241,43 @@ class RAGService:
                         logger.debug(f"结果 {i+1} 通过相似度阈值")
                     else:
                         logger.debug(f"结果 {i+1} 未通过相似度阈值 ({similarity:.4f} < {min_similarity})")
+                
+                # 按相似度降序排序
+                relevant_chunks.sort(key=lambda x: x['similarity'], reverse=True)
+                
+                # 只返回top_k个最相关的结果
+                if len(relevant_chunks) > top_k:
+                    logger.info(f"筛选出 {len(relevant_chunks)} 个相关结果，保留前 {top_k} 个最相关的")
+                    relevant_chunks = relevant_chunks[:top_k]
+                
             else:
                 logger.warning("ChromaDB没有返回任何结果")
             
             logger.info(f"最终检索到 {len(relevant_chunks)} 个相关文档块")
             
-            # 如果没有结果，逐步降低阈值重试
-            if not relevant_chunks and min_similarity > 0.6:
-                retry_threshold = max(0.6, min_similarity - 0.1)
-                logger.info(f"没有找到结果，尝试降低相似度阈值从 {min_similarity} 到 {retry_threshold}")
-                return await self.search_relevant_chunks(
-                    query=query,
-                    doc_ids=doc_ids,
-                    top_k=top_k,
-                    min_similarity=retry_threshold
-                )
+            # 智能重试逻辑：只在特定条件下重试，且提高阈值要求
+            if not relevant_chunks and _retry_count < max_retries:
+                # 获取最高相似度以判断是否需要重试
+                if results['ids'][0]:
+                    highest_similarity = max([
+                        max(0.0, 1.0 - results['distances'][0][i])  # 修正相似度计算
+                        for i in range(len(results['distances'][0]))
+                    ])
+                    
+                    # 只有在最高相似度接近阈值时才重试，且不降得太低
+                    if highest_similarity >= 0.25 and min_similarity > 0.5:
+                        retry_threshold = max(0.5, min_similarity - 0.1)  # 调整重试阈值下限到0.5
+                        logger.info(f"最高相似度 {highest_similarity:.3f} 接近阈值，尝试降低相似度阈值从 {min_similarity} 到 {retry_threshold}")
+                        return await self.search_relevant_chunks(
+                            query=query,
+                            doc_ids=doc_ids,
+                            top_k=top_k,
+                            min_similarity=retry_threshold,
+                            _retry_count=_retry_count + 1
+                        )
+                    elif highest_similarity < 0.25:
+                        logger.info(f"最高相似度 {highest_similarity:.3f} 过低，直接返回空结果")
+                        return []
             
             return relevant_chunks
             
@@ -674,6 +716,46 @@ class RAGService:
         ).hexdigest()
         return f"doc_{content_hash[:16]}"
     
+    async def _load_document_kb_mapping_from_db(self):
+        """从数据库加载文档-知识库关联关系"""
+        try:
+            if self._mapping_loaded:
+                return
+                
+            self.document_kb_mapping.clear()
+            
+            async with self.db.get_connection() as db:
+                cursor = await db.execute("""
+                    SELECT doc_id, knowledge_base_id 
+                    FROM knowledge_base_documents
+                    ORDER BY doc_id, added_at
+                """)
+                
+                rows = await cursor.fetchall()
+                
+                for row in rows:
+                    doc_id, kb_id = row
+                    
+                    if doc_id not in self.document_kb_mapping:
+                        self.document_kb_mapping[doc_id] = []
+                    
+                    if kb_id not in self.document_kb_mapping[doc_id]:
+                        self.document_kb_mapping[doc_id].append(kb_id)
+                
+                self._mapping_loaded = True
+                logger.info(f"从数据库加载了 {len(self.document_kb_mapping)} 个文档的知识库关联关系")
+                
+        except Exception as e:
+            logger.error(f"从数据库加载文档-知识库关联关系失败: {e}")
+            # 确保至少有一个空的映射，避免后续操作失败
+            self.document_kb_mapping = {}
+            self._mapping_loaded = True
+    
+    async def _ensure_mapping_loaded(self):
+        """确保映射关系已加载"""
+        if not self._mapping_loaded:
+            await self._load_document_kb_mapping_from_db()
+    
     # 知识库管理方法 - 使用数据库存储（不绑定用户）
     async def create_knowledge_base(self, name: str, description: str = None, color: str = "#3B82F6") -> Dict:
         """创建知识库"""
@@ -830,12 +912,19 @@ class RAGService:
                 await db.commit()
                 
                 if cursor.rowcount > 0:
+                    # 从数据库删除关联关系
+                    await db.execute("""
+                        DELETE FROM knowledge_base_documents 
+                        WHERE knowledge_base_id = ?
+                    """, (kb_id,))
+                    
                     # 清理内存中的文档关联关系
-                    for doc_id in list(self.document_kb_mapping.keys()):
-                        if kb_id in self.document_kb_mapping[doc_id]:
-                            self.document_kb_mapping[doc_id].remove(kb_id)
-                            if not self.document_kb_mapping[doc_id]:
-                                del self.document_kb_mapping[doc_id]
+                    if hasattr(self, '_mapping_loaded') and self._mapping_loaded:
+                        for doc_id in list(self.document_kb_mapping.keys()):
+                            if kb_id in self.document_kb_mapping[doc_id]:
+                                self.document_kb_mapping[doc_id].remove(kb_id)
+                                if not self.document_kb_mapping[doc_id]:
+                                    del self.document_kb_mapping[doc_id]
                     
                     logger.info(f"删除知识库成功: {kb_name} (ID: {kb_id})")
                     return True
@@ -850,6 +939,9 @@ class RAGService:
     async def add_documents_to_knowledge_base(self, kb_id: str, doc_ids: List[str]) -> bool:
         """将文档添加到知识库"""
         try:
+            # 确保映射关系已加载
+            await self._ensure_mapping_loaded()
+            
             # 验证知识库是否存在
             kb = await self.get_knowledge_base(kb_id)
             if not kb:
@@ -861,23 +953,39 @@ class RAGService:
             existing_doc_ids = {doc["doc_id"] for doc in existing_docs}
             
             added_count = 0
-            for doc_id in doc_ids:
-                if doc_id in existing_doc_ids:
-                    if doc_id not in self.document_kb_mapping:
-                        self.document_kb_mapping[doc_id] = []
-                    if kb_id not in self.document_kb_mapping[doc_id]:
-                        self.document_kb_mapping[doc_id].append(kb_id)
-                        added_count += 1
-            
-            # 更新知识库的文档计数
-            if added_count > 0:
-                async with self.db.get_connection() as db:
+            async with self.db.get_connection() as db:
+                for doc_id in doc_ids:
+                    if doc_id in existing_doc_ids:
+                        # 检查是否已经存在关联关系
+                        if doc_id not in self.document_kb_mapping:
+                            self.document_kb_mapping[doc_id] = []
+                        
+                        if kb_id not in self.document_kb_mapping[doc_id]:
+                            try:
+                                # 插入到数据库
+                                await db.execute("""
+                                    INSERT INTO knowledge_base_documents (knowledge_base_id, doc_id, added_at)
+                                    VALUES (?, ?, ?)
+                                """, (kb_id, doc_id, datetime.now()))
+                                
+                                # 更新内存缓存
+                                self.document_kb_mapping[doc_id].append(kb_id)
+                                added_count += 1
+                                
+                            except Exception as e:
+                                # 可能是重复插入，忽略
+                                if "UNIQUE constraint failed" not in str(e):
+                                    logger.warning(f"插入关联关系失败 {doc_id}->{kb_id}: {e}")
+                
+                # 更新知识库的文档计数
+                if added_count > 0:
                     await db.execute("""
                         UPDATE knowledge_bases 
                         SET document_count = document_count + ?, updated_at = ?
                         WHERE id = ?
                     """, (added_count, datetime.now(), kb_id))
-                    await db.commit()
+                
+                await db.commit()
             
             kb_name = kb["name"]
             logger.info(f"向知识库 '{kb_name}' 添加了 {added_count} 个文档")
@@ -890,6 +998,9 @@ class RAGService:
     async def remove_documents_from_knowledge_base(self, kb_id: str, doc_ids: List[str]) -> bool:
         """从知识库中移除文档"""
         try:
+            # 确保映射关系已加载
+            await self._ensure_mapping_loaded()
+            
             # 验证知识库是否存在
             kb = await self.get_knowledge_base(kb_id)
             if not kb:
@@ -897,22 +1008,35 @@ class RAGService:
                 return False
             
             removed_count = 0
-            for doc_id in doc_ids:
-                if doc_id in self.document_kb_mapping and kb_id in self.document_kb_mapping[doc_id]:
-                    self.document_kb_mapping[doc_id].remove(kb_id)
-                    if not self.document_kb_mapping[doc_id]:
-                        del self.document_kb_mapping[doc_id]
-                    removed_count += 1
-            
-            # 更新知识库的文档计数
-            if removed_count > 0:
-                async with self.db.get_connection() as db:
+            async with self.db.get_connection() as db:
+                for doc_id in doc_ids:
+                    if doc_id in self.document_kb_mapping and kb_id in self.document_kb_mapping[doc_id]:
+                        try:
+                            # 从数据库删除关联关系
+                            cursor = await db.execute("""
+                                DELETE FROM knowledge_base_documents 
+                                WHERE knowledge_base_id = ? AND doc_id = ?
+                            """, (kb_id, doc_id))
+                            
+                            if cursor.rowcount > 0:
+                                # 更新内存缓存
+                                self.document_kb_mapping[doc_id].remove(kb_id)
+                                if not self.document_kb_mapping[doc_id]:
+                                    del self.document_kb_mapping[doc_id]
+                                removed_count += 1
+                                
+                        except Exception as e:
+                            logger.warning(f"删除关联关系失败 {doc_id}->{kb_id}: {e}")
+                
+                # 更新知识库的文档计数
+                if removed_count > 0:
                     await db.execute("""
                         UPDATE knowledge_bases 
                         SET document_count = GREATEST(0, document_count - ?), updated_at = ?
                         WHERE id = ?
                     """, (removed_count, datetime.now(), kb_id))
-                    await db.commit()
+                
+                await db.commit()
             
             kb_name = kb["name"]
             logger.info(f"从知识库 '{kb_name}' 移除了 {removed_count} 个文档")
@@ -924,13 +1048,22 @@ class RAGService:
         
     async def get_knowledge_base_documents(self, kb_id: str) -> List[str]:
         """获取知识库的所有文档ID"""
-        # 验证知识库是否存在
-        kb = await self.get_knowledge_base(kb_id)
-        if not kb:
-            logger.warning(f"知识库不存在: ID={kb_id}")
-            return []
+        try:
+            # 确保映射关系已加载
+            await self._ensure_mapping_loaded()
             
-        return [doc_id for doc_id, kb_ids in self.document_kb_mapping.items() if kb_id in kb_ids]
+            # 验证知识库是否存在
+            kb = await self.get_knowledge_base(kb_id)
+            if not kb:
+                logger.warning(f"知识库不存在: ID={kb_id}")
+                return []
+            
+            # 从内存缓存获取（已从数据库加载）
+            return [doc_id for doc_id, kb_ids in self.document_kb_mapping.items() if kb_id in kb_ids]
+            
+        except Exception as e:
+            logger.error(f"获取知识库文档失败: {e}")
+            return []
 
     def __del__(self):
         """清理资源"""

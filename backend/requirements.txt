@@ -30,7 +30,7 @@ tensorflow-metal>=1.0.0
 # RAG 依赖
 chromadb>=0.4.0
 sentence-transformers>=2.2.0
-langchain>=0.0.350
+langchain>=0.0.3550
 PyPDF2>=3.0.0
 python-docx>=0.8.11
 

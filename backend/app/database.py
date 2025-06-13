@@ -129,6 +129,18 @@ class Database:
                     )
                 """)
                 
+                # 创建知识库文档关联表（多对多关系）
+                await db.execute("""
+                    CREATE TABLE IF NOT EXISTS knowledge_base_documents (
+                        id TEXT PRIMARY KEY DEFAULT (lower(hex(randomblob(16)))),
+                        knowledge_base_id TEXT NOT NULL,
+                        doc_id TEXT NOT NULL,
+                        added_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                        FOREIGN KEY (knowledge_base_id) REFERENCES knowledge_bases (id) ON DELETE CASCADE,
+                        UNIQUE(knowledge_base_id, doc_id)
+                    )
+                """)
+                
                 # 创建索引
                 await db.execute("CREATE INDEX IF NOT EXISTS idx_chat_sessions_user_id ON chat_sessions (user_id)")
                 await db.execute("CREATE INDEX IF NOT EXISTS idx_chat_sessions_status ON chat_sessions (status)")
@@ -144,6 +156,8 @@ class Database:
                 await db.execute("CREATE INDEX IF NOT EXISTS idx_session_documents_session_id ON session_documents (session_id)")
                 await db.execute("CREATE INDEX IF NOT EXISTS idx_session_documents_doc_id ON session_documents (doc_id)")
                 await db.execute("CREATE INDEX IF NOT EXISTS idx_session_documents_user_id ON session_documents (user_id)")
+                await db.execute("CREATE INDEX IF NOT EXISTS idx_knowledge_base_documents_kb_id ON knowledge_base_documents (knowledge_base_id)")
+                await db.execute("CREATE INDEX IF NOT EXISTS idx_knowledge_base_documents_doc_id ON knowledge_base_documents (doc_id)")
                 
                 await db.commit()
                 logger.info("✅ 数据库初始化成功")

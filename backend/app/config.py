@@ -53,7 +53,7 @@ class Settings(BaseSettings):
     rag_chunk_size: int = 1000
     rag_chunk_overlap: int = 200
     rag_default_top_k: int = 5
-    rag_default_min_similarity: float = 0.5  # 进一步提高默认阈值以确保准确性
+    rag_default_min_similarity: float = 0.355  # 精确调优的阈值，确保姓名查询通过
     tts_rate: str = "+0%"
     tts_volume: str = "+0%"
     
