@@ -11,7 +11,12 @@ import time
 from app.models.schemas import ( 
     RAGSearchRequest, 
     RAGSearchResponse, 
-    DocumentInfo
+    DocumentInfo,
+    KnowledgeBaseRequest,
+    KnowledgeBaseResponse,
+    KnowledgeBaseDocumentRequest,
+    DocumentWithKnowledgeBases,
+    KnowledgeBaseListResponse
 )
 from app.models.chat_history import ChatHistoryResponse
 
@@ -162,3 +167,239 @@ async def get_document_chunks(doc_id: str):
     except Exception as e:
         logger.error(f"获取文档分块失败: {e}")
         raise HTTPException(status_code=500, detail=f"获取文档分块失败: {str(e)}")
+
+# 知识库管理接口
+@router.post("/knowledge-bases")
+async def create_knowledge_base(request: KnowledgeBaseRequest):
+    """创建知识库"""
+    try:
+        start_time = time.time()
+        
+        kb = await rag_service.create_knowledge_base(
+            name=request.name,
+            description=request.description,
+            color=request.color
+        )
+        
+        processing_time = time.time() - start_time
+        
+        return ChatHistoryResponse(
+            code=200,
+            msg="创建知识库成功",
+            data={
+                "knowledge_base": kb,
+                "processing_time": processing_time
+            }
+        )
+        
+    except Exception as e:
+        logger.error(f"创建知识库失败: {e}")
+        raise HTTPException(status_code=500, detail=f"创建知识库失败: {str(e)}")
+
+@router.get("/knowledge-bases")
+async def get_knowledge_bases():
+    """获取所有知识库"""
+    try:
+        start_time = time.time()
+        
+        knowledge_bases = await rag_service.get_all_knowledge_bases()
+        
+        processing_time = time.time() - start_time
+        
+        return ChatHistoryResponse(
+            code=200,
+            msg="获取知识库列表成功",
+            data={
+                "knowledge_bases": knowledge_bases,
+                "total_count": len(knowledge_bases),
+                "processing_time": processing_time
+            }
+        )
+        
+    except Exception as e:
+        logger.error(f"获取知识库列表失败: {e}")
+        raise HTTPException(status_code=500, detail=f"获取知识库列表失败: {str(e)}")
+
+@router.get("/knowledge-bases/{kb_id}")
+async def get_knowledge_base(kb_id: str):
+    """获取单个知识库详情"""
+    try:
+        kb = await rag_service.get_knowledge_base(kb_id)
+        
+        if not kb:
+            raise HTTPException(status_code=404, detail="知识库不存在")
+        
+        return ChatHistoryResponse(
+            code=200,
+            msg="获取知识库详情成功",
+            data={
+                "knowledge_base": kb
+            }
+        )
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"获取知识库详情失败: {e}")
+        raise HTTPException(status_code=500, detail=f"获取知识库详情失败: {str(e)}")
+
+@router.put("/knowledge-bases/{kb_id}")
+async def update_knowledge_base(kb_id: str, request: KnowledgeBaseRequest):
+    """更新知识库"""
+    try:
+        success = await rag_service.update_knowledge_base(
+            kb_id=kb_id,
+            name=request.name,
+            description=request.description,
+            color=request.color
+        )
+        
+        if not success:
+            raise HTTPException(status_code=404, detail="知识库不存在")
+        
+        return ChatHistoryResponse(
+            code=200,
+            msg="更新知识库成功",
+            data={
+                "kb_id": kb_id
+            }
+        )
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"更新知识库失败: {e}")
+        raise HTTPException(status_code=500, detail=f"更新知识库失败: {str(e)}")
+
+@router.delete("/knowledge-bases/{kb_id}")
+async def delete_knowledge_base(kb_id: str):
+    """删除知识库"""
+    try:
+        success = await rag_service.delete_knowledge_base(kb_id)
+        
+        if not success:
+            raise HTTPException(status_code=404, detail="知识库不存在")
+        
+        return ChatHistoryResponse(
+            code=200,
+            msg="删除知识库成功",
+            data={
+                "kb_id": kb_id
+            }
+        )
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"删除知识库失败: {e}")
+        raise HTTPException(status_code=500, detail=f"删除知识库失败: {str(e)}")
+
+@router.post("/knowledge-bases/{kb_id}/documents")
+async def add_documents_to_knowledge_base(kb_id: str, request: KnowledgeBaseDocumentRequest):
+    """向知识库添加文档"""
+    try:
+        success = await rag_service.add_documents_to_knowledge_base(
+            kb_id=kb_id,
+            doc_ids=request.document_ids
+        )
+        
+        if not success:
+            raise HTTPException(status_code=404, detail="知识库不存在")
+        
+        return ChatHistoryResponse(
+            code=200,
+            msg="添加文档到知识库成功",
+            data={
+                "kb_id": kb_id,
+                "added_count": len(request.document_ids)
+            }
+        )
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"添加文档到知识库失败: {e}")
+        raise HTTPException(status_code=500, detail=f"添加文档到知识库失败: {str(e)}")
+
+@router.delete("/knowledge-bases/{kb_id}/documents")
+async def remove_documents_from_knowledge_base(kb_id: str, request: KnowledgeBaseDocumentRequest):
+    """从知识库移除文档"""
+    try:
+        success = await rag_service.remove_documents_from_knowledge_base(
+            kb_id=kb_id,
+            doc_ids=request.document_ids
+        )
+        
+        if not success:
+            raise HTTPException(status_code=404, detail="知识库不存在")
+        
+        return ChatHistoryResponse(
+            code=200,
+            msg="从知识库移除文档成功",
+            data={
+                "kb_id": kb_id,
+                "removed_count": len(request.document_ids)
+            }
+        )
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"从知识库移除文档失败: {e}")
+        raise HTTPException(status_code=500, detail=f"从知识库移除文档失败: {str(e)}")
+
+@router.post("/knowledge-bases/{kb_id}/documents/remove")
+async def remove_documents_from_knowledge_base_post(kb_id: str, request: KnowledgeBaseDocumentRequest):
+    """从知识库移除文档 (POST方式)"""
+    try:
+        success = await rag_service.remove_documents_from_knowledge_base(
+            kb_id=kb_id,
+            doc_ids=request.document_ids
+        )
+        
+        if not success:
+            raise HTTPException(status_code=404, detail="知识库不存在")
+        
+        return ChatHistoryResponse(
+            code=200,
+            msg="从知识库移除文档成功",
+            data={
+                "kb_id": kb_id,
+                "removed_count": len(request.document_ids)
+            }
+        )
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"从知识库移除文档失败: {e}")
+        raise HTTPException(status_code=500, detail=f"从知识库移除文档失败: {str(e)}")
+
+@router.get("/knowledge-bases/{kb_id}/documents")
+async def get_knowledge_base_documents(kb_id: str):
+    """获取知识库的所有文档"""
+    try:
+        start_time = time.time()
+        
+        doc_ids = await rag_service.get_knowledge_base_documents(kb_id)
+        
+        # 获取文档详细信息
+        all_docs = await rag_service.get_all_documents()
+        kb_docs = [doc for doc in all_docs if doc["doc_id"] in doc_ids]
+        
+        processing_time = time.time() - start_time
+        
+        return ChatHistoryResponse(
+            code=200,
+            msg="获取知识库文档成功",
+            data={
+                "kb_id": kb_id,
+                "documents": kb_docs,
+                "total_count": len(kb_docs),
+                "processing_time": processing_time
+            }
+        )
+        
+    except Exception as e:
+        logger.error(f"获取知识库文档失败: {e}")
+        raise HTTPException(status_code=500, detail=f"获取知识库文档失败: {str(e)}")

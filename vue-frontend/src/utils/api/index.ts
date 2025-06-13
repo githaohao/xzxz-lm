@@ -37,7 +37,16 @@ export {
   processDocumentForRAG, 
   getDocumentInfo,
   getDocumentChunks,
-  getSessionDocuments 
+  getSessionDocuments,
+  // 知识库管理
+  createKnowledgeBase,
+  getAllKnowledgeBases,
+  getKnowledgeBase,
+  updateKnowledgeBase,
+  deleteKnowledgeBase,
+  addDocumentsToKnowledgeBase,
+  removeDocumentsFromKnowledgeBase,
+  getKnowledgeBaseDocuments
 } from './file'
 
 // 用户系统相关

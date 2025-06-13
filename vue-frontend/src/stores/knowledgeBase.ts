@@ -8,8 +8,16 @@ import type {
   DocumentSearchOptions,
   KnowledgeBaseStats
 } from '@/types'
-import { generateId } from '@/utils/voice-utils'
-import { getAllDocuments } from '@/utils/api'
+import { 
+  getAllDocuments,
+  getAllKnowledgeBases,
+  createKnowledgeBase as apiCreateKnowledgeBase,
+  updateKnowledgeBase as apiUpdateKnowledgeBase,
+  deleteKnowledgeBase as apiDeleteKnowledgeBase,
+  getKnowledgeBaseDocuments,
+  addDocumentsToKnowledgeBase as apiAddDocuments,
+  removeDocumentsFromKnowledgeBase as apiRemoveDocuments
+} from '@/utils/api'
 
 export const useKnowledgeBaseStore = defineStore('knowledgeBase', () => {
   // 状态
@@ -135,18 +143,17 @@ export const useKnowledgeBaseStore = defineStore('knowledgeBase', () => {
 
   // 初始化
   async function initialize() {
-    await Promise.all([
-      loadKnowledgeBases(),
-      fetchAllDocuments()
-    ])
-    
-    // 如果没有默认知识库，创建一个
-    if (!defaultKnowledgeBase.value) {
-      await createKnowledgeBase({
-        name: '默认知识库',
-        description: '系统默认知识库，用于存放未分类的文档',
-        color: availableColors[0]
-      }, true)
+    try {
+      isLoading.value = true
+      await Promise.all([
+        loadKnowledgeBases(),
+        fetchAllDocuments()
+      ])
+      console.log('📚 知识库初始化完成')
+    } catch (error) {
+      console.error('知识库初始化失败:', error)
+    } finally {
+      isLoading.value = false
     }
   }
 
@@ -169,22 +176,37 @@ export const useKnowledgeBaseStore = defineStore('knowledgeBase', () => {
     request: CreateKnowledgeBaseRequest, 
     isDefault = false
   ): Promise<KnowledgeBase> {
-    const knowledgeBase: KnowledgeBase = {
-      id: generateId(),
-      name: request.name,
-      description: request.description,
-      documentIds: [],
-      createdAt: new Date(),
-      updatedAt: new Date(),
-      color: request.color || availableColors[knowledgeBases.value.length % availableColors.length],
-      isDefault
-    }
+    try {
+      // 调用后端API创建知识库
+      const response = await apiCreateKnowledgeBase({
+        name: request.name,
+        description: request.description,
+        color: request.color || availableColors[knowledgeBases.value.length % availableColors.length]
+      })
+      
+      if (response.code === 200 && response.data.knowledge_base) {
+        const kbData = response.data.knowledge_base
+        const knowledgeBase: KnowledgeBase = {
+          id: kbData.id,
+          name: kbData.name,
+          description: kbData.description,
+          documentIds: [], // 新创建的知识库没有文档
+          createdAt: new Date(kbData.created_at),
+          updatedAt: new Date(kbData.updated_at),
+          color: kbData.color,
+          isDefault
+        }
 
-    knowledgeBases.value.push(knowledgeBase)
-    saveKnowledgeBases()
-    
-    console.log('✨ 创建知识库:', knowledgeBase.name)
-    return knowledgeBase
+        knowledgeBases.value.push(knowledgeBase)
+        console.log('✨ 创建知识库成功:', knowledgeBase.name)
+        return knowledgeBase
+      } else {
+        throw new Error('创建知识库失败')
+      }
+    } catch (error) {
+      console.error('创建知识库失败:', error)
+      throw error
+    }
   }
 
   // 更新知识库
@@ -192,43 +214,62 @@ export const useKnowledgeBaseStore = defineStore('knowledgeBase', () => {
     id: string, 
     request: UpdateKnowledgeBaseRequest
   ): Promise<boolean> {
-    const index = knowledgeBases.value.findIndex(kb => kb.id === id)
-    if (index === -1) return false
-
-    const knowledgeBase = knowledgeBases.value[index]
-    Object.assign(knowledgeBase, {
-      ...request,
-      updatedAt: new Date()
-    })
-
-    saveKnowledgeBases()
-    console.log('📝 更新知识库:', knowledgeBase.name)
-    return true
+    try {
+      // 调用后端API更新知识库
+      const response = await apiUpdateKnowledgeBase(id, {
+        name: request.name || '',
+        description: request.description,
+        color: request.color
+      })
+      
+      if (response.code === 200) {
+        // 更新本地缓存
+        const index = knowledgeBases.value.findIndex(kb => kb.id === id)
+        if (index !== -1) {
+          const knowledgeBase = knowledgeBases.value[index]
+          Object.assign(knowledgeBase, {
+            ...request,
+            updatedAt: new Date()
+          })
+        }
+        
+        console.log('📝 更新知识库成功:', request.name)
+        return true
+      }
+      return false
+    } catch (error) {
+      console.error('更新知识库失败:', error)
+      return false
+    }
   }
 
   // 删除知识库
   async function deleteKnowledgeBase(id: string): Promise<boolean> {
-    const index = knowledgeBases.value.findIndex(kb => kb.id === id)
-    if (index === -1) return false
-
-    const knowledgeBase = knowledgeBases.value[index]
-    
-    // 不能删除默认知识库
-    if (knowledgeBase.isDefault) {
-      console.warn('⚠️ 不能删除默认知识库')
+    try {
+      // 调用后端API删除知识库
+      const success = await apiDeleteKnowledgeBase(id)
+      
+      if (success) {
+        // 从本地缓存中移除
+        const index = knowledgeBases.value.findIndex(kb => kb.id === id)
+        if (index !== -1) {
+          const knowledgeBase = knowledgeBases.value[index]
+          knowledgeBases.value.splice(index, 1)
+          
+          // 如果当前选中的是被删除的知识库，清除选择
+          if (selectedKnowledgeBase.value?.id === id) {
+            selectedKnowledgeBase.value = null
+          }
+          
+          console.log('🗑️ 删除知识库成功:', knowledgeBase.name)
+        }
+        return true
+      }
+      return false
+    } catch (error) {
+      console.error('删除知识库失败:', error)
       return false
     }
-
-    knowledgeBases.value.splice(index, 1)
-    
-    // 如果删除的是当前选中的知识库，切换到默认知识库
-    if (selectedKnowledgeBase.value?.id === id) {
-      selectedKnowledgeBase.value = defaultKnowledgeBase.value
-    }
-
-    saveKnowledgeBases()
-    console.log('🗑️ 删除知识库:', knowledgeBase.name)
-    return true
   }
 
   // 设置当前知识库
@@ -242,20 +283,31 @@ export const useKnowledgeBaseStore = defineStore('knowledgeBase', () => {
     knowledgeBaseId: string, 
     documentIds: string[]
   ): Promise<boolean> {
-    const knowledgeBase = knowledgeBases.value.find(kb => kb.id === knowledgeBaseId)
-    if (!knowledgeBase) return false
-
-    // 添加文档ID（去重）
-    const newDocumentIds = documentIds.filter(id => 
-      !knowledgeBase.documentIds.includes(id)
-    )
-    
-    knowledgeBase.documentIds.push(...newDocumentIds)
-    knowledgeBase.updatedAt = new Date()
-    
-    saveKnowledgeBases()
-    console.log(`📁 向知识库 "${knowledgeBase.name}" 添加了 ${newDocumentIds.length} 个文档`)
-    return true
+    try {
+      // 调用后端API添加文档到知识库
+      const response = await apiAddDocuments(knowledgeBaseId, documentIds)
+      
+      if (response.code === 200) {
+        // 更新本地缓存
+        const knowledgeBase = knowledgeBases.value.find(kb => kb.id === knowledgeBaseId)
+        if (knowledgeBase) {
+          // 添加文档ID（去重）
+          const newDocumentIds = documentIds.filter(id => 
+            !knowledgeBase.documentIds.includes(id)
+          )
+          
+          knowledgeBase.documentIds.push(...newDocumentIds)
+          knowledgeBase.updatedAt = new Date()
+          
+          console.log(`📁 向知识库 "${knowledgeBase.name}" 添加了 ${newDocumentIds.length} 个文档`)
+        }
+        return true
+      }
+      return false
+    } catch (error) {
+      console.error('添加文档到知识库失败:', error)
+      return false
+    }
   }
 
   // 从知识库移除文档
@@ -263,18 +315,29 @@ export const useKnowledgeBaseStore = defineStore('knowledgeBase', () => {
     knowledgeBaseId: string, 
     documentIds: string[]
   ): Promise<boolean> {
-    const knowledgeBase = knowledgeBases.value.find(kb => kb.id === knowledgeBaseId)
-    if (!knowledgeBase) return false
-
-    // 移除文档ID
-    knowledgeBase.documentIds = knowledgeBase.documentIds.filter(id => 
-      !documentIds.includes(id)
-    )
-    knowledgeBase.updatedAt = new Date()
-    
-    saveKnowledgeBases()
-    console.log(`📁 从知识库 "${knowledgeBase.name}" 移除了 ${documentIds.length} 个文档`)
-    return true
+    try {
+      // 调用后端API从知识库移除文档
+      const response = await apiRemoveDocuments(knowledgeBaseId, documentIds)
+      
+      if (response.code === 200) {
+        // 更新本地缓存
+        const knowledgeBase = knowledgeBases.value.find(kb => kb.id === knowledgeBaseId)
+        if (knowledgeBase) {
+          // 移除文档ID
+          knowledgeBase.documentIds = knowledgeBase.documentIds.filter(id => 
+            !documentIds.includes(id)
+          )
+          knowledgeBase.updatedAt = new Date()
+          
+          console.log(`📁 从知识库 "${knowledgeBase.name}" 移除了 ${documentIds.length} 个文档`)
+        }
+        return true
+      }
+      return false
+    } catch (error) {
+      console.error('从知识库移除文档失败:', error)
+      return false
+    }
   }
 
   // 移动文档到另一个知识库
@@ -333,34 +396,48 @@ export const useKnowledgeBaseStore = defineStore('knowledgeBase', () => {
     searchOptions.value = {}
   }
 
-  // 本地存储管理
-  function saveKnowledgeBases() {
-    try {
-      const data = knowledgeBases.value.map(kb => ({
-        ...kb,
-        createdAt: kb.createdAt.toISOString(),
-        updatedAt: kb.updatedAt.toISOString()
-      }))
-      localStorage.setItem('knowledgeBases', JSON.stringify(data))
-    } catch (error) {
-      console.error('保存知识库失败:', error)
-    }
-  }
+  // 本地存储管理已移除，现在使用后端API
 
-  function loadKnowledgeBases() {
+  async function loadKnowledgeBases() {
     try {
-      const data = localStorage.getItem('knowledgeBases')
-      if (data) {
-        const parsed = JSON.parse(data)
-        knowledgeBases.value = parsed.map((kb: any) => ({
-          ...kb,
-          createdAt: new Date(kb.createdAt),
-          updatedAt: new Date(kb.updatedAt)
+      // 从后端API获取知识库列表
+      const response = await getAllKnowledgeBases()
+      
+      if (response.code === 200 && response.data.knowledge_bases) {
+        knowledgeBases.value = response.data.knowledge_bases.map((kb: any) => ({
+          id: kb.id,
+          name: kb.name,
+          description: kb.description,
+          documentIds: [], // 稍后通过getKnowledgeBaseDocuments获取
+          createdAt: new Date(kb.created_at),
+          updatedAt: new Date(kb.updated_at),
+          color: kb.color,
+          isDefault: false // 暂时不支持默认标记
         }))
-        console.log(`✅ 从缓存加载了 ${knowledgeBases.value.length} 个知识库`)
+        
+        // 为每个知识库获取文档ID列表
+        await Promise.all(
+          knowledgeBases.value.map(async (kb) => {
+            try {
+              const docsResponse = await getKnowledgeBaseDocuments(kb.id)
+              if (docsResponse.code === 200 && docsResponse.data.documents) {
+                kb.documentIds = docsResponse.data.documents.map((doc: any) => doc.doc_id)
+              }
+            } catch (error) {
+              console.warn(`获取知识库 ${kb.name} 的文档失败:`, error)
+              kb.documentIds = []
+            }
+          })
+        )
+        
+        console.log('📚 已从后端加载知识库:', knowledgeBases.value.length)
+      } else {
+        knowledgeBases.value = []
+        console.log('📚 后端暂无知识库数据')
       }
     } catch (error) {
-      console.error('加载知识库失败:', error)
+      console.error('从后端加载知识库失败:', error)
+      knowledgeBases.value = []
     }
   }
 

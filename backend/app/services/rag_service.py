@@ -19,6 +19,7 @@ from langchain.text_splitter import RecursiveCharacterTextSplitter
 import numpy as np
 
 from app.config import settings
+from app.database import Database
 
 logger = logging.getLogger(__name__)
 
@@ -38,6 +39,9 @@ class RAGService:
         self.embedding_model = None
         self.text_splitter = None
         self.executor = ThreadPoolExecutor(max_workers=4)
+        self.db = Database()  # 数据库连接
+        # 移除内存存储，改用数据库
+        self.document_kb_mapping = {}  # doc_id -> [kb_id1, kb_id2, ...]  
         self._initialize()
     
     def _initialize(self):
@@ -72,8 +76,11 @@ class RAGService:
                 self.embedding_model = SentenceTransformer(model_name)
                 logger.info(f"嵌入模型加载成功: {model_name}")
             except Exception as e:
-                logger.warning(f"加载 {model_name} 失败，回退到默认模型: {e}")
-                self.embedding_model = SentenceTransformer('sentence-transformers/all-MiniLM-L6-v2')
+                logger.warning(f"加载 {model_name} 失败，回退到备用模型: {e}")
+                # 保持与用户RAG服务一致的回退模型
+                fallback_model = 'sentence-transformers/all-MiniLM-L6-v2'
+                self.embedding_model = SentenceTransformer(fallback_model)
+                logger.info(f"备用嵌入模型加载成功: {fallback_model}")
             
             # 初始化文本分割器
             self.text_splitter = RecursiveCharacterTextSplitter(
@@ -438,6 +445,266 @@ class RAGService:
         ).hexdigest()
         return f"doc_{content_hash[:16]}"
     
+    # 知识库管理方法 - 使用数据库存储（不绑定用户）
+    async def create_knowledge_base(self, name: str, description: str = None, color: str = "#3B82F6") -> Dict:
+        """创建知识库"""
+        kb_id = str(uuid.uuid4())
+        now = datetime.now()
+        
+        try:
+            async with self.db.get_connection() as db:
+                # 使用默认用户ID（0表示全局）
+                await db.execute("""
+                    INSERT INTO knowledge_bases (id, user_id, name, description, color, document_count, created_at, updated_at)
+                    VALUES (?, 0, ?, ?, ?, 0, ?, ?)
+                """, (kb_id, name, description, color, now, now))
+                await db.commit()
+            
+            knowledge_base = {
+                "id": kb_id,
+                "name": name,
+                "description": description,
+                "color": color,
+                "document_count": 0,
+                "created_at": now,
+                "updated_at": now
+            }
+            
+            logger.info(f"创建知识库成功: {name} (ID: {kb_id})")
+            return knowledge_base
+            
+        except Exception as e:
+            logger.error(f"创建知识库失败: {e}")
+            raise
+        
+    async def get_all_knowledge_bases(self) -> List[Dict]:
+        """获取所有知识库"""
+        try:
+            async with self.db.get_connection() as db:
+                cursor = await db.execute("""
+                    SELECT id, name, description, color, document_count, created_at, updated_at
+                    FROM knowledge_bases
+                    WHERE user_id = 0
+                    ORDER BY created_at DESC
+                """)
+                
+                rows = await cursor.fetchall()
+                
+                knowledge_bases = []
+                for row in rows:
+                    kb = {
+                        "id": row[0],
+                        "name": row[1],
+                        "description": row[2],
+                        "color": row[3],
+                        "document_count": row[4],
+                        "created_at": row[5],
+                        "updated_at": row[6]
+                    }
+                    knowledge_bases.append(kb)
+                
+                return knowledge_bases
+                
+        except Exception as e:
+            logger.error(f"获取知识库列表失败: {e}")
+            return []
+        
+    async def get_knowledge_base(self, kb_id: str) -> Optional[Dict]:
+        """获取单个知识库"""
+        try:
+            async with self.db.get_connection() as db:
+                cursor = await db.execute("""
+                    SELECT id, name, description, color, document_count, created_at, updated_at
+                    FROM knowledge_bases
+                    WHERE id = ? AND user_id = 0
+                """, (kb_id,))
+                
+                row = await cursor.fetchone()
+                
+                if row:
+                    return {
+                        "id": row[0],
+                        "name": row[1],
+                        "description": row[2],
+                        "color": row[3],
+                        "document_count": row[4],
+                        "created_at": row[5],
+                        "updated_at": row[6]
+                    }
+                return None
+                
+        except Exception as e:
+            logger.error(f"获取知识库失败: {e}")
+            return None
+        
+    async def update_knowledge_base(self, kb_id: str, name: str = None, description: str = None, color: str = None) -> bool:
+        """更新知识库"""
+        try:
+            # 构建更新字段
+            update_fields = []
+            update_values = []
+            
+            if name is not None:
+                update_fields.append("name = ?")
+                update_values.append(name)
+            if description is not None:
+                update_fields.append("description = ?")
+                update_values.append(description)
+            if color is not None:
+                update_fields.append("color = ?")
+                update_values.append(color)
+            
+            if not update_fields:
+                return True  # 没有需要更新的字段
+            
+            update_fields.append("updated_at = ?")
+            update_values.append(datetime.now())
+            update_values.append(kb_id)
+            
+            async with self.db.get_connection() as db:
+                cursor = await db.execute(f"""
+                    UPDATE knowledge_bases 
+                    SET {', '.join(update_fields)}
+                    WHERE id = ? AND user_id = 0
+                """, update_values)
+                
+                await db.commit()
+                
+                if cursor.rowcount > 0:
+                    logger.info(f"更新知识库成功: ID={kb_id}")
+                    return True
+                else:
+                    logger.warning(f"知识库不存在: ID={kb_id}")
+                    return False
+                    
+        except Exception as e:
+            logger.error(f"更新知识库失败: {e}")
+            return False
+        
+    async def delete_knowledge_base(self, kb_id: str) -> bool:
+        """删除知识库"""
+        try:
+            async with self.db.get_connection() as db:
+                # 首先获取知识库名称用于日志
+                cursor = await db.execute("""
+                    SELECT name FROM knowledge_bases 
+                    WHERE id = ? AND user_id = 0
+                """, (kb_id,))
+                
+                row = await cursor.fetchone()
+                kb_name = row[0] if row else "未知"
+                
+                # 删除知识库
+                cursor = await db.execute("""
+                    DELETE FROM knowledge_bases 
+                    WHERE id = ? AND user_id = 0
+                """, (kb_id,))
+                
+                await db.commit()
+                
+                if cursor.rowcount > 0:
+                    # 清理内存中的文档关联关系
+                    for doc_id in list(self.document_kb_mapping.keys()):
+                        if kb_id in self.document_kb_mapping[doc_id]:
+                            self.document_kb_mapping[doc_id].remove(kb_id)
+                            if not self.document_kb_mapping[doc_id]:
+                                del self.document_kb_mapping[doc_id]
+                    
+                    logger.info(f"删除知识库成功: {kb_name} (ID: {kb_id})")
+                    return True
+                else:
+                    logger.warning(f"知识库不存在: ID={kb_id}")
+                    return False
+                    
+        except Exception as e:
+            logger.error(f"删除知识库失败: {e}")
+            return False
+        
+    async def add_documents_to_knowledge_base(self, kb_id: str, doc_ids: List[str]) -> bool:
+        """将文档添加到知识库"""
+        try:
+            # 验证知识库是否存在
+            kb = await self.get_knowledge_base(kb_id)
+            if not kb:
+                logger.warning(f"知识库不存在: ID={kb_id}")
+                return False
+            
+            # 检查文档是否存在
+            existing_docs = await self.get_all_documents()
+            existing_doc_ids = {doc["doc_id"] for doc in existing_docs}
+            
+            added_count = 0
+            for doc_id in doc_ids:
+                if doc_id in existing_doc_ids:
+                    if doc_id not in self.document_kb_mapping:
+                        self.document_kb_mapping[doc_id] = []
+                    if kb_id not in self.document_kb_mapping[doc_id]:
+                        self.document_kb_mapping[doc_id].append(kb_id)
+                        added_count += 1
+            
+            # 更新知识库的文档计数
+            if added_count > 0:
+                async with self.db.get_connection() as db:
+                    await db.execute("""
+                        UPDATE knowledge_bases 
+                        SET document_count = document_count + ?, updated_at = ?
+                        WHERE id = ? AND user_id = 0
+                    """, (added_count, datetime.now(), kb_id))
+                    await db.commit()
+            
+            kb_name = kb["name"]
+            logger.info(f"向知识库 '{kb_name}' 添加了 {added_count} 个文档")
+            return True
+            
+        except Exception as e:
+            logger.error(f"添加文档到知识库失败: {e}")
+            return False
+        
+    async def remove_documents_from_knowledge_base(self, kb_id: str, doc_ids: List[str]) -> bool:
+        """从知识库中移除文档"""
+        try:
+            # 验证知识库是否存在
+            kb = await self.get_knowledge_base(kb_id)
+            if not kb:
+                logger.warning(f"知识库不存在: ID={kb_id}")
+                return False
+            
+            removed_count = 0
+            for doc_id in doc_ids:
+                if doc_id in self.document_kb_mapping and kb_id in self.document_kb_mapping[doc_id]:
+                    self.document_kb_mapping[doc_id].remove(kb_id)
+                    if not self.document_kb_mapping[doc_id]:
+                        del self.document_kb_mapping[doc_id]
+                    removed_count += 1
+            
+            # 更新知识库的文档计数
+            if removed_count > 0:
+                async with self.db.get_connection() as db:
+                    await db.execute("""
+                        UPDATE knowledge_bases 
+                        SET document_count = GREATEST(0, document_count - ?), updated_at = ?
+                        WHERE id = ? AND user_id = 0
+                    """, (removed_count, datetime.now(), kb_id))
+                    await db.commit()
+            
+            kb_name = kb["name"]
+            logger.info(f"从知识库 '{kb_name}' 移除了 {removed_count} 个文档")
+            return True
+            
+        except Exception as e:
+            logger.error(f"从知识库移除文档失败: {e}")
+            return False
+        
+    async def get_knowledge_base_documents(self, kb_id: str) -> List[str]:
+        """获取知识库的所有文档ID"""
+        # 验证知识库是否存在
+        kb = await self.get_knowledge_base(kb_id)
+        if not kb:
+            logger.warning(f"知识库不存在: ID={kb_id}")
+            return []
+            
+        return [doc_id for doc_id, kb_ids in self.document_kb_mapping.items() if kb_id in kb_ids]
+
     def __del__(self):
         """清理资源"""
         if hasattr(self, 'executor'):

@@ -45,6 +45,7 @@ export async function sendMultimodalMessage(
       content: fileData.content || null,
       ocr_completed: fileData.ocrCompleted || false,
       doc_id: fileData.doc_id || null,
+      knowledge_base_id: fileData.knowledge_base_id || null,
       rag_enabled: fileData.rag_enabled || false
     },
     temperature,

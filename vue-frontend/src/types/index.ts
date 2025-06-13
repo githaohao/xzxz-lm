@@ -50,6 +50,7 @@ export interface ProcessedFile {
   ocrCompleted?: boolean
   content?: string  // OCR处理后的内容，用于RAG
   doc_id?: string   // RAG文档ID
+  knowledge_base_id?: string  // 知识库ID，用于知识库RAG检索
   rag_enabled?: boolean  // 是否启用RAG
   // PDF智能处理新增字段
   is_pdf?: boolean  // 是否为PDF文件

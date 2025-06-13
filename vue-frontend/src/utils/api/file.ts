@@ -164,4 +164,81 @@ export async function getSessionDocuments(sessionId: string): Promise<RAGDocumen
     console.error('获取会话文档失败:', error)
     return []
   }
+}
+
+// 知识库管理 API
+/**
+ * 创建知识库
+ */
+export async function createKnowledgeBase(data: {
+  name: string
+  description?: string
+  color?: string
+}): Promise<any> {
+  return api.post('/api/lm/rag/knowledge-bases', data)
+}
+
+/**
+ * 获取所有知识库
+ */
+export async function getAllKnowledgeBases(): Promise<any> {
+  return api.get('/api/lm/rag/knowledge-bases')
+}
+
+/**
+ * 获取单个知识库详情
+ */
+export async function getKnowledgeBase(kbId: string): Promise<any> {
+  return api.get(`/api/lm/rag/knowledge-bases/${kbId}`)
+}
+
+/**
+ * 更新知识库
+ */
+export async function updateKnowledgeBase(kbId: string, data: {
+  name: string
+  description?: string
+  color?: string
+}): Promise<any> {
+  return api.put(`/api/lm/rag/knowledge-bases/${kbId}`, data)
+}
+
+/**
+ * 删除知识库
+ */
+export async function deleteKnowledgeBase(kbId: string): Promise<boolean> {
+  try {
+    await api.delete(`/api/lm/rag/knowledge-bases/${kbId}`)
+    return true
+  } catch (error) {
+    console.error('删除知识库失败:', error)
+    return false
+  }
+}
+
+/**
+ * 向知识库添加文档
+ */
+export async function addDocumentsToKnowledgeBase(kbId: string, documentIds: string[]): Promise<any> {
+  return api.post(`/api/lm/rag/knowledge-bases/${kbId}/documents`, {
+    document_ids: documentIds
+  })
+}
+
+/**
+ * 从知识库移除文档
+ */
+export async function removeDocumentsFromKnowledgeBase(kbId: string, documentIds: string[]): Promise<any> {
+  const response = await api.get(`/api/lm/rag/knowledge-bases/${kbId}/documents`)
+  // 使用POST请求模拟DELETE带body
+  return api.post(`/api/lm/rag/knowledge-bases/${kbId}/documents/remove`, {
+    document_ids: documentIds
+  })
+}
+
+/**
+ * 获取知识库的所有文档
+ */
+export async function getKnowledgeBaseDocuments(kbId: string): Promise<any> {
+  return api.get(`/api/lm/rag/knowledge-bases/${kbId}/documents`)
 } 

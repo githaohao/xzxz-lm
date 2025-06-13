@@ -65,8 +65,11 @@
           <Badge v-if="selectedDocumentCount > 0" variant="outline" class="text-blue-600 border-blue-300">
             📄 已选 {{ selectedDocumentCount }}
           </Badge>
+          <Badge v-if="localSelectedKnowledgeBase && !selectedDocumentCount" variant="outline" class="text-green-600 border-green-300">
+            🗂️ {{ currentKnowledgeBaseDocumentsCount }} 个知识库文档
+          </Badge>
           
-          <KnowledgeBaseSelector v-model="selectedKnowledgeBase" />
+          <KnowledgeBaseSelector v-model="localSelectedKnowledgeBase" />
         </div>
       </div>
 
@@ -621,8 +624,6 @@ const showDocumentDialog = ref(false) // 文档管理弹窗
 const showDocumentPreview = ref(false) // 文档预览弹窗
 const selectedDocumentForPreview = ref<RAGDocument | null>(null) // 要预览的文档
 const showConversationList = ref(true) // 显示对话列表
-const selectedKnowledgeBase = ref<KnowledgeBase | null>(null) // 选中的知识库
-
 // RAG Store
 const ragStore = useRAGStore()
 const { selectedCount: selectedDocumentCount, selectedDocumentsList } = storeToRefs(ragStore)
@@ -631,8 +632,28 @@ const { selectedCount: selectedDocumentCount, selectedDocumentsList } = storeToR
 const conversationStore = useConversationStore()
 const { currentConversationRagDocs } = storeToRefs(conversationStore)
 
+// 知识库Store
+const knowledgeBaseStore = useKnowledgeBaseStore()
+const { selectedKnowledgeBase, currentKnowledgeBaseDocuments } = storeToRefs(knowledgeBaseStore)
+
+// 本地知识库选择状态（用于KnowledgeBaseSelector组件）
+const localSelectedKnowledgeBase = ref<KnowledgeBase | null>(null)
+
 // 计算当前对话的RAG文档数量
 const currentConversationRagDocsCount = computed(() => currentConversationRagDocs.value.length)
+
+// 计算当前知识库的文档数量
+const currentKnowledgeBaseDocumentsCount = computed(() => currentKnowledgeBaseDocuments.value.length)
+
+// 监听本地知识库选择变化，同步到store
+watch(localSelectedKnowledgeBase, (newKb) => {
+  knowledgeBaseStore.setSelectedKnowledgeBase(newKb)
+})
+
+// 监听store中知识库选择变化，同步到本地
+watch(selectedKnowledgeBase, (newKb) => {
+  localSelectedKnowledgeBase.value = newKb
+})
 
 // 新增：滚动区域引用
 const scrollAreaRef = ref<InstanceType<typeof ScrollArea>>()
@@ -720,22 +741,38 @@ async function handleSend() {
         }
       }
     }
-  } else if (selectedKnowledgeBase.value) {
-    // 如果选择了知识库但没有选中具体文档，使用知识库中的文档
-    const kbStore = useKnowledgeBaseStore()
-    const kbDocuments = kbStore.currentKnowledgeBaseDocuments
+  } else if (localSelectedKnowledgeBase.value) {
+    // 如果选择了知识库但没有选中具体文档，使用知识库中的所有文档
+    const kbDocuments = currentKnowledgeBaseDocuments.value
     
     if (kbDocuments.length > 0) {
-      // 使用知识库的第一个文档作为RAG源
-      const firstDoc = kbDocuments[0]
-      fileToSend = {
-        name: firstDoc.filename,
-        type: firstDoc.file_type,
-        size: firstDoc.total_length,
-        content: '', // 内容会在后端检索时获取
-        doc_id: firstDoc.doc_id,
-        ocrCompleted: true,
-        rag_enabled: ragEnabled.value
+      if (kbDocuments.length === 1) {
+        // 单文档处理
+        const doc = kbDocuments[0]
+        fileToSend = {
+          name: doc.filename,
+          type: doc.file_type,
+          size: doc.total_length,
+          content: '', // 内容会在后端检索时获取
+          doc_id: doc.doc_id,
+          ocrCompleted: true,
+          rag_enabled: ragEnabled.value
+        }
+      } else {
+        // 多文档处理 - 使用知识库进行RAG检索
+        const totalSize = kbDocuments.reduce((sum, doc) => sum + doc.total_length, 0)
+        const kbName = localSelectedKnowledgeBase.value.name
+        
+        // 创建知识库ProcessedFile，只传递knowledge_base_id
+        fileToSend = {
+          name: `知识库"${kbName}"(${kbDocuments.length}个文档)`,
+          type: 'multimodal/knowledge-base',
+          size: totalSize,
+          content: '', // 内容会在后端检索时获取
+          knowledge_base_id: localSelectedKnowledgeBase.value.id, // 直接使用knowledge_base_id字段
+          ocrCompleted: true,
+          rag_enabled: ragEnabled.value
+        }
       }
     }
   }

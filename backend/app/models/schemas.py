@@ -39,6 +39,7 @@ class FileData(BaseModel):
     size: int
     content: Optional[str] = None
     doc_id: Optional[str] = None  # RAG文档ID
+    knowledge_base_id: Optional[str] = None  # 知识库ID，用于知识库RAG检索
     ocr_completed: Optional[bool] = False
     rag_enabled: Optional[bool] = False  # 是否启用RAG功能
 
@@ -152,3 +153,45 @@ class HealthResponse(BaseModel):
         json_encoders = {
             datetime: lambda v: v.strftime('%Y-%m-%d %H:%M:%S')
         }
+
+# 知识库管理相关模型
+class KnowledgeBaseRequest(BaseModel):
+    """创建/更新知识库请求"""
+    name: str = Field(..., min_length=1, max_length=100, description="知识库名称")
+    description: Optional[str] = Field(None, max_length=500, description="知识库描述")
+    color: str = Field("#3B82F6", description="知识库颜色")
+
+class KnowledgeBaseResponse(BaseModel):
+    """知识库响应"""
+    id: str
+    name: str
+    description: Optional[str] = None
+    color: str
+    document_count: int = 0
+    created_at: datetime
+    updated_at: datetime
+
+    class Config:
+        json_encoders = {
+            datetime: lambda v: v.strftime('%Y-%m-%d %H:%M:%S')
+        }
+
+class KnowledgeBaseDocumentRequest(BaseModel):
+    """知识库文档关联请求"""
+    document_ids: List[str] = Field(..., description="文档ID列表")
+
+class DocumentWithKnowledgeBases(BaseModel):
+    """带知识库信息的文档"""
+    doc_id: str
+    filename: str
+    file_type: str
+    chunk_count: int
+    total_length: int
+    created_at: str
+    knowledge_bases: List[str] = Field(default_factory=list, description="关联的知识库ID列表")
+
+class KnowledgeBaseListResponse(BaseModel):
+    """知识库列表响应"""
+    knowledge_bases: List[KnowledgeBaseResponse]
+    total_count: int
+    processing_time: float

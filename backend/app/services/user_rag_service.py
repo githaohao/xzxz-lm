@@ -29,36 +29,7 @@ class UserRAGService:
         self.chroma_client = None
         self.embedding_model = None
         self._initialized = False
-    
-    async def initialize(self):
-        """初始化RAG服务"""
-        if self._initialized:
-            return
-        
-        try:
-            # 初始化ChromaDB客户端
-            chroma_dir = os.path.join(settings.upload_dir, "chromadb")
-            os.makedirs(chroma_dir, exist_ok=True)
-            
-            self.chroma_client = chromadb.PersistentClient(
-                path=chroma_dir,
-                settings=Settings(
-                    allow_reset=True,
-                    anonymized_telemetry=False
-                )
-            )
-            
-            # 初始化嵌入模型
-            logger.info("🔗 加载嵌入模型...")
-            self.embedding_model = SentenceTransformer('all-MiniLM-L6-v2')
-            
-            self._initialized = True
-            logger.info("✅ 用户RAG服务初始化成功")
-            
-        except Exception as e:
-            logger.error(f"❌ 用户RAG服务初始化失败: {e}")
-            raise e
-    
+
     def _get_user_collection_name(self, user_id: int) -> str:
         """获取用户专属的集合名称"""
         return f"user_{user_id}_docs"

@@ -365,29 +365,49 @@ async def multimodal_chat_stream_with_processed_data(
                     logger.info("启用RAG模式，进行智能检索...")
                     yield f"data: {json.dumps({'type': 'file_processing', 'message': '🧠 启用智能检索模式'})}\n\n"
                     
-                    # 检查是否为多文档处理
+                    # 检查是否为知识库检索或多文档处理
                     doc_ids_to_search = []
                     is_multiple_docs = False
+                    is_knowledge_base = False
                     
-                    try:
-                        # 尝试解析doc_id是否为多文档JSON格式
-                        if request.file_data.doc_id and request.file_data.doc_id.startswith('{'):
-                            multi_doc_data = json.loads(request.file_data.doc_id)
-                            if multi_doc_data.get('type') == 'multiple' and 'doc_ids' in multi_doc_data:
-                                doc_ids_to_search = multi_doc_data['doc_ids']
-                                is_multiple_docs = True
-                                doc_count = len(doc_ids_to_search)
-                                logger.info(f"检测到多文档处理: {doc_count} 个文档")
-                                yield f"data: {json.dumps({'type': 'file_processing', 'message': f'📚 检测到 {doc_count} 个文档，开始多文档检索'})}\n\n"
-                            else:
-                                # 单文档处理
-                                doc_ids_to_search = [request.file_data.doc_id]
+                    # 优先检查是否为知识库检索
+                    if hasattr(request.file_data, 'knowledge_base_id') and request.file_data.knowledge_base_id:
+                        logger.info(f"检测到知识库检索: {request.file_data.knowledge_base_id}")
+                        yield f"data: {json.dumps({'type': 'file_processing', 'message': '🗂️ 检测到知识库，正在获取文档列表...'})}\n\n"
+                        
+                        # 从知识库获取所有文档ID
+                        kb_doc_ids = await rag_service.get_knowledge_base_documents(request.file_data.knowledge_base_id)
+                        if kb_doc_ids:
+                            doc_ids_to_search = kb_doc_ids
+                            is_knowledge_base = True
+                            is_multiple_docs = len(kb_doc_ids) > 1
+                            doc_count = len(kb_doc_ids)
+                            logger.info(f"知识库包含 {doc_count} 个文档")
+                            yield f"data: {json.dumps({'type': 'file_processing', 'message': f'📚 知识库包含 {doc_count} 个文档，开始智能检索'})}\n\n"
                         else:
-                            # 传统单文档处理
+                            logger.warning(f"知识库 {request.file_data.knowledge_base_id} 中没有文档")
+                            yield f"data: {json.dumps({'type': 'file_processing', 'message': '⚠️ 知识库中没有文档'})}\n\n"
+                    else:
+                        # 检查是否为多文档处理（传统方式）
+                        try:
+                            # 尝试解析doc_id是否为多文档JSON格式
+                            if request.file_data.doc_id and request.file_data.doc_id.startswith('{'):
+                                multi_doc_data = json.loads(request.file_data.doc_id)
+                                if multi_doc_data.get('type') == 'multiple' and 'doc_ids' in multi_doc_data:
+                                    doc_ids_to_search = multi_doc_data['doc_ids']
+                                    is_multiple_docs = True
+                                    doc_count = len(doc_ids_to_search)
+                                    logger.info(f"检测到多文档处理: {doc_count} 个文档")
+                                    yield f"data: {json.dumps({'type': 'file_processing', 'message': f'📚 检测到 {doc_count} 个文档，开始多文档检索'})}\n\n"
+                                else:
+                                    # 单文档处理
+                                    doc_ids_to_search = [request.file_data.doc_id]
+                            else:
+                                # 传统单文档处理
+                                doc_ids_to_search = [request.file_data.doc_id] if request.file_data.doc_id else []
+                        except json.JSONDecodeError:
+                            # 如果解析失败，按单文档处理
                             doc_ids_to_search = [request.file_data.doc_id] if request.file_data.doc_id else []
-                    except json.JSONDecodeError:
-                        # 如果解析失败，按单文档处理
-                        doc_ids_to_search = [request.file_data.doc_id] if request.file_data.doc_id else []
                     
                     # 如果文件还没有进行RAG处理，先进行处理（仅适用于单文档）
                     if not doc_ids_to_search and request.file_data.content and not is_multiple_docs:

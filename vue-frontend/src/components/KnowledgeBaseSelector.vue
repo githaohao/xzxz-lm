@@ -77,6 +77,9 @@
               </div>
               <div class="text-xs text-slate-500">
                 {{ knowledgeBaseStats[kb.id]?.totalDocuments || 0 }} 个文档
+                <span v-if="knowledgeBaseStats[kb.id]?.totalDocuments > 1" class="text-purple-600">
+                  • 支持全库检索
+                </span>
               </div>
             </div>
             <Check v-if="selectedKnowledgeBase?.id === kb.id" class="h-4 w-4 text-blue-600" />
