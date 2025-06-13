@@ -65,7 +65,6 @@ class Database:
                 await db.execute("""
                     CREATE TABLE IF NOT EXISTS knowledge_bases (
                         id TEXT PRIMARY KEY,
-                        user_id INTEGER NOT NULL,
                         name TEXT NOT NULL,
                         description TEXT,
                         color TEXT DEFAULT '#3B82F6',
@@ -137,7 +136,6 @@ class Database:
                 await db.execute("CREATE INDEX IF NOT EXISTS idx_chat_messages_session_id ON chat_messages (session_id)")
                 await db.execute("CREATE INDEX IF NOT EXISTS idx_chat_messages_user_id ON chat_messages (user_id)")
                 await db.execute("CREATE INDEX IF NOT EXISTS idx_chat_messages_created_at ON chat_messages (created_at)")
-                await db.execute("CREATE INDEX IF NOT EXISTS idx_knowledge_bases_user_id ON knowledge_bases (user_id)")
                 await db.execute("CREATE INDEX IF NOT EXISTS idx_documents_user_id ON documents (user_id)")
                 await db.execute("CREATE INDEX IF NOT EXISTS idx_documents_knowledge_base_id ON documents (knowledge_base_id)")
                 await db.execute("CREATE INDEX IF NOT EXISTS idx_documents_doc_id ON documents (doc_id)")

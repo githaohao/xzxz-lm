@@ -150,23 +150,39 @@ async def upload_file(
                 response.char_count = char_count
                 
                 if is_text_pdf:
-                    # 文本PDF：直接进行RAG处理
-                    logger.info(f"✅ 检测为文本PDF，直接进行RAG处理")
-                    response.text_content = extracted_text
-                    response.processing_status = "文本PDF - 直接RAG处理"
+                    # 文本PDF：提取完整内容进行RAG处理
+                    logger.info(f"✅ 检测为文本PDF，开始提取完整内容进行RAG处理")
                     
-                    # 进行RAG处理
-                    doc_id = await rag_service.process_document(
-                        content=extracted_text,
-                        filename=file.filename,
-                        file_type=file_ext
-                    )
-                    response.doc_id = doc_id
-                    response.rag_processed = True
+                    # 提取完整的PDF文本内容
+                    full_text_content = await ocr_service.extract_full_pdf_text(file_path)
                     
-                    logger.info(f"🚀 文本PDF RAG处理完成，doc_id: {doc_id}")
+                    # 如果完整提取失败，使用检测阶段提取的文本内容
+                    if not full_text_content and extracted_text:
+                        logger.warning("完整提取失败，使用检测阶段提取的文本内容")
+                        full_text_content = extracted_text
                     
-                else:
+                    if full_text_content:
+                        response.text_content = full_text_content
+                        response.processing_status = "文本PDF - 完整内容RAG处理"
+                        
+                        # 进行RAG处理
+                        doc_id = await rag_service.process_document(
+                            content=full_text_content,
+                            filename=file.filename,
+                            file_type=file_ext
+                        )
+                        response.doc_id = doc_id
+                        response.rag_processed = True
+                        
+                        logger.info(f"🚀 文本PDF完整内容RAG处理完成，doc_id: {doc_id}，文本长度: {len(full_text_content)}")
+                    else:
+                        logger.error("提取完整PDF文本失败，降级为扫描PDF处理")
+                        response.processing_status = "文本PDF提取失败 - 降级扫描处理"
+                        # 降级为扫描PDF处理逻辑
+                        is_text_pdf = False
+                
+                # 处理扫描PDF或降级处理的情况
+                if not is_text_pdf:
                     # 扫描PDF：需要OCR处理
                     logger.info(f"🔍 检测为扫描PDF，开始OCR处理")
                     response.processing_status = "扫描PDF - OCR处理中"

@@ -379,23 +379,29 @@ class RAGService:
             return []
     
     async def _vectorize_and_store(self, chunks: List[DocumentChunk], doc_id: str):
-        """向量化并存储文档块"""
+        """向量化并存储文档块 - 针对PDF和OCR文档优化"""
         try:
             if not chunks:
                 return
+            # 对chunks进行质量优化处理
+            processed_chunks = await self._optimize_chunks_for_indexing(chunks)
+            
+            if not processed_chunks:
+                logger.warning(f"文档块质量优化后为空: {doc_id}")
+                return
             
             # 准备数据
-            chunk_texts = [chunk.content for chunk in chunks]
-            chunk_ids = [chunk.chunk_id for chunk in chunks]
+            chunk_texts = [chunk.content for chunk in processed_chunks]
+            chunk_ids = [chunk.chunk_id for chunk in processed_chunks]
             metadatas = []
             
-            for chunk in chunks:
+            for chunk in processed_chunks:
                 metadata = chunk.metadata.copy()
                 metadata['doc_id'] = doc_id
                 metadatas.append(metadata)
             
-            # 生成嵌入向量
-            embeddings = await self._generate_embeddings_batch(chunk_texts)
+            # 根据文档类型选择最佳嵌入策略
+            embeddings = await self._generate_optimized_embeddings(chunk_texts, metadatas)
             
             # 存储到ChromaDB
             self.collection.add(
@@ -405,11 +411,230 @@ class RAGService:
                 metadatas=metadatas
             )
             
-            logger.info(f"成功存储 {len(chunks)} 个文档块")
+            logger.info(f"成功存储 {len(processed_chunks)} 个优化后的文档块")
             
         except Exception as e:
             logger.error(f"向量化存储失败: {e}")
             raise
+
+    async def _optimize_chunks_for_indexing(self, chunks: List[DocumentChunk]) -> List[DocumentChunk]:
+        """优化文档块以提高索引质量"""
+        optimized_chunks = []
+        
+        for chunk in chunks:
+            try:
+                # 检测文档类型和质量
+                doc_type = chunk.metadata.get('file_type', '').lower()
+                is_pdf = chunk.metadata.get('is_pdf', False)
+                is_text_pdf = chunk.metadata.get('is_text_pdf', False)
+                is_ocr = chunk.metadata.get('is_ocr_processed', False)
+                
+                # 原始内容
+                original_content = chunk.content
+                
+                # 应用分层优化策略
+                if is_ocr or (is_pdf and not is_text_pdf):
+                    # OCR扫描件：需要更严格的处理
+                    processed_content = await self._process_ocr_content(original_content)
+                elif is_pdf and is_text_pdf:
+                    # 文本PDF：中等处理
+                    processed_content = await self._process_text_pdf_content(original_content)
+                else:
+                    # 普通文档：基础处理
+                    processed_content = await self._process_standard_content(original_content)
+                
+                # 质量检查
+                quality_score = self._calculate_content_quality(processed_content)
+                
+                # 只保留质量达标的分块
+                if quality_score >= 0.3:  # 质量阈值
+                    # 更新分块内容和元数据
+                    optimized_chunk = DocumentChunk(processed_content, chunk.metadata.copy())
+                    optimized_chunk.chunk_id = chunk.chunk_id
+                    
+                    # 增强元数据
+                    optimized_chunk.metadata.update({
+                        'quality_score': quality_score,
+                        'content_length_original': len(original_content),
+                        'content_length_processed': len(processed_content),
+                        'processing_applied': self._get_processing_type(is_ocr, is_pdf, is_text_pdf),
+                        'optimization_version': '2.0'
+                    })
+                    
+                    optimized_chunks.append(optimized_chunk)
+                else:
+                    logger.debug(f"跳过低质量分块: quality_score={quality_score:.3f}")
+                    
+            except Exception as e:
+                logger.warning(f"分块优化失败，使用原始内容: {e}")
+                optimized_chunks.append(chunk)
+        
+        logger.info(f"分块优化完成: {len(chunks)} -> {len(optimized_chunks)}")
+        return optimized_chunks
+
+    async def _process_ocr_content(self, content: str) -> str:
+        """处理OCR扫描内容 - 最严格的清理"""
+        # 基础清理
+        text = await self._process_standard_content(content)
+        
+        # OCR特殊错误清理
+        import re
+        
+        # 修正常见OCR错误
+        ocr_corrections = {
+            r'\b0\b': 'O',  # 数字0误识别为字母O
+            r'\bl\b': 'I',  # 小写l误识别为大写I
+            r'rn\b': 'm',   # rn误识别为m
+            r'\s+': ' ',    # 多空格合并
+        }
+        
+        for pattern, replacement in ocr_corrections.items():
+            text = re.sub(pattern, replacement, text)
+        
+        # 移除可能的OCR噪音
+        text = re.sub(r'[^\w\s\u4e00-\u9fff\u3000-\u303f\uff00-\uffef,.!?;:"\'()\-]', '', text)
+        
+        # 移除过短的行（可能是噪音）
+        lines = text.split('\n')
+        valid_lines = [line.strip() for line in lines if len(line.strip()) > 3]
+        
+        return '\n'.join(valid_lines)
+
+    async def _process_text_pdf_content(self, content: str) -> str:
+        """处理文本PDF内容 - 中等清理"""
+        # 基础清理
+        text = await self._process_standard_content(content)
+        
+        import re
+        
+        # PDF特殊格式清理
+        # 移除页眉页脚模式
+        text = re.sub(r'^第\s*\d+\s*页.*$', '', text, flags=re.MULTILINE)
+        text = re.sub(r'^\d+\s*/\s*\d+.*$', '', text, flags=re.MULTILINE)
+        
+        # 移除重复的分隔符
+        text = re.sub(r'-{3,}', '---', text)
+        text = re.sub(r'={3,}', '===', text)
+        
+        # 合并破碎的行
+        text = re.sub(r'(\w)\n(\w)', r'\1 \2', text)
+        
+        return text
+
+    async def _process_standard_content(self, content: str) -> str:
+        """标准内容处理 - 基础清理"""
+        import re
+        
+        # 基础文本清理
+        text = content.strip()
+        
+        # 标准化空白字符
+        text = re.sub(r'\r\n', '\n', text)  # 标准化换行符
+        text = re.sub(r'\r', '\n', text)
+        text = re.sub(r'\t', ' ', text)     # 制表符转空格
+        text = re.sub(r'[ ]{2,}', ' ', text)  # 多空格合并
+        
+        # 移除控制字符
+        text = re.sub(r'[\x00-\x08\x0b\x0c\x0e-\x1f\x7f-\x84\x86-\x9f]', '', text)
+        
+        # 移除空行过多的情况
+        text = re.sub(r'\n{3,}', '\n\n', text)
+        
+        return text.strip()
+
+    def _calculate_content_quality(self, content: str) -> float:
+        """计算内容质量分数"""
+        if not content or len(content.strip()) < 10:
+            return 0.0
+        
+        import re
+        
+        score = 1.0
+        
+        # 长度检查
+        length = len(content)
+        if length < 20:
+            score *= 0.5
+        elif length < 50:
+            score *= 0.8
+        
+        # 字符组成检查
+        total_chars = len(content)
+        if total_chars > 0:
+            # 中文字符比例
+            chinese_chars = len(re.findall(r'[\u4e00-\u9fff]', content))
+            chinese_ratio = chinese_chars / total_chars
+            
+            # 英文字母比例
+            alpha_chars = len(re.findall(r'[a-zA-Z]', content))
+            alpha_ratio = alpha_chars / total_chars
+            
+            # 数字比例
+            digit_chars = len(re.findall(r'\d', content))
+            digit_ratio = digit_chars / total_chars
+            
+            # 有意义字符比例
+            meaningful_ratio = chinese_ratio + alpha_ratio + digit_ratio
+            
+            if meaningful_ratio < 0.6:
+                score *= 0.6
+            elif meaningful_ratio < 0.8:
+                score *= 0.8
+        
+        # 特殊字符过多检查
+        special_chars = len(re.findall(r'[^\w\s\u4e00-\u9fff]', content))
+        if special_chars / total_chars > 0.3:
+            score *= 0.7
+        
+        # 重复内容检查
+        lines = content.split('\n')
+        unique_lines = set(line.strip() for line in lines if line.strip())
+        if len(lines) > 0 and len(unique_lines) / len(lines) < 0.7:
+            score *= 0.8
+        
+        return max(0.0, min(1.0, score))
+
+    def _get_processing_type(self, is_ocr: bool, is_pdf: bool, is_text_pdf: bool) -> str:
+        """获取处理类型标识"""
+        if is_ocr or (is_pdf and not is_text_pdf):
+            return 'ocr_enhanced'
+        elif is_pdf and is_text_pdf:
+            return 'pdf_optimized'
+        else:
+            return 'standard'
+
+    async def _generate_optimized_embeddings(self, texts: List[str], metadatas: List[Dict]) -> np.ndarray:
+        """根据文档类型生成优化的嵌入向量"""
+        try:
+            # 检查是否有特殊类型的文档需要增强处理
+            has_ocr_docs = any(meta.get('processing_applied') == 'ocr_enhanced' for meta in metadatas)
+            
+            if has_ocr_docs:
+                # 对OCR文档使用更robust的嵌入设置
+                loop = asyncio.get_event_loop()
+                embeddings = await loop.run_in_executor(
+                    self.executor,
+                    lambda: self.embedding_model.encode(
+                        texts, 
+                        normalize_embeddings=True,
+                        batch_size=16,  # 减小批次大小提高稳定性
+                        show_progress_bar=False
+                    )
+                )
+            else:
+                # 标准嵌入处理
+                embeddings = await self._generate_embeddings_batch(texts)
+            
+            # 确保向量质量
+            norms = np.linalg.norm(embeddings, axis=1, keepdims=True)
+            norms[norms == 0] = 1  # 避免除零
+            embeddings = embeddings / norms
+            
+            return embeddings
+            
+        except Exception as e:
+            logger.error(f"优化嵌入生成失败，回退到标准方法: {e}")
+            return await self._generate_embeddings_batch(texts)
     
     async def _generate_embedding(self, text: str) -> np.ndarray:
         """生成单个文本的嵌入向量"""
@@ -455,9 +680,9 @@ class RAGService:
             async with self.db.get_connection() as db:
                 # 使用默认用户ID（0表示全局）
                 await db.execute("""
-                    INSERT INTO knowledge_bases (id, user_id, name, description, color, document_count, created_at, updated_at)
-                    VALUES (?, 0, ?, ?, ?, 0, ?, ?)
-                """, (kb_id, name, description, color, now, now))
+                    INSERT INTO knowledge_bases (id, name, description, color, document_count, created_at, updated_at)
+                    VALUES (?, ?, ?, ?, ?, ?, ?)
+                """, (kb_id, name, description, color, 0, now, now))
                 await db.commit()
             
             knowledge_base = {
@@ -484,7 +709,6 @@ class RAGService:
                 cursor = await db.execute("""
                     SELECT id, name, description, color, document_count, created_at, updated_at
                     FROM knowledge_bases
-                    WHERE user_id = 0
                     ORDER BY created_at DESC
                 """)
                 
@@ -516,9 +740,8 @@ class RAGService:
                 cursor = await db.execute("""
                     SELECT id, name, description, color, document_count, created_at, updated_at
                     FROM knowledge_bases
-                    WHERE id = ? AND user_id = 0
+                    WHERE id = ? 
                 """, (kb_id,))
-                
                 row = await cursor.fetchone()
                 
                 if row:
@@ -565,7 +788,7 @@ class RAGService:
                 cursor = await db.execute(f"""
                     UPDATE knowledge_bases 
                     SET {', '.join(update_fields)}
-                    WHERE id = ? AND user_id = 0
+                    WHERE id = ?
                 """, update_values)
                 
                 await db.commit()
@@ -588,7 +811,7 @@ class RAGService:
                 # 首先获取知识库名称用于日志
                 cursor = await db.execute("""
                     SELECT name FROM knowledge_bases 
-                    WHERE id = ? AND user_id = 0
+                    WHERE id = ?
                 """, (kb_id,))
                 
                 row = await cursor.fetchone()
@@ -597,7 +820,7 @@ class RAGService:
                 # 删除知识库
                 cursor = await db.execute("""
                     DELETE FROM knowledge_bases 
-                    WHERE id = ? AND user_id = 0
+                    WHERE id = ?
                 """, (kb_id,))
                 
                 await db.commit()
@@ -648,7 +871,7 @@ class RAGService:
                     await db.execute("""
                         UPDATE knowledge_bases 
                         SET document_count = document_count + ?, updated_at = ?
-                        WHERE id = ? AND user_id = 0
+                        WHERE id = ?
                     """, (added_count, datetime.now(), kb_id))
                     await db.commit()
             
@@ -683,7 +906,7 @@ class RAGService:
                     await db.execute("""
                         UPDATE knowledge_bases 
                         SET document_count = GREATEST(0, document_count - ?), updated_at = ?
-                        WHERE id = ? AND user_id = 0
+                        WHERE id = ?
                     """, (removed_count, datetime.now(), kb_id))
                     await db.commit()
             

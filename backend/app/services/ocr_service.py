@@ -348,6 +348,80 @@ class OCRService:
             logger.error(f"PDF文本提取失败: {e}")
             raise Exception(f"PDF文本提取失败: {str(e)}")
 
+    async def extract_full_pdf_text(self, pdf_path: str) -> str:
+        """
+        提取PDF的完整文本内容（用于RAG处理）
+        
+        Args:
+            pdf_path: PDF文件路径
+            
+        Returns:
+            str: 提取的完整文本内容
+        """
+        try:
+            logger.info(f"开始提取PDF完整文本内容: {pdf_path}")
+            
+            # 使用PyPDF2提取所有页面的文本
+            extracted_text = ""
+            failed_pages = []
+            
+            with open(pdf_path, 'rb') as file:
+                pdf_reader = PyPDF2.PdfReader(file)
+                page_count = len(pdf_reader.pages)
+                
+                logger.info(f"PDF总页数: {page_count}")
+                
+                # 如果页数太多，给出警告但仍然处理
+                if page_count > 100:
+                    logger.warning(f"PDF页数较多({page_count}页)，提取可能需要较长时间")
+                
+                for i in range(page_count):
+                    try:
+                        page = pdf_reader.pages[i]
+                        page_text = page.extract_text()
+                        
+                        if page_text and page_text.strip():
+                            # 为每页添加页面标识，便于后续处理
+                            extracted_text += f"\n--- 第{i+1}页 ---\n{page_text.strip()}\n"
+                        else:
+                            logger.debug(f"第{i+1}页无文本内容")
+                        
+                        # 每处理10页记录一次进度
+                        if (i + 1) % 10 == 0:
+                            logger.info(f"已处理 {i+1}/{page_count} 页")
+                            
+                    except Exception as e:
+                        logger.warning(f"提取第{i+1}页文本失败: {e}")
+                        failed_pages.append(i+1)
+                        continue
+            
+            # 清理和验证文本
+            clean_text = extracted_text.strip()
+            char_count = len(clean_text)
+            
+            # 记录提取结果统计
+            success_pages = page_count - len(failed_pages)
+            success_rate = (success_pages / page_count) * 100 if page_count > 0 else 0
+            
+            logger.info(f"✅ PDF完整文本提取完成")
+            logger.info(f"   - 总页数: {page_count}")
+            logger.info(f"   - 成功页数: {success_pages}")
+            logger.info(f"   - 成功率: {success_rate:.1f}%")
+            logger.info(f"   - 总字符数: {char_count}")
+            
+            if failed_pages:
+                logger.warning(f"   - 失败页面: {failed_pages}")
+            
+            # 如果提取的文本太少，可能存在问题
+            if char_count < 100:
+                logger.warning(f"提取的文本内容较少({char_count}字符)，可能需要OCR处理")
+                
+            return clean_text
+            
+        except Exception as e:
+            logger.error(f"PDF完整文本提取失败: {e}")
+            return ""
+
     async def detect_pdf_text_content(self, pdf_path: str) -> Tuple[bool, str, int]:
         """
         检测PDF是否包含可提取的文本内容
@@ -422,4 +496,4 @@ class OCRService:
             self.executor.shutdown(wait=True)
 
 # 创建全局服务实例
-ocr_service = OCRService() 
+ocr_service = OCRService()
