@@ -189,38 +189,54 @@
 
           <!-- 操作按钮 -->
           <div class="flex flex-col sm:flex-row items-stretch sm:items-center gap-2 min-w-0">
-            <!-- 文档上传（仅在选择知识库时显示） -->
-            <div v-if="selectedKnowledgeBase" class="flex items-center gap-2">
-              <input
-                ref="fileInputRef"
-                type="file"
-                multiple
-                accept=".pdf,.png,.jpg,.jpeg,.txt,.doc,.docx"
-                class="hidden"
-                @change="handleFileSelect"
-              />
-              <Button
-                @click="triggerFileUpload"
-                :disabled="isUploading"
-                variant="default"
-                size="sm"
-                class="bg-green-600 hover:bg-green-700 whitespace-nowrap"
-              >
-                <template v-if="isUploading">
-                  <Loader2 class="h-4 w-4 animate-spin mr-1" />
-                  上传中...
-                </template>
-                <template v-else>
-                  <Upload class="h-4 w-4 mr-1" />
-                  上传文档
-                </template>
-              </Button>
-              
-              <!-- 上传进度提示 -->
-              <div v-if="uploadProgress.length > 0" class="text-sm">
-                <Badge variant="secondary" class="whitespace-nowrap">
-                  {{ uploadProgress.filter(p => p.completed).length }}/{{ uploadProgress.length }} 完成
-                </Badge>
+            <!-- 文档上传 -->
+            <div class="flex items-center gap-2">
+              <!-- 选择知识库时显示普通上传 -->
+              <div v-if="selectedKnowledgeBase" class="flex items-center gap-2">
+                <input
+                  ref="fileInputRef"
+                  type="file"
+                  multiple
+                  accept=".pdf,.png,.jpg,.jpeg,.txt,.doc,.docx"
+                  class="hidden"
+                  @change="handleFileSelect"
+                />
+                <Button
+                  @click="triggerFileUpload"
+                  :disabled="isUploading"
+                  variant="default"
+                  size="sm"
+                  class="bg-green-600 hover:bg-green-700 whitespace-nowrap"
+                >
+                  <template v-if="isUploading">
+                    <Loader2 class="h-4 w-4 animate-spin mr-1" />
+                    上传中...
+                  </template>
+                  <template v-else>
+                    <Upload class="h-4 w-4 mr-1" />
+                    上传文档
+                  </template>
+                </Button>
+                
+                <!-- 上传进度提示 -->
+                <div v-if="uploadProgress.length > 0" class="text-sm">
+                  <Badge variant="secondary" class="whitespace-nowrap">
+                    {{ uploadProgress.filter(p => p.completed).length }}/{{ uploadProgress.length }} 完成
+                  </Badge>
+                </div>
+              </div>
+
+              <!-- 全部文档时显示智能上传 -->
+              <div v-else class="flex items-center gap-2">
+                <Button
+                  @click="showSmartArchiveDialog = true"
+                  variant="default"
+                  size="sm"
+                  class="bg-gradient-to-r from-purple-600 to-blue-600 hover:from-purple-700 hover:to-blue-700 whitespace-nowrap"
+                >
+                  <Sparkles class="h-4 w-4 mr-1" />
+                  智能归档
+                </Button>
               </div>
             </div>
 
@@ -929,6 +945,12 @@
     :loading="isDeleting"
     @confirm="confirmBatchDelete"
   />
+
+  <!-- 智能归档对话框 -->
+  <SmartArchiveDialog
+    v-model:is-open="showSmartArchiveDialog"
+    @success="handleSmartArchiveSuccess"
+  />
 </template>
 
 <script setup lang="ts">
@@ -955,7 +977,8 @@ import {
   Upload,
   X,
   Grid3X3,
-  List
+  List,
+  Sparkles
 } from 'lucide-vue-next'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -971,6 +994,7 @@ import { deleteDocument as apiDeleteDocument, uploadFile } from '@/utils/api'
 import type { KnowledgeBase, RAGDocument } from '@/types'
 import DocumentPreviewDialog from '@/components/DocumentPreviewDialog.vue'
 import ConfirmDialog from '@/components/ui/ConfirmDialog.vue'
+import SmartArchiveDialog from '@/components/SmartArchiveDialog.vue'
 
 // 引入RAG搜索相关API和类型
 import { searchDocuments } from '@/utils/api'
@@ -1015,6 +1039,7 @@ const showUncategorized = ref(false)
 const showFilterDialog = ref(false)
 const showUploadProgress = ref(false)
 const showPreviewDialog = ref(false)
+const showSmartArchiveDialog = ref(false)
 const previewingDocument = ref<RAGDocument | null>(null)
 const editingKnowledgeBase = ref<KnowledgeBase | null>(null)
 const batchMoveTarget = ref('')
@@ -1518,5 +1543,19 @@ function highlightSearchTerms(text: string, query: string): string {
 function truncateText(text: string, maxLength: number = 150): string {
   if (text.length <= maxLength) return text
   return text.slice(0, maxLength) + '...'
+}
+
+// 处理智能归档成功
+function handleSmartArchiveSuccess(results: any[]) {
+  console.log('🎉 智能归档完成:', results)
+  
+  // 刷新文档列表和知识库列表
+  fetchAllDocuments()
+  
+  // 显示成功提示
+  const successCount = results.length
+  const newKbCount = results.filter(r => r.isNewKnowledgeBase).length
+  
+  alert(`智能归档完成！\n- 成功归档 ${successCount} 个文档\n- 新建 ${newKbCount} 个知识库`)
 }
 </script> 

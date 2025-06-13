@@ -301,9 +301,33 @@ curl -X POST "http://localhost:8000/api/lm/chat/upload" \
 
 ### 🧠 RAG智能检索 (/api/lm/rag/*)
 - `GET /api/lm/rag/documents` - 获取文档列表
-- `POST /api/lm/rag/search` - 文档检索
+- `POST /api/lm/rag/search` - 文档检索（智能相似度筛选）
 - `POST /api/lm/rag/process` - 文档处理
 - `DELETE /api/lm/rag/documents/{id}` - 删除文档
+
+**智能检索功能增强：**
+- 🎯 **智能筛选**: `top_k` 参数表示最大返回数量，不强制返回满额结果
+- 📊 **相似度阈值**: 只返回相似度达到 `min_similarity` 阈值的相关内容
+- 🔍 **质量优先**: 避免返回毫不相关的低质量内容，提升检索准确性
+- 📈 **动态调整**: 无结果时自动降低阈值重试，确保用户获得有用信息
+- 🎨 **结果排序**: 按相似度降序排列，优先展示最相关的内容
+
+**请求示例：**
+```bash
+curl -X POST "http://localhost:8000/api/lm/rag/search" \
+     -H "Content-Type: application/json" \
+     -H "X-User-Id: 12345" \
+     -d '{
+       "query": "人工智能的发展趋势",
+       "top_k": 5,
+       "min_similarity": 0.355
+     }'
+```
+
+**响应说明：**
+- 返回数量可能少于 `top_k`，只包含相似度 ≥ `min_similarity` 的结果
+- 每个结果包含 `similarity` 字段，表示与查询的相关程度
+- 结果按相似度从高到低排序
 
 ### 🔧 系统监控 (/api/lm/*)
 - `GET /api/lm/health` - 健康检查

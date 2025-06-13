@@ -241,4 +241,160 @@ export async function removeDocumentsFromKnowledgeBase(kbId: string, documentIds
  */
 export async function getKnowledgeBaseDocuments(kbId: string): Promise<any> {
   return api.get(`/api/lm/rag/knowledge-bases/${kbId}/documents`)
+}
+
+/**
+ * 智能文档分类和归档
+ */
+export async function smartArchiveDocument(data: {
+  file: File
+  prompt: string
+  customAnalysis?: boolean
+}): Promise<{
+  fileName: string
+  knowledgeBaseName: string
+  isNewKnowledgeBase: boolean
+  reason?: string
+  docId: string
+  knowledgeBaseId: string
+}> {
+  const formData = new FormData()
+  formData.append('file', data.file)
+  formData.append('prompt', data.prompt)
+  if (data.customAnalysis) {
+    formData.append('custom_analysis', 'true')
+  }
+
+  return api.upload<any>(
+    '/api/lm/rag/smart-archive', 
+    formData, 
+    API_CONFIG.TIMEOUT.RAG
+  )
+}
+
+/**
+ * 分析文档内容，预览归档建议（不实际保存）
+ */
+export async function analyzeDocumentsForArchive(data: {
+  files: File[]
+  prompt: string
+  customAnalysis?: boolean
+}): Promise<{
+  code: number
+  msg: string
+  data: {
+    results: Array<{
+      fileName: string
+      knowledgeBaseName: string
+      isNewKnowledgeBase: boolean
+      reason?: string
+      knowledgeBaseId?: string
+      documentType: string
+      textContent: string
+      success: boolean
+      error?: string
+    }>
+    totalFiles: number
+    successCount: number
+    failureCount: number
+  }
+}> {
+  const formData = new FormData()
+  
+  data.files.forEach((file, index) => {
+    formData.append(`files`, file)
+  })
+  formData.append('prompt', data.prompt)
+  if (data.customAnalysis) {
+    formData.append('custom_analysis', 'true')
+  }
+
+  return api.upload<any>(
+    '/api/lm/rag/analyze-documents', 
+    formData, 
+    API_CONFIG.TIMEOUT.RAG
+  )
+}
+
+/**
+ * 确认归档分析结果，执行实际归档操作
+ */
+export async function confirmSmartArchive(data: {
+  files: Array<{
+    fileName: string
+    fileType: string
+    content: string // Base64编码的文件内容
+  }>
+  analysisResults: Array<{
+    fileName: string
+    knowledgeBaseName: string
+    isNewKnowledgeBase: boolean
+    reason?: string
+    knowledgeBaseId?: string
+    documentType: string
+    success: boolean
+    error?: string
+  }>
+}): Promise<{
+  code: number
+  msg: string
+  data: {
+    results: Array<{
+      fileName: string
+      knowledgeBaseName: string
+      isNewKnowledgeBase: boolean
+      reason?: string
+      docId: string
+      knowledgeBaseId: string
+      success: boolean
+      error?: string
+    }>
+    totalFiles: number
+    successCount: number
+    failureCount: number
+  }
+}> {
+  return api.post<any>(
+    '/api/lm/rag/confirm-smart-archive',
+    data
+  )
+}
+
+/**
+ * 批量智能文档归档（一步到位，保留兼容性）
+ */
+export async function batchSmartArchive(data: {
+  files: File[]
+  prompt: string
+  customAnalysis?: boolean
+}): Promise<{
+  results: Array<{
+    fileName: string
+    knowledgeBaseName: string
+    isNewKnowledgeBase: boolean
+    reason?: string
+    docId: string
+    knowledgeBaseId: string
+    success: boolean
+    error?: string
+  }>
+  totalFiles: number
+  successCount: number
+  failureCount: number
+}> {
+  const formData = new FormData()
+  
+  data.files.forEach((file, index) => {
+    formData.append(`files`, file)
+  })
+  formData.append('prompt', data.prompt)
+  if (data.customAnalysis) {
+    formData.append('custom_analysis', 'true')
+  }
+
+  return api.upload<any>(
+    '/api/lm/rag/batch-smart-archive', 
+    formData, 
+    API_CONFIG.TIMEOUT.RAG * 2 // 批量处理需要更长时间
+  )
 } 

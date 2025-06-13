@@ -403,3 +403,308 @@ async def get_knowledge_base_documents(kb_id: str):
     except Exception as e:
         logger.error(f"获取知识库文档失败: {e}")
         raise HTTPException(status_code=500, detail=f"获取知识库文档失败: {str(e)}")
+
+
+# 智能归档接口
+@router.post("/smart-archive")
+async def smart_archive_document(
+    file: UploadFile = File(...),
+    prompt: str = Form(...),
+    custom_analysis: Optional[str] = Form(None)
+):
+    """智能文档分类和归档"""
+    try:
+        start_time = time.time()
+        
+        # 检查文件类型
+        file_ext = file.filename.split('.')[-1].lower() if file.filename else ''
+        if f".{file_ext}" not in settings.allowed_file_types:
+            raise HTTPException(
+                status_code=400,
+                detail=f"不支持的文件类型: {file_ext}"
+            )
+        
+        # 读取文件内容
+        content = await file.read()
+        if len(content) > settings.max_file_size:
+            raise HTTPException(
+                status_code=400,
+                detail=f"文件大小超过限制: {settings.max_file_size / 1024 / 1024:.1f}MB"
+            )
+        
+        # 调用智能归档服务
+        result = await rag_service.smart_archive_document(
+            file_content=content,
+            filename=file.filename or "unknown",
+            file_type=file.content_type or "application/octet-stream",
+            analysis_prompt=prompt,
+            custom_analysis=custom_analysis == "true"
+        )
+        
+        processing_time = time.time() - start_time
+        
+        return ChatHistoryResponse(
+            code=200,
+            msg="智能归档完成",
+            data={
+                **result,
+                "processing_time": processing_time
+            }
+        )
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"智能归档失败: {e}")
+        raise HTTPException(status_code=500, detail=f"智能归档失败: {str(e)}")
+
+
+@router.post("/analyze-documents")
+async def analyze_documents_for_archive(
+    files: List[UploadFile] = File(...),
+    prompt: str = Form(...),
+    custom_analysis: Optional[str] = Form(None)
+):
+    """分析文档内容，预览归档建议（不实际保存）"""
+    try:
+        start_time = time.time()
+        
+        if len(files) > 20:  # 限制批量上传数量
+            raise HTTPException(
+                status_code=400,
+                detail="批量上传文件数量不能超过20个"
+            )
+        
+        results = []
+        success_count = 0
+        failure_count = 0
+        
+        for file in files:
+            try:
+                # 检查文件类型
+                file_ext = file.filename.split('.')[-1].lower() if file.filename else ''
+                if f".{file_ext}" not in settings.allowed_file_types:
+                    results.append({
+                        "fileName": file.filename or "unknown",
+                        "success": False,
+                        "error": f"不支持的文件类型: {file_ext}"
+                    })
+                    failure_count += 1
+                    continue
+                
+                # 读取文件内容
+                content = await file.read()
+                if len(content) > settings.max_file_size:
+                    results.append({
+                        "fileName": file.filename or "unknown",
+                        "success": False,
+                        "error": f"文件大小超过限制"
+                    })
+                    failure_count += 1
+                    continue
+                
+                # 调用文档分析服务（仅分析，不保存）
+                result = await rag_service.analyze_document_for_archive(
+                    file_content=content,
+                    filename=file.filename or "unknown",
+                    file_type=file.content_type or "application/octet-stream",
+                    analysis_prompt=prompt,
+                    custom_analysis=custom_analysis == "true"
+                )
+                
+                results.append({
+                    **result,
+                    "success": True
+                })
+                success_count += 1
+                
+            except Exception as e:
+                results.append({
+                    "fileName": file.filename or "unknown",
+                    "success": False,
+                    "error": str(e)
+                })
+                failure_count += 1
+        
+        processing_time = time.time() - start_time
+        
+        return ChatHistoryResponse(
+            code=200,
+            msg=f"文档分析完成: 成功{success_count}个, 失败{failure_count}个",
+            data={
+                "results": results,
+                "totalFiles": len(files),
+                "successCount": success_count,
+                "failureCount": failure_count,
+                "processing_time": processing_time
+            }
+        )
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"文档分析失败: {e}")
+        raise HTTPException(status_code=500, detail=f"文档分析失败: {str(e)}")
+
+
+@router.post("/confirm-smart-archive")
+async def confirm_smart_archive(
+    request: dict
+):
+    """确认归档分析结果，执行实际归档操作"""
+    try:
+        start_time = time.time()
+        
+        files_data = request.get("files", [])
+        analysis_results = request.get("analysisResults", [])
+        
+        if len(files_data) != len(analysis_results):
+            raise HTTPException(
+                status_code=400,
+                detail="文件数据与分析结果数量不匹配"
+            )
+        
+        results = []
+        success_count = 0
+        failure_count = 0
+        
+        for i, (file_data, analysis_result) in enumerate(zip(files_data, analysis_results)):
+            try:
+                if not analysis_result.get("success"):
+                    results.append({
+                        "fileName": file_data.get("fileName", "unknown"),
+                        "success": False,
+                        "error": analysis_result.get("error", "分析失败")
+                    })
+                    failure_count += 1
+                    continue
+                
+                # 执行实际归档操作
+                result = await rag_service.confirm_archive_document(
+                    file_content=file_data.get("content"),  # Base64编码的文件内容
+                    filename=file_data.get("fileName"),
+                    file_type=file_data.get("fileType"),
+                    analysis_result=analysis_result
+                )
+                
+                results.append({
+                    **result,
+                    "success": True
+                })
+                success_count += 1
+                
+            except Exception as e:
+                results.append({
+                    "fileName": file_data.get("fileName", "unknown"),
+                    "success": False,
+                    "error": str(e)
+                })
+                failure_count += 1
+        
+        processing_time = time.time() - start_time
+        
+        return ChatHistoryResponse(
+            code=200,
+            msg=f"智能归档完成: 成功{success_count}个, 失败{failure_count}个",
+            data={
+                "results": results,
+                "totalFiles": len(files_data),
+                "successCount": success_count,
+                "failureCount": failure_count,
+                "processing_time": processing_time
+            }
+        )
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"确认归档失败: {e}")
+        raise HTTPException(status_code=500, detail=f"确认归档失败: {str(e)}")
+
+
+@router.post("/batch-smart-archive")
+async def batch_smart_archive(
+    files: List[UploadFile] = File(...),
+    prompt: str = Form(...),
+    custom_analysis: Optional[str] = Form(None)
+):
+    """批量智能文档归档（保留兼容性，直接归档）"""
+    try:
+        start_time = time.time()
+        
+        if len(files) > 20:  # 限制批量上传数量
+            raise HTTPException(
+                status_code=400,
+                detail="批量上传文件数量不能超过20个"
+            )
+        
+        results = []
+        success_count = 0
+        failure_count = 0
+        
+        for file in files:
+            try:
+                # 检查文件类型
+                file_ext = file.filename.split('.')[-1].lower() if file.filename else ''
+                if f".{file_ext}" not in settings.allowed_file_types:
+                    results.append({
+                        "fileName": file.filename or "unknown",
+                        "success": False,
+                        "error": f"不支持的文件类型: {file_ext}"
+                    })
+                    failure_count += 1
+                    continue
+                
+                # 读取文件内容
+                content = await file.read()
+                if len(content) > settings.max_file_size:
+                    results.append({
+                        "fileName": file.filename or "unknown",
+                        "success": False,
+                        "error": f"文件大小超过限制"
+                    })
+                    failure_count += 1
+                    continue
+                
+                # 调用智能归档服务
+                result = await rag_service.smart_archive_document(
+                    file_content=content,
+                    filename=file.filename or "unknown",
+                    file_type=file.content_type or "application/octet-stream",
+                    analysis_prompt=prompt,
+                    custom_analysis=custom_analysis == "true"
+                )
+                
+                results.append({
+                    **result,
+                    "success": True
+                })
+                success_count += 1
+                
+            except Exception as e:
+                results.append({
+                    "fileName": file.filename or "unknown",
+                    "success": False,
+                    "error": str(e)
+                })
+                failure_count += 1
+        
+        processing_time = time.time() - start_time
+        
+        return ChatHistoryResponse(
+            code=200,
+            msg=f"批量归档完成: 成功{success_count}个, 失败{failure_count}个",
+            data={
+                "results": results,
+                "totalFiles": len(files),
+                "successCount": success_count,
+                "failureCount": failure_count,
+                "processing_time": processing_time
+            }
+        )
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"批量智能归档失败: {e}")
+        raise HTTPException(status_code=500, detail=f"批量智能归档失败: {str(e)}")

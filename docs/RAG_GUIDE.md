@@ -93,7 +93,7 @@ separators=["\n\n", "\n", "。", "！", "？", "；", " ", ""]
 ### 检索配置
 ```python
 top_k=5                 # 返回片段数
-min_similarity=0.6      # 最小相似度
+min_similarity=0.355      # 最小相似度
 embedding_model='moka-ai/m3e-base'  # 中文友好的嵌入模型
 ```
 

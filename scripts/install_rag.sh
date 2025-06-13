@@ -38,7 +38,7 @@ echo "📦 安装sentence-transformers..."
 pip install sentence-transformers>=2.2.0
 
 echo "📦 安装langchain..."
-pip install langchain>=0.0.350
+pip install langchain>=0.0.3550
 
 echo "📦 安装numpy..."
 pip install numpy>=1.24.0

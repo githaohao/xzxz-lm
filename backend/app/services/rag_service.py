@@ -1065,6 +1065,412 @@ class RAGService:
             logger.error(f"获取知识库文档失败: {e}")
             return []
 
+    async def analyze_document_for_archive(
+        self, 
+        file_content: bytes, 
+        filename: str, 
+        file_type: str,
+        analysis_prompt: str,
+        custom_analysis: bool = False
+    ) -> Dict:
+        """
+        分析文档内容，预览归档建议（不实际保存文档）
+        
+        Args:
+            file_content: 文件内容（字节）
+            filename: 文件名
+            file_type: 文件类型
+            analysis_prompt: 分析提示词
+            custom_analysis: 是否使用自定义分析
+            
+        Returns:
+            分析结果信息（不包含实际的docId）
+        """
+        try:
+            # 提取文档内容用于分析
+            text_content = await self._extract_text_from_file(file_content, filename, file_type)
+            
+            # 使用AI分析文档内容并匹配知识库
+            analysis_result = await self._analyze_document_content(
+                content=text_content,
+                filename=filename,
+                analysis_prompt=analysis_prompt,
+                custom_analysis=custom_analysis
+            )
+            
+            knowledge_base_name = analysis_result['knowledge_base_name']
+            is_new_kb = analysis_result['is_new_knowledge_base']
+            reason = analysis_result.get('reason', '')
+            
+            # 如果不是新建知识库，检查现有知识库是否存在
+            kb_id = None
+            if not is_new_kb:
+                all_kbs = await self.get_all_knowledge_bases()
+                for kb in all_kbs:
+                    if kb['name'] == knowledge_base_name:
+                        kb_id = kb['id']
+                        break
+                
+                # 如果没找到匹配的知识库，标记为新建
+                if not kb_id:
+                    is_new_kb = True
+            
+            result = {
+                "fileName": filename,
+                "knowledgeBaseName": knowledge_base_name,
+                "isNewKnowledgeBase": is_new_kb,
+                "reason": reason,
+                "knowledgeBaseId": kb_id,
+                "documentType": analysis_result.get('document_type', '未知'),
+                "textContent": text_content[:500] + "..." if len(text_content) > 500 else text_content,  # 预览内容
+                "analysisTime": datetime.now().timestamp()
+            }
+            
+            logger.info(f"文档分析完成: {filename} -> {knowledge_base_name} ({'新建' if is_new_kb else '现有'})")
+            return result
+            
+        except Exception as e:
+            logger.error(f"文档分析失败 {filename}: {e}")
+            raise
+
+    async def confirm_archive_document(
+        self,
+        file_content: str,  # Base64编码的文件内容或原始内容
+        filename: str,
+        file_type: str,
+        analysis_result: Dict
+    ) -> Dict:
+        """
+        确认归档文档，执行实际的保存操作
+        
+        Args:
+            file_content: 文件内容（可能是Base64编码）
+            filename: 文件名
+            file_type: 文件类型
+            analysis_result: 之前的分析结果
+            
+        Returns:
+            归档结果信息
+        """
+        try:
+            # 如果是Base64编码的内容，需要解码
+            if isinstance(file_content, str):
+                import base64
+                try:
+                    content_bytes = base64.b64decode(file_content)
+                except:
+                    # 如果解码失败，假设是文本内容
+                    content_bytes = file_content.encode('utf-8')
+            else:
+                content_bytes = file_content
+            
+            # 提取文档内容
+            text_content = analysis_result.get('textContent', '') or await self._extract_text_from_file(content_bytes, filename, file_type)
+            
+            # 处理文档获得doc_id
+            doc_id = await self.process_document(text_content, filename, file_type)
+            
+            knowledge_base_name = analysis_result['knowledgeBaseName']
+            is_new_kb = analysis_result['isNewKnowledgeBase']
+            reason = analysis_result.get('reason', '')
+            kb_id = analysis_result.get('knowledgeBaseId')
+            
+            # 获取或创建知识库
+            if is_new_kb or not kb_id:
+                kb = await self.create_knowledge_base(
+                    name=knowledge_base_name,
+                    description=f"由AI智能分析创建的知识库，用于存储{analysis_result.get('documentType', '相关')}类型的文档",
+                    color=self._get_random_color()
+                )
+                kb_id = kb['id']
+                logger.info(f"创建新知识库: {knowledge_base_name} (ID: {kb_id})")
+            else:
+                # 验证知识库是否仍然存在
+                try:
+                    all_kbs = await self.get_all_knowledge_bases()
+                    kb_exists = any(kb['id'] == kb_id for kb in all_kbs)
+                    if not kb_exists:
+                        # 知识库不存在，创建新的
+                        kb = await self.create_knowledge_base(
+                            name=knowledge_base_name,
+                            description=f"智能归档创建的知识库",
+                            color=self._get_random_color()
+                        )
+                        kb_id = kb['id']
+                        is_new_kb = True
+                        logger.info(f"原知识库不存在，创建新知识库: {knowledge_base_name}")
+                except Exception as e:
+                    logger.warning(f"验证知识库时出错: {e}，创建新知识库")
+                    kb = await self.create_knowledge_base(
+                        name=knowledge_base_name,
+                        description=f"智能归档创建的知识库",
+                        color=self._get_random_color()
+                    )
+                    kb_id = kb['id']
+                    is_new_kb = True
+            
+            # 将文档添加到知识库
+            await self.add_documents_to_knowledge_base(kb_id, [doc_id])
+            
+            result = {
+                "fileName": filename,
+                "knowledgeBaseName": knowledge_base_name,
+                "isNewKnowledgeBase": is_new_kb,
+                "reason": reason,
+                "docId": doc_id,
+                "knowledgeBaseId": kb_id
+            }
+            
+            logger.info(f"确认归档完成: {filename} -> {knowledge_base_name} ({'新建' if is_new_kb else '现有'})")
+            return result
+            
+        except Exception as e:
+            logger.error(f"确认归档失败 {filename}: {e}")
+            raise
+
+    async def smart_archive_document(
+        self, 
+        file_content: bytes, 
+        filename: str, 
+        file_type: str,
+        analysis_prompt: str,
+        custom_analysis: bool = False
+    ) -> Dict:
+        """
+        智能文档归档功能（一步到位，保留兼容性）
+        
+        Args:
+            file_content: 文件内容（字节）
+            filename: 文件名
+            file_type: 文件类型
+            analysis_prompt: 分析提示词
+            custom_analysis: 是否使用自定义分析
+            
+        Returns:
+            归档结果信息
+        """
+        try:
+            # 先处理文档内容（例如OCR等）
+            text_content = await self._extract_text_from_file(file_content, filename, file_type)
+            
+            # 处理文档获得doc_id
+            doc_id = await self.process_document(text_content, filename, file_type)
+            
+            # 使用AI分析文档内容并匹配知识库
+            analysis_result = await self._analyze_document_content(
+                content=text_content,
+                filename=filename,
+                analysis_prompt=analysis_prompt,
+                custom_analysis=custom_analysis
+            )
+            
+            knowledge_base_name = analysis_result['knowledge_base_name']
+            is_new_kb = analysis_result['is_new_knowledge_base']
+            reason = analysis_result.get('reason', '')
+            
+            # 获取或创建知识库
+            if is_new_kb:
+                kb = await self.create_knowledge_base(
+                    name=knowledge_base_name,
+                    description=f"由AI智能分析创建的知识库，用于存储{analysis_result.get('document_type', '相关')}类型的文档",
+                    color=self._get_random_color()
+                )
+                kb_id = kb['id']
+                logger.info(f"创建新知识库: {knowledge_base_name} (ID: {kb_id})")
+            else:
+                # 查找现有知识库
+                all_kbs = await self.get_all_knowledge_bases()
+                matching_kb = None
+                for kb in all_kbs:
+                    if kb['name'] == knowledge_base_name:
+                        matching_kb = kb
+                        break
+                
+                if matching_kb:
+                    kb_id = matching_kb['id']
+                else:
+                    # 如果没找到匹配的知识库，创建新的
+                    kb = await self.create_knowledge_base(
+                        name=knowledge_base_name,
+                        description=f"智能归档创建的知识库",
+                        color=self._get_random_color()
+                    )
+                    kb_id = kb['id']
+                    is_new_kb = True
+                    logger.info(f"未找到匹配知识库，创建新知识库: {knowledge_base_name}")
+            
+            # 将文档添加到知识库
+            await self.add_documents_to_knowledge_base(kb_id, [doc_id])
+            
+            result = {
+                "fileName": filename,
+                "knowledgeBaseName": knowledge_base_name,
+                "isNewKnowledgeBase": is_new_kb,
+                "reason": reason,
+                "docId": doc_id,
+                "knowledgeBaseId": kb_id
+            }
+            
+            logger.info(f"智能归档完成: {filename} -> {knowledge_base_name} ({'新建' if is_new_kb else '现有'})")
+            return result
+            
+        except Exception as e:
+            logger.error(f"智能归档失败 {filename}: {e}")
+            raise
+    
+    async def _extract_text_from_file(self, file_content: bytes, filename: str, file_type: str) -> str:
+        """从文件中提取文本内容"""
+        try:
+            # 根据文件类型处理
+            if file_type == 'application/pdf':
+                # 简单的PDF文本提取（实际应该集成OCR服务）
+                return f"PDF文档内容: {filename}\n这是一个PDF文档的模拟文本内容。"
+            elif file_type.startswith('image/'):
+                # 图像文件（应该调用OCR服务）
+                return f"图像文档内容: {filename}\n这是一个图像文档的模拟OCR文本内容。"
+            elif file_type == 'text/plain':
+                # 纯文本文件
+                return file_content.decode('utf-8', errors='ignore')
+            else:
+                # 其他文件类型
+                return f"文档内容: {filename}\n文件类型: {file_type}\n这是模拟的文档文本内容。"
+                
+        except Exception as e:
+            logger.error(f"文本提取失败 {filename}: {e}")
+            return f"文档: {filename}\n内容提取失败，使用文件名作为内容。"
+    
+    async def _analyze_document_content(
+        self, 
+        content: str, 
+        filename: str, 
+        analysis_prompt: str,
+        custom_analysis: bool = False
+    ) -> Dict:
+        """
+        使用AI分析文档内容并决定归档位置
+        
+        这里是模拟实现，实际应该调用LLM服务进行分析
+        """
+        try:
+            # 模拟AI分析过程
+            content_lower = content.lower()
+            filename_lower = filename.lower()
+            prompt_lower = analysis_prompt.lower()
+            
+            # 基于关键词的简单分类逻辑（实际应该使用LLM）
+            if any(keyword in content_lower or keyword in filename_lower or keyword in prompt_lower 
+                   for keyword in ['合同', 'contract', '协议', 'agreement']):
+                return {
+                    'knowledge_base_name': '合同文档',
+                    'is_new_knowledge_base': False,
+                    'document_type': '合同',
+                    'reason': '文档内容包含合同相关关键词，自动归档到合同文档知识库'
+                }
+            
+            elif any(keyword in content_lower or keyword in filename_lower or keyword in prompt_lower 
+                     for keyword in ['培训', '教育', '课程', 'training', 'education', 'course']):
+                return {
+                    'knowledge_base_name': '教育培训',
+                    'is_new_knowledge_base': False,
+                    'document_type': '教育',
+                    'reason': '文档内容与教育培训相关，归档到教育培训知识库'
+                }
+            
+            elif any(keyword in content_lower or keyword in filename_lower or keyword in prompt_lower 
+                     for keyword in ['技术', '开发', 'api', 'technical', 'development']):
+                return {
+                    'knowledge_base_name': '技术文档',
+                    'is_new_knowledge_base': False,
+                    'document_type': '技术',
+                    'reason': '文档内容包含技术相关内容，归档到技术文档知识库'
+                }
+            
+            elif any(keyword in content_lower or keyword in filename_lower or keyword in prompt_lower 
+                     for keyword in ['商务', '商业', '市场', 'business', 'commercial', 'market']):
+                return {
+                    'knowledge_base_name': '商务文档',
+                    'is_new_knowledge_base': False,
+                    'document_type': '商务',
+                    'reason': '文档内容与商务相关，归档到商务文档知识库'
+                }
+            
+            elif any(keyword in content_lower or keyword in filename_lower or keyword in prompt_lower 
+                     for keyword in ['手册', '指南', 'manual', 'guide', '操作', 'operation']):
+                return {
+                    'knowledge_base_name': '操作手册',
+                    'is_new_knowledge_base': False,
+                    'document_type': '手册',
+                    'reason': '文档为操作手册类型，归档到操作手册知识库'
+                }
+            
+            elif any(keyword in content_lower or keyword in filename_lower or keyword in prompt_lower 
+                     for keyword in ['医疗', '健康', '医学', 'medical', 'health']):
+                return {
+                    'knowledge_base_name': '医疗健康',
+                    'is_new_knowledge_base': False,
+                    'document_type': '医疗',
+                    'reason': '文档内容与医疗健康相关，归档到医疗健康知识库'
+                }
+            
+            elif any(keyword in content_lower or keyword in filename_lower or keyword in prompt_lower 
+                     for keyword in ['政策', '法规', '法律', 'policy', 'regulation', 'law']):
+                return {
+                    'knowledge_base_name': '政策法规',
+                    'is_new_knowledge_base': False,
+                    'document_type': '政策',
+                    'reason': '文档内容涉及政策法规，归档到政策法规知识库'
+                }
+            
+            else:
+                # 默认创建新的知识库
+                doc_type = self._extract_document_type(filename, content)
+                kb_name = f"{doc_type}文档"
+                
+                return {
+                    'knowledge_base_name': kb_name,
+                    'is_new_knowledge_base': True,
+                    'document_type': doc_type,
+                    'reason': f'未找到匹配的现有知识库，创建新的{doc_type}知识库'
+                }
+                
+        except Exception as e:
+            logger.error(f"文档分析失败: {e}")
+            # 默认归档
+            return {
+                'knowledge_base_name': '通用文档',
+                'is_new_knowledge_base': False,
+                'document_type': '通用',
+                'reason': '分析失败，归档到通用文档知识库'
+            }
+    
+    def _extract_document_type(self, filename: str, content: str) -> str:
+        """从文件名和内容中提取文档类型"""
+        filename_lower = filename.lower()
+        
+        # 从文件名推断类型
+        if 'report' in filename_lower or '报告' in filename_lower:
+            return '报告'
+        elif 'plan' in filename_lower or '计划' in filename_lower:
+            return '计划'
+        elif 'spec' in filename_lower or '规范' in filename_lower:
+            return '规范'
+        elif 'note' in filename_lower or '笔记' in filename_lower:
+            return '笔记'
+        elif 'summary' in filename_lower or '总结' in filename_lower:
+            return '总结'
+        else:
+            return '通用'
+    
+    def _get_random_color(self) -> str:
+        """获取随机颜色"""
+        colors = [
+            "#3B82F6", "#10B981", "#F59E0B", "#EF4444", 
+            "#8B5CF6", "#06B6D4", "#84CC16", "#F97316",
+            "#EC4899", "#6366F1"
+        ]
+        import random
+        return random.choice(colors)
+
     def __del__(self):
         """清理资源"""
         if hasattr(self, 'executor'):
