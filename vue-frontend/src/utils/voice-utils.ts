@@ -43,8 +43,10 @@ export function formatFileSize(bytes: number): string {
 export function cleanTextForSpeech(text: string): string {
   if (!text) return ''
   
-  // 移除思考标签
+  // 移除思考标签及其内容（包括不完整的标签）
   let cleaned = text.replace(/<think>[\s\S]*?<\/think>/g, '')
+  // 移除不完整的思考标签（只有开始标签的情况）
+  cleaned = cleaned.replace(/<think>.*$/g, '')
   
   // 移除Markdown格式
   cleaned = cleaned.replace(/\*\*(.*?)\*\*/g, '$1') // 粗体
@@ -53,8 +55,19 @@ export function cleanTextForSpeech(text: string): string {
   cleaned = cleaned.replace(/#{1,6}\s*(.*)/g, '$1') // 标题
   cleaned = cleaned.replace(/\[(.*?)\]\(.*?\)/g, '$1') // 链接
   
-  // 移除表情符号 (简单的范围)
-  cleaned = cleaned.replace(/[\\uD800-\\uDBFF][\\uDC00-\\uDFFF]|[\\u2600-\\u26FF]|[\\u2700-\\u27BF]|[\\uFE00-\\uFE0F]/g, '')
+  // 移除表情符号（更全面的Unicode范围，与后端保持一致）
+  cleaned = cleaned.replace(/[\u{1F600}-\u{1F64F}]/gu, '') // 表情符号
+  cleaned = cleaned.replace(/[\u{1F300}-\u{1F5FF}]/gu, '') // 符号和图标
+  cleaned = cleaned.replace(/[\u{1F680}-\u{1F6FF}]/gu, '') // 交通和地图符号
+  cleaned = cleaned.replace(/[\u{1F700}-\u{1F77F}]/gu, '') // 炼金术符号
+  cleaned = cleaned.replace(/[\u{1F780}-\u{1F7FF}]/gu, '') // 几何图形扩展
+  cleaned = cleaned.replace(/[\u{1F800}-\u{1F8FF}]/gu, '') // 补充箭头-C
+  cleaned = cleaned.replace(/[\u{1F900}-\u{1F9FF}]/gu, '') // 补充符号和图标
+  cleaned = cleaned.replace(/[\u{1FA00}-\u{1FA6F}]/gu, '') // 扩展-A
+  cleaned = cleaned.replace(/[\u{1FA70}-\u{1FAFF}]/gu, '') // 符号和图标扩展-A
+  cleaned = cleaned.replace(/[\u{2600}-\u{26FF}]/gu, '') // 杂项符号
+  cleaned = cleaned.replace(/[\u{2700}-\u{27BF}]/gu, '') // 装饰符号
+  cleaned = cleaned.replace(/[\u{FE00}-\u{FE0F}]/gu, '') // 变体选择器
   
   // 移除多余的空白字符
   cleaned = cleaned.replace(/\s+/g, ' ').trim()
@@ -122,6 +135,155 @@ export function throttle<T extends (...args: any[]) => any>(
       func(...args)
       inThrottle = true
       setTimeout(() => inThrottle = false, limit)
+    }
+  }
+}
+
+/**
+ * 音频播放队列管理类
+ * 用于管理流式TTS音频片段的顺序播放
+ */
+export class AudioPlayQueue {
+  private queue: Array<{
+    audio: HTMLAudioElement
+    text: string
+    chunkId: number
+  }> = []
+  private isPlaying = false
+  private currentAudio: HTMLAudioElement | null = null
+  private onPlayStart?: (text: string, chunkId: number) => void
+  private onPlayEnd?: (text: string, chunkId: number) => void
+  private onQueueEmpty?: () => void
+  private onError?: (error: Error) => void
+
+  constructor(callbacks?: {
+    onPlayStart?: (text: string, chunkId: number) => void
+    onPlayEnd?: (text: string, chunkId: number) => void
+    onQueueEmpty?: () => void
+    onError?: (error: Error) => void
+  }) {
+    this.onPlayStart = callbacks?.onPlayStart
+    this.onPlayEnd = callbacks?.onPlayEnd  
+    this.onQueueEmpty = callbacks?.onQueueEmpty
+    this.onError = callbacks?.onError
+  }
+
+  /**
+   * 添加音频到播放队列
+   */
+  addAudio(audioBase64: string, text: string, chunkId: number): void {
+    try {
+      // 将base64转换为Blob和URL
+      const audioData = atob(audioBase64)
+      const audioArray = new Uint8Array(audioData.length)
+      for (let i = 0; i < audioData.length; i++) {
+        audioArray[i] = audioData.charCodeAt(i)
+      }
+      const audioBlob = new Blob([audioArray], { type: 'audio/mpeg' })
+      const audioUrl = URL.createObjectURL(audioBlob)
+
+      // 创建音频元素
+      const audio = new Audio(audioUrl)
+      audio.volume = 0.8
+
+      // 添加到队列
+      this.queue.push({ audio, text, chunkId })
+
+      // 如果当前没有播放，开始播放
+      if (!this.isPlaying) {
+        this.playNext()
+      }
+    } catch (error) {
+      console.error('添加音频到队列失败:', error)
+      this.onError?.(new Error(`添加音频失败: ${error}`))
+    }
+  }
+
+  /**
+   * 播放下一个音频
+   */
+  private async playNext(): Promise<void> {
+    if (this.queue.length === 0) {
+      this.isPlaying = false
+      this.currentAudio = null
+      this.onQueueEmpty?.()
+      return
+    }
+
+    this.isPlaying = true
+    const { audio, text, chunkId } = this.queue.shift()!
+    this.currentAudio = audio
+
+    try {
+      // 播放开始回调
+      this.onPlayStart?.(text, chunkId)
+
+      // 设置播放结束事件
+      audio.onended = () => {
+        this.onPlayEnd?.(text, chunkId)
+        // 清理资源
+        URL.revokeObjectURL(audio.src)
+        // 播放下一个
+        this.playNext()
+      }
+
+      audio.onerror = (event) => {
+        console.error('音频播放错误:', event)
+        this.onError?.(new Error('音频播放失败'))
+        URL.revokeObjectURL(audio.src)
+        // 继续播放下一个
+        this.playNext()
+      }
+
+      // 开始播放
+      await audio.play()
+    } catch (error) {
+      console.error('播放音频失败:', error)
+      this.onError?.(new Error(`播放失败: ${error}`))
+      URL.revokeObjectURL(audio.src)
+      // 继续播放下一个
+      this.playNext()
+    }
+  }
+
+  /**
+   * 停止播放并清空队列
+   */
+  stop(): void {
+    // 停止当前播放
+    if (this.currentAudio) {
+      this.currentAudio.pause()
+      URL.revokeObjectURL(this.currentAudio.src)
+      this.currentAudio = null
+    }
+
+    // 清空队列并释放资源
+    this.queue.forEach(({ audio }) => {
+      URL.revokeObjectURL(audio.src)
+    })
+    this.queue = []
+    this.isPlaying = false
+  }
+
+  /**
+   * 设置音量
+   */
+  setVolume(volume: number): void {
+    if (this.currentAudio) {
+      this.currentAudio.volume = Math.max(0, Math.min(1, volume))
+    }
+  }
+
+  /**
+   * 获取队列状态
+   */
+  getStatus(): {
+    isPlaying: boolean
+    queueLength: number
+  } {
+    return {
+      isPlaying: this.isPlaying,
+      queueLength: this.queue.length
     }
   }
 } 

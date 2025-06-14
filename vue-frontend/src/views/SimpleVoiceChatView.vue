@@ -46,6 +46,23 @@
             {{ getStatusText() }}
           </Badge>
           
+          <!-- 流式模式指示器 -->
+          <div v-if="isStreamMode" class="flex items-center justify-center gap-2 text-xs text-blue-600 dark:text-blue-400">
+            <div class="w-2 h-2 rounded-full bg-blue-500 animate-pulse"></div>
+            <span>流式模式 - 极速响应</span>
+          </div>
+          
+          <!-- 当前播放的文字 -->
+          <div v-if="currentPlayingText" class="max-w-md mx-auto">
+            <div class="bg-blue-50 dark:bg-blue-900/30 rounded-lg p-3">
+              <div class="flex items-center gap-2 mb-1">
+                <div class="w-2 h-2 rounded-full bg-blue-500 animate-pulse"></div>
+                <span class="text-xs text-blue-600 dark:text-blue-400">正在播放</span>
+              </div>
+              <p class="text-sm text-gray-700 dark:text-gray-300">{{ currentPlayingText }}</p>
+            </div>
+          </div>
+          
           <!-- 语音识别进度条 -->
           <div v-if="callState === 'processing'" class="w-full max-w-xs mx-auto">
             <Progress :value="processingProgress" class="h-2" />
@@ -85,6 +102,18 @@
             >
               <Volume2 v-if="!isMuted" class="h-5 w-5" />
               <VolumeX v-else class="h-5 w-5" />
+            </Button>
+            
+            <!-- 流式模式切换 -->
+            <Button
+              @click="toggleStreamMode"
+              :variant="isStreamMode ? 'default' : 'outline'"
+              size="lg"
+              class="rounded-full w-14 h-14 shadow-lg transition-all duration-200 hover:scale-105"
+              :title="isStreamMode ? '切换到标准模式' : '切换到流式模式'"
+            >
+              <Zap v-if="isStreamMode" class="h-5 w-5 text-yellow-500" />
+              <Zap v-else class="h-5 w-5" />
             </Button>
           </div>
         </div>
@@ -188,7 +217,9 @@ const {
   isMuted,
   conversationRounds,
   canStartCall,
-  funAudioAvailable
+  funAudioAvailable,
+  isStreamMode,
+  currentPlayingText
 } = storeToRefs(voiceStore)
 
 const {
@@ -196,7 +227,8 @@ const {
   startCall,
   endCall,
   toggleMute,
-  getStatusText
+  getStatusText,
+  toggleStreamMode
 } = voiceStore
 
 // 处理进度

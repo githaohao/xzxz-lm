@@ -9,6 +9,9 @@ import base64
 import asyncio
 import os
 from pydantic import BaseModel
+from app.services.lm_studio_service import lm_studio_service
+from app.models.schemas import ChatRequest
+import re
 
 # 创建 FunAudioLLM 服务实例
 funaudio_service = FunAudioLLMService()
@@ -564,12 +567,27 @@ async def speech_synthesize(request: SpeechSynthesizeRequest):
     try:
         logger.info(f"🔊 语音合成请求: {request.text[:50]}...")
         
+        # 清理文本，移除思考标签和表情符号
+        clean_text = clean_text_for_speech(request.text)
+        
+        if not clean_text.strip():
+            logger.warning("清理后的文本为空，跳过语音合成")
+            # 返回空的音频响应
+            return Response(
+                content=b"",
+                media_type="audio/mpeg",
+                headers={
+                    "Content-Length": "0",
+                    "Content-Disposition": "inline; filename=empty_speech.mp3"
+                }
+            )
+        
         # 转换参数格式以匹配TTS服务
         rate_str = f"+{int((request.rate - 1) * 100)}%" if request.rate >= 1 else f"{int((request.rate - 1) * 100)}%"
         
-        # 调用TTS服务
+        # 调用TTS服务，使用清理后的文本
         audio_path, file_size = await tts_service.text_to_speech(
-            text=request.text,
+            text=clean_text,
             voice=request.voice,
             rate=rate_str,
             volume="+0%"  # pitch在edge-tts中对应volume参数
@@ -604,3 +622,241 @@ async def speech_synthesize(request: SpeechSynthesizeRequest):
     except Exception as e:
         logger.error(f"❌ 语音合成失败: {e}")
         raise HTTPException(status_code=500, detail=f"语音合成失败: {str(e)}")
+
+@router.post("/chat/stream")
+async def voice_chat_stream(
+    audio: UploadFile = File(...),
+    session_id: str = Form(...),
+    language: str = Form(default="auto"),
+    knowledge_base_id: Optional[str] = Form(default=None)
+):
+    """流式语音聊天 - AI生成回复的同时进行TTS合成"""
+    try:
+        logger.info(f"🎤 开始流式语音聊天处理，会话ID: {session_id}")
+        
+        # 读取音频数据
+        audio_data = await audio.read()
+        if len(audio_data) == 0:
+            raise HTTPException(status_code=400, detail="音频数据为空")
+
+        async def generate_streaming_response():
+            try:
+                # 第一步：语音识别
+                yield f"data: {json.dumps({'type': 'status', 'message': '正在识别语音...'})}\n\n"
+                
+                # 使用FunAudioLLM进行语音识别
+                recognition_result = await funaudio_service.voice_recognition(audio_data, language)
+                
+                if not recognition_result["success"]:
+                    yield f"data: {json.dumps({'type': 'error', 'message': '语音识别失败'})}\n\n"
+                    return
+                
+                recognized_text = recognition_result["recognized_text"]
+                
+                if not recognized_text.strip():
+                    yield f"data: {json.dumps({'type': 'error', 'message': '未识别到有效语音内容'})}\n\n"
+                    return
+                
+                # 发送识别结果
+                yield f"data: {json.dumps({'type': 'recognition', 'text': recognized_text})}\n\n"
+                
+                # 第二步：准备AI聊天请求
+                yield f"data: {json.dumps({'type': 'status', 'message': 'AI正在思考...'})}\n\n"
+                
+                chat_request = ChatRequest(
+                    message=recognized_text,
+                    history=[],  # 可以根据需要添加历史记录
+                    temperature=0.7,
+                    max_tokens=2048,
+                    stream=True
+                )
+                
+                # 第三步：流式AI对话 + 实时TTS
+                text_buffer = ""
+                chunk_counter = 0
+                
+                async for ai_chunk in lm_studio_service.chat_completion_stream(chat_request):
+                    if ai_chunk.strip():
+                        text_buffer += ai_chunk
+                        
+                        # 发送AI生成的文字片段
+                        yield f"data: {json.dumps({'type': 'ai_text', 'content': ai_chunk})}\n\n"
+                        
+                        # 检查是否可以进行TTS分块
+                        chunks_to_synthesize = split_text_for_tts(text_buffer)
+                        
+                        if chunks_to_synthesize:
+                            # 对每个完整的文本块进行TTS
+                            for chunk_text in chunks_to_synthesize:
+                                try:
+                                    # TTS合成
+                                    audio_buffer = await synthesize_speech_chunk(chunk_text)
+                                    if audio_buffer:
+                                        # 将音频数据编码为base64
+                                        audio_base64 = base64.b64encode(audio_buffer).decode('utf-8')
+                                        
+                                        # 发送音频数据
+                                        yield f"data: {json.dumps({'type': 'audio_chunk', 'audio': audio_base64, 'text': chunk_text, 'chunk_id': chunk_counter})}\n\n"
+                                        chunk_counter += 1
+                                        
+                                        # 从缓冲区移除已处理的文本
+                                        text_buffer = text_buffer.replace(chunk_text, "", 1).strip()
+                                        
+                                except Exception as e:
+                                    logger.error(f"TTS合成失败: {e}")
+                                    yield f"data: {json.dumps({'type': 'tts_error', 'message': f'语音合成失败: {str(e)}'})}\n\n"
+                
+                # 处理剩余的文本缓冲区
+                if text_buffer.strip():
+                    try:
+                        audio_buffer = await synthesize_speech_chunk(text_buffer)
+                        if audio_buffer:
+                            audio_base64 = base64.b64encode(audio_buffer).decode('utf-8')
+                            yield f"data: {json.dumps({'type': 'audio_chunk', 'audio': audio_base64, 'text': text_buffer, 'chunk_id': chunk_counter})}\n\n"
+                    except Exception as e:
+                        logger.error(f"最终TTS合成失败: {e}")
+                
+                # 发送完成信号
+                yield f"data: {json.dumps({'type': 'complete'})}\n\n"
+                yield "data: [DONE]\n\n"
+                
+            except Exception as e:
+                logger.error(f"流式语音聊天处理失败: {e}")
+                yield f"data: {json.dumps({'type': 'error', 'message': str(e)})}\n\n"
+        
+        return StreamingResponse(
+            generate_streaming_response(),
+            media_type="text/event-stream",
+            headers={
+                "Cache-Control": "no-cache",
+                "Connection": "keep-alive",
+                "X-Accel-Buffering": "no"
+            }
+        )
+        
+    except Exception as e:
+        logger.error(f"流式语音聊天请求失败: {e}")
+        raise HTTPException(status_code=500, detail=f"处理请求失败: {str(e)}")
+
+# 添加文本清理函数，过滤思考标签和表情符号
+def clean_text_for_speech(text: str) -> str:
+    """
+    清理文本用于语音合成
+    - 移除 <think></think> 标签及其内容
+    - 移除表情符号
+    - 移除多余的空白字符
+    """
+    if not text:
+        return ''
+    
+    # 移除思考标签及其内容（包括不完整的标签）
+    cleaned = re.sub(r'<think>[\s\S]*?</think>', '', text)
+    # 移除不完整的思考标签（只有开始标签的情况）
+    cleaned = re.sub(r'<think>.*$', '', cleaned)
+    
+    # 移除表情符号（更全面的Unicode范围）
+    # Emoticons and symbols
+    cleaned = re.sub(r'[\U0001F600-\U0001F64F]', '', cleaned)  # 表情符号
+    cleaned = re.sub(r'[\U0001F300-\U0001F5FF]', '', cleaned)  # 符号和图标
+    cleaned = re.sub(r'[\U0001F680-\U0001F6FF]', '', cleaned)  # 交通和地图符号
+    cleaned = re.sub(r'[\U0001F700-\U0001F77F]', '', cleaned)  # 炼金术符号
+    cleaned = re.sub(r'[\U0001F780-\U0001F7FF]', '', cleaned)  # 几何图形扩展
+    cleaned = re.sub(r'[\U0001F800-\U0001F8FF]', '', cleaned)  # 补充箭头-C
+    cleaned = re.sub(r'[\U0001F900-\U0001F9FF]', '', cleaned)  # 补充符号和图标
+    cleaned = re.sub(r'[\U0001FA00-\U0001FA6F]', '', cleaned)  # 扩展-A
+    cleaned = re.sub(r'[\U0001FA70-\U0001FAFF]', '', cleaned)  # 符号和图标扩展-A
+    cleaned = re.sub(r'[\U00002600-\U000026FF]', '', cleaned)  # 杂项符号
+    cleaned = re.sub(r'[\U00002700-\U000027BF]', '', cleaned)  # 装饰符号
+    cleaned = re.sub(r'[\U0000FE00-\U0000FE0F]', '', cleaned)  # 变体选择器
+    
+    # 移除Markdown格式（可选，已有的清理逻辑）
+    cleaned = re.sub(r'\*\*(.*?)\*\*', r'\1', cleaned)  # 粗体
+    cleaned = re.sub(r'\*(.*?)\*', r'\1', cleaned)      # 斜体
+    cleaned = re.sub(r'`(.*?)`', r'\1', cleaned)        # 代码
+    cleaned = re.sub(r'#{1,6}\s*(.*)', r'\1', cleaned) # 标题
+    cleaned = re.sub(r'\[(.*?)\]\(.*?\)', r'\1', cleaned)  # 链接
+    
+    # 移除多余的空白字符
+    cleaned = re.sub(r'\s+', ' ', cleaned).strip()
+    
+    return cleaned
+
+
+def split_text_for_tts(text: str) -> List[str]:
+    """智能文本分块，用于TTS合成"""
+    if not text.strip():
+        return []
+    
+    # 先清理文本，移除思考标签和表情符号
+    clean_text = clean_text_for_speech(text)
+    
+    if not clean_text.strip():
+        return []
+    
+    # 按句子分割的正则表达式
+    sentence_endings = r'[.!?。！？；;]\s*'
+    sentences = re.split(sentence_endings, clean_text)
+    
+    chunks = []
+    current_chunk = ""
+    
+    for sentence in sentences:
+        sentence = sentence.strip()
+        if not sentence:
+            continue
+            
+        # 检查当前块+新句子的长度
+        potential_chunk = current_chunk + sentence
+        
+        if len(potential_chunk) <= 100:  # 最大块大小
+            current_chunk = potential_chunk
+        else:
+            # 当前块达到合适大小，添加到结果中
+            if current_chunk:
+                chunks.append(current_chunk.strip())
+            current_chunk = sentence
+    
+    # 处理最后一个不完整的块
+    # 只有在原始文本以句号结尾时才处理剩余部分
+    if current_chunk and (clean_text.rstrip().endswith('.') or 
+                         clean_text.rstrip().endswith('!') or 
+                         clean_text.rstrip().endswith('?') or
+                         clean_text.rstrip().endswith('。') or
+                         clean_text.rstrip().endswith('！') or
+                         clean_text.rstrip().endswith('？')):
+        chunks.append(current_chunk.strip())
+    
+    return chunks
+
+
+async def synthesize_speech_chunk(text: str) -> Optional[bytes]:
+    """合成单个文本块的语音"""
+    try:
+        # 清理文本，移除思考标签和表情符号
+        clean_text = clean_text_for_speech(text.strip())
+        if not clean_text:
+            return None
+            
+        # 调用TTS服务
+        audio_path, file_size = await tts_service.text_to_speech(
+            text=clean_text,
+            voice="zh-CN-XiaoxiaoNeural",
+            rate="+0%",
+            volume="+0%"
+        )
+        
+        # 读取音频文件
+        with open(audio_path, "rb") as audio_file:
+            audio_data = audio_file.read()
+        
+        # 清理临时文件
+        try:
+            os.remove(audio_path)
+        except Exception as e:
+            logger.warning(f"清理临时TTS文件失败: {e}")
+        
+        return audio_data
+        
+    except Exception as e:
+        logger.error(f"TTS块合成失败: {e}")
+        return None

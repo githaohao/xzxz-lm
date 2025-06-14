@@ -1,9 +1,10 @@
 import { defineStore } from 'pinia'
 import { ref, computed } from 'vue'
 import type { VoiceMessage, CallState, KnowledgeBase } from '@/types'
-import { generateId, cleanTextForSpeech } from '@/utils/voice-utils'
+import { generateId, cleanTextForSpeech, AudioPlayQueue } from '@/utils/voice-utils'
 import { 
   sendVoiceMessage, 
+  sendVoiceMessageStream,
   synthesizeSpeech, 
   checkFunAudioStatus, 
   clearConversationHistory 
@@ -21,6 +22,12 @@ export const useVoiceStore = defineStore('voice', () => {
   const currentTranscript = ref('')
   const funAudioAvailable = ref(false)
   const speechRecognitionAvailable = ref(false)
+  
+  // 流式处理相关状态
+  const isStreamMode = ref(true) // 默认启用流式模式
+  const currentAIResponse = ref('')
+  const currentPlayingText = ref('')
+  const audioQueue = ref<AudioPlayQueue | null>(null)
   
   // 知识库相关状态
   const selectedKnowledgeBase = ref<KnowledgeBase | null>(null)
@@ -47,6 +54,38 @@ export const useVoiceStore = defineStore('voice', () => {
   const hasMessages = computed(() => messages.value.length > 0)
   const isConnected = computed(() => callState.value !== 'idle')
   const canStartCall = computed(() => funAudioAvailable.value && callState.value === 'idle')
+
+  // 初始化音频播放队列
+  function initAudioQueue() {
+    audioQueue.value = new AudioPlayQueue({
+      onPlayStart: (text, chunkId) => {
+        currentPlayingText.value = text
+        isAIPlaying.value = true
+        console.log(`Starting audio chunk ${chunkId}: ${text.substring(0, 30)}...`)
+      },
+      onPlayEnd: (text, chunkId) => {
+        console.log(`Completed audio chunk ${chunkId}`)
+      },
+      onQueueEmpty: () => {
+        isAIPlaying.value = false
+        currentPlayingText.value = ''
+        callState.value = 'connected'
+        console.log('Audio playback queue empty')
+        
+        // 播放结束后继续录音
+        setTimeout(() => {
+          if (funAudioAvailable.value && callState.value === 'connected') {
+            startRecording()
+          }
+        }, 500)
+      },
+      onError: (error) => {
+        console.error('Audio playback error:', error)
+        isAIPlaying.value = false
+        currentPlayingText.value = ''
+      }
+    })
+  }
 
   // 添加消息
   function addMessage(message: Omit<VoiceMessage, 'id' | 'timestamp'>) {
@@ -217,8 +256,174 @@ export const useVoiceStore = defineStore('voice', () => {
     }
   }
 
-  // 处理用户语音
+  // 处理用户语音 - 流式版本
+  async function handleUserSpeechStream(transcript: string, audioBlob?: Blob): Promise<void> {
+    if (!transcript.trim() && !audioBlob) return
+
+    callState.value = 'processing'
+    let userMessage: VoiceMessage | null = null
+    currentAIResponse.value = ''
+
+    try {
+      if (funAudioAvailable.value && audioBlob) {
+        console.log('Using streaming FunAudioLLM workflow')
+
+        // 创建用户消息
+        userMessage = addMessage({
+          content: transcript || '[语音输入]',
+          isUser: true,
+          recognizedText: transcript
+        })
+
+        // 初始化音频队列
+        initAudioQueue()
+
+        // 调用流式语音聊天API
+        const response = await sendVoiceMessageStream(
+          audioBlob, 
+          sessionId.value, 
+          'auto',
+          selectedKnowledgeBase.value?.id
+        )
+
+        if (!response.ok) {
+          throw new Error(`HTTP错误 ${response.status}: ${response.statusText}`)
+        }
+
+        // 处理流式响应
+        await handleStreamingResponse(response)
+
+      } else {
+        throw new Error('无有效输入')
+      }
+    } catch (error: any) {
+      console.error('Voice processing failed:', error)
+
+      if (!userMessage) {
+        userMessage = addMessage({
+          content: transcript || '[语音输入]',
+          isUser: true
+        })
+      }
+
+      addMessage({
+        content: '抱歉，处理您的语音时出现了问题。请稍后重试。',
+        isUser: false
+      })
+
+      callState.value = 'connected'
+    }
+  }
+
+  // 处理流式响应
+  async function handleStreamingResponse(response: Response): Promise<void> {
+    const reader = response.body?.getReader()
+    if (!reader) {
+      throw new Error('无法读取响应流')
+    }
+
+    const decoder = new TextDecoder()
+    let buffer = ''
+
+    try {
+      while (true) {
+        const { done, value } = await reader.read()
+        
+        if (done) break
+
+        buffer += decoder.decode(value, { stream: true })
+        const lines = buffer.split('\n')
+        buffer = lines.pop() || ''
+
+        for (const line of lines) {
+          if (line.startsWith('data: ')) {
+            const data = line.slice(6).trim()
+            
+            if (data === '[DONE]') {
+              // 流式处理完成，添加完整的AI消息
+              if (currentAIResponse.value.trim()) {
+                addMessage({
+                  content: currentAIResponse.value.trim(),
+                  isUser: false
+                })
+              }
+              return
+            }
+
+            try {
+              const event = JSON.parse(data)
+              await handleStreamEvent(event)
+            } catch (e) {
+              console.warn('解析流式数据失败:', data, e)
+            }
+          }
+        }
+      }
+    } catch (error) {
+      console.error('处理流式响应时出错:', error)
+      throw error
+    } finally {
+      if (!reader.closed) {
+        await reader.cancel()
+      }
+    }
+  }
+
+  // 处理流式事件
+  async function handleStreamEvent(event: any): Promise<void> {
+    switch (event.type) {
+      case 'status':
+        console.log('📊 状态:', event.message)
+        break
+        
+      case 'recognition':
+        console.log('🎤 语音识别:', event.text)
+        break
+        
+      case 'ai_text':
+        // AI生成的文字片段
+        currentAIResponse.value += event.content
+        console.log('💬 AI文字:', event.content)
+        break
+        
+      case 'audio_chunk':
+        // 收到音频片段，加入播放队列
+        if (audioQueue.value && event.audio) {
+          callState.value = 'speaking'
+          audioQueue.value.addAudio(event.audio, event.text, event.chunk_id)
+          console.log(`🎵 收到音频块 ${event.chunk_id}: ${event.text.substring(0, 30)}...`)
+        }
+        break
+        
+      case 'complete':
+        console.log('✅ 流式处理完成')
+        break
+        
+      case 'error':
+        console.error('❌ 流式处理错误:', event.message)
+        throw new Error(event.message)
+        
+      case 'tts_error':
+        console.error('❌ TTS合成错误:', event.message)
+        // TTS错误不中断整个流程
+        break
+        
+      default:
+        console.log('🔍 未知事件类型:', event.type, event)
+    }
+  }
+
+  // 修改原有的handleUserSpeech，支持流式模式切换
   async function handleUserSpeech(transcript: string, audioBlob?: Blob): Promise<void> {
+    if (isStreamMode.value) {
+      return handleUserSpeechStream(transcript, audioBlob)
+    } else {
+      return handleUserSpeechOriginal(transcript, audioBlob)
+    }
+  }
+
+  // 原有的非流式处理方法（重命名）
+  async function handleUserSpeechOriginal(transcript: string, audioBlob?: Blob): Promise<void> {
     if (!transcript.trim() && !audioBlob) return
 
     callState.value = 'processing'
@@ -270,7 +475,7 @@ export const useVoiceStore = defineStore('voice', () => {
         await speakText(aiResponse)
       }
     } catch (error: any) {
-      console.error('❌ 处理语音失败:', error)
+      console.error('Voice processing failed:', error)
 
       if (!userMessage) {
         userMessage = addMessage({
@@ -384,12 +589,20 @@ export const useVoiceStore = defineStore('voice', () => {
     }
   }
 
-  // 结束通话
+  // 结束通话 - 添加停止音频队列
   function endCall(): void {
     callState.value = 'idle'
     isRecording.value = false
     isAIPlaying.value = false
     currentTranscript.value = ''
+    currentAIResponse.value = ''
+    currentPlayingText.value = ''
+
+    // 停止音频队列
+    if (audioQueue.value) {
+      audioQueue.value.stop()
+      audioQueue.value = null
+    }
 
     // 停止智能静音检测
     stopAudioMonitoring()
@@ -422,13 +635,31 @@ export const useVoiceStore = defineStore('voice', () => {
     console.log('📞 通话已结束，所有资源已清理')
   }
 
-  // 切换静音
+  // 切换静音 - 支持音频队列
   function toggleMute(): void {
     isMuted.value = !isMuted.value
-    if (currentAudio.value) {
-      currentAudio.value.pause()
+    
+    if (isMuted.value) {
+      // 静音：停止音频队列
+      if (audioQueue.value) {
+        audioQueue.value.stop()
+      }
+      if (currentAudio.value) {
+        currentAudio.value.pause()
+      }
       isAIPlaying.value = false
+    } else {
+      // 取消静音：设置音量
+      if (audioQueue.value) {
+        audioQueue.value.setVolume(0.8)
+      }
     }
+  }
+
+  // 切换流式模式
+  function toggleStreamMode(): void {
+    isStreamMode.value = !isStreamMode.value
+    console.log(`🔄 流式模式已${isStreamMode.value ? '启用' : '禁用'}`)
   }
 
   // 中断AI说话
@@ -540,6 +771,11 @@ export const useVoiceStore = defineStore('voice', () => {
     speechRecognitionAvailable,
     silenceDetectionActive,
     
+    // 流式处理相关状态
+    isStreamMode,
+    currentAIResponse,
+    currentPlayingText,
+    
     // 智能静音检测配置
     silenceThreshold,
     silenceTimeout,
@@ -567,6 +803,7 @@ export const useVoiceStore = defineStore('voice', () => {
     restartSession,
     getStatusText,
     configureSilenceDetection,
-    setSelectedKnowledgeBase
+    setSelectedKnowledgeBase,
+    toggleStreamMode
   }
 }) 

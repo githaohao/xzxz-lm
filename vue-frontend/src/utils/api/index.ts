@@ -23,22 +23,30 @@ export {
 // 语音相关
 export { 
   sendVoiceMessage, 
+  sendVoiceMessageStream,
   synthesizeSpeech, 
   checkFunAudioStatus, 
   clearConversationHistory 
 } from './voice'
 
-// 文件和RAG相关
+// 文件处理相关
 export { 
   uploadFile, 
+  processDocumentForRAG
+} from './file'
+
+// RAG文档管理和检索相关
+export { 
   getAllDocuments, 
   deleteDocument, 
   searchDocuments, 
-  processDocumentForRAG, 
   getDocumentInfo,
   getDocumentChunks,
-  getSessionDocuments,
-  // 知识库管理
+  getSessionDocuments
+} from './rag'
+
+// 知识库管理相关
+export { 
   createKnowledgeBase,
   getAllKnowledgeBases,
   getKnowledgeBase,
@@ -46,8 +54,15 @@ export {
   deleteKnowledgeBase,
   addDocumentsToKnowledgeBase,
   removeDocumentsFromKnowledgeBase,
-  getKnowledgeBaseDocuments
-} from './file'
+  getKnowledgeBaseDocuments,
+  // 智能归档相关
+  smartArchiveDocument,
+  analyzeDocumentsForArchive,
+  confirmSmartArchive,
+  batchSmartArchive,
+  analyzeExistingDocumentsForArchive,
+  confirmExistingArchive
+} from './knowledge-base'
 
 // 用户系统相关
 export { 

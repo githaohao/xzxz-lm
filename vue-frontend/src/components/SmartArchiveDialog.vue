@@ -602,7 +602,7 @@ async function handleAnalyzeDocuments() {
 
   try {
     // 导入API函数
-    const { analyzeDocumentsForArchive } = await import('@/utils/api/file')
+    const { analyzeDocumentsForArchive } = await import('@/utils/api/knowledge-base')
     
     // 🚀 优化：不再需要Base64转换，文档在分析阶段直接保存
     
@@ -663,14 +663,13 @@ async function handleConfirmArchive() {
 
   try {
     // 导入API函数
-    const { confirmSmartArchive } = await import('@/utils/api/file')
+    const { confirmSmartArchive } = await import('@/utils/api/knowledge-base')
     
     // 🚀 优化：不再需要传递文件内容，分析结果中已包含doc_id
     const response = await confirmSmartArchive({
       files: selectedFiles.value.map(file => ({
         fileName: file.name,
         fileType: file.type
-        // ⚠️ 不再传递content，因为文档已在分析阶段保存
       })),
       analysisResults: analysisResults.value
     })

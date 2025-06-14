@@ -64,4 +64,33 @@ export async function clearConversationHistory(sessionId: string): Promise<boole
     console.error('清除对话历史失败:', error)
     return false
   }
+}
+
+/**
+ * 流式语音聊天API - AI生成回复的同时进行TTS合成
+ */
+export async function sendVoiceMessageStream(
+  audioBlob: Blob,
+  sessionId: string,
+  language: string = 'auto',
+  knowledgeBaseId?: string
+): Promise<Response> {
+  const formData = new FormData()
+  formData.append('audio', audioBlob, 'voice.wav')
+  formData.append('session_id', sessionId)
+  formData.append('language', language)
+  
+  // 如果指定了知识库ID，添加到请求中
+  if (knowledgeBaseId) {
+    formData.append('knowledge_base_id', knowledgeBaseId)
+  }
+
+  return fetch(`${API_CONFIG.BASE_URL}${API_CONFIG.ENDPOINTS.VOICE_CHAT_STREAM}`, {
+    method: 'POST',
+    body: formData,
+    headers: {
+      'Accept': 'text/event-stream',
+      'Cache-Control': 'no-cache'
+    }
+  })
 } 

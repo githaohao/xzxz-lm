@@ -24,6 +24,7 @@ export const API_CONFIG = {
     VOICE_TTS: '/api/lm/voice/speech/synthesize',
     VOICE_ENGINE: '/api/lm/voice/engine',
     VOICE_CONVERSATION: '/api/lm/voice/conversation',
+    VOICE_CHAT_STREAM: '/api/lm/voice/chat/stream',
     
     // LM文件相关
     UPLOAD: '/api/lm/chat/upload',

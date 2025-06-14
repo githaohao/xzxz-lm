@@ -1171,7 +1171,7 @@ import { searchDocuments } from '@/utils/api'
 import type { RAGSearchRequest, RAGSearchResponse, DocumentChunk } from '@/types'
 
 // 智能归档相关导入
-import { analyzeExistingDocumentsForArchive, confirmExistingArchive } from '@/utils/api/file'
+import { analyzeExistingDocumentsForArchive, confirmExistingArchive } from '@/utils/api/knowledge-base'
 
 // Store
 const knowledgeBaseStore = useKnowledgeBaseStore()
