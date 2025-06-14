@@ -12,6 +12,7 @@ from pdf2image import convert_from_path
 import pytesseract
 import PyPDF2
 from app.config import settings
+from app.utils import ImageProcessor, OCRCache
 
 # 导入PaddleOCR相关
 try:
@@ -21,96 +22,6 @@ except ImportError:
     PADDLEOCR_AVAILABLE = False
     
 logger = logging.getLogger(__name__)
-
-class OCRCache:
-    """OCR结果缓存"""
-    def __init__(self, ttl: int = 3600):
-        self.cache: Dict[str, Tuple[Any, float]] = {}
-        self.ttl = ttl
-    
-    def _get_file_hash(self, file_path: str) -> str:
-        """获取文件哈希值"""
-        with open(file_path, 'rb') as f:
-            file_hash = hashlib.md5()
-            chunk = f.read(8192)
-            while chunk:
-                file_hash.update(chunk)
-                chunk = f.read(8192)
-        return file_hash.hexdigest()
-    
-    def get(self, file_path: str) -> Optional[Tuple[str, float, float]]:
-        """获取缓存结果"""
-        if not settings.ocr_cache_enabled:
-            return None
-            
-        file_hash = self._get_file_hash(file_path)
-        if file_hash in self.cache:
-            result, timestamp = self.cache[file_hash]
-            if time.time() - timestamp < self.ttl:
-                logger.info(f"使用缓存的OCR结果: {file_path}")
-                return result
-            else:
-                del self.cache[file_hash]
-        return None
-    
-    def set(self, file_path: str, result: Tuple[str, float, float]):
-        """设置缓存结果"""
-        if not settings.ocr_cache_enabled:
-            return
-            
-        file_hash = self._get_file_hash(file_path)
-        self.cache[file_hash] = (result, time.time())
-
-class ImagePreprocessor:
-    """图像预处理器"""
-    
-    @staticmethod
-    def enhance_image(image: Image.Image) -> Image.Image:
-        """图像增强处理"""
-        if not settings.ocr_image_enhance:
-            return image
-            
-        # 转换为RGB模式
-        if image.mode != 'RGB':
-            image = image.convert('RGB')
-        
-        # 转换为OpenCV格式
-        cv_image = cv2.cvtColor(np.array(image), cv2.COLOR_RGB2BGR)
-        
-        # 1. 去噪
-        cv_image = cv2.fastNlMeansDenoisingColored(cv_image, None, 10, 10, 7, 21)
-        
-        # 2. 锐化
-        kernel = np.array([[-1,-1,-1], [-1,9,-1], [-1,-1,-1]])
-        cv_image = cv2.filter2D(cv_image, -1, kernel)
-        
-        # 3. 对比度自适应均衡化
-        lab = cv2.cvtColor(cv_image, cv2.COLOR_BGR2LAB)
-        l, a, b = cv2.split(lab)
-        clahe = cv2.createCLAHE(clipLimit=2.0, tileGridSize=(8,8))
-        l = clahe.apply(l)
-        cv_image = cv2.cvtColor(cv2.merge([l, a, b]), cv2.COLOR_LAB2BGR)
-        
-        # 转换回PIL格式
-        return Image.fromarray(cv2.cvtColor(cv_image, cv2.COLOR_BGR2RGB))
-    
-    @staticmethod
-    def preprocess_for_ocr(image: Image.Image) -> Image.Image:
-        """OCR专用预处理"""
-        # 图像增强
-        enhanced = ImagePreprocessor.enhance_image(image)
-        
-        # 亮度和对比度调整
-        enhancer = ImageEnhance.Contrast(enhanced)
-        enhanced = enhancer.enhance(1.2)
-        
-        enhancer = ImageEnhance.Brightness(enhanced)
-        enhanced = enhancer.enhance(1.1)
-        
-        # 锐化
-        enhanced = enhanced.filter(ImageFilter.SHARPEN)
-        
-        return enhanced
 
 class OCRService:
     def __init__(self):
@@ -167,7 +78,7 @@ class OCRService:
             for i, image in enumerate(images):
                 # 预处理图像
                 if settings.ocr_image_enhance:
-                    image = ImagePreprocessor.preprocess_for_ocr(image)
+                    image = ImageProcessor.preprocess_for_ocr(image)
                 
                 image_path = os.path.join(
                     settings.upload_dir,
@@ -214,7 +125,7 @@ class OCRService:
             
             # 图像预处理
             if settings.ocr_image_enhance:
-                image = ImagePreprocessor.preprocess_for_ocr(image)
+                image = ImageProcessor.preprocess_for_ocr(image)
             
             # 统一使用准确率优先配置：OEM 3 + PSM 6，移除字符白名单限制
             custom_config = r'--oem 3 --psm 6'

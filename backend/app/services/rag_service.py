@@ -11,8 +11,6 @@ from typing import List, Dict, Optional, Tuple
 from datetime import datetime
 import asyncio
 from concurrent.futures import ThreadPoolExecutor
-import json
-import httpx
 
 import chromadb
 from chromadb.config import Settings
@@ -22,6 +20,7 @@ import numpy as np
 
 from app.config import settings
 from app.database import Database
+from app.utils import TextProcessor, DocumentAnalyzer, LLMClient, generate_doc_id, get_random_color
 
 logger = logging.getLogger(__name__)
 
@@ -121,7 +120,7 @@ class RAGService:
         """
         try:
             # 生成文档ID
-            doc_id = self._generate_doc_id(content, filename)
+            doc_id = generate_doc_id(content, filename)
             
             # 检查文档是否已存在
             existing_docs = self.collection.get(
@@ -485,16 +484,16 @@ class RAGService:
                 # 应用分层优化策略
                 if is_ocr or (is_pdf and not is_text_pdf):
                     # OCR扫描件：需要更严格的处理
-                    processed_content = await self._process_ocr_content(original_content)
+                    processed_content = await TextProcessor.process_ocr_content(original_content)
                 elif is_pdf and is_text_pdf:
                     # 文本PDF：中等处理
-                    processed_content = await self._process_text_pdf_content(original_content)
+                    processed_content = await TextProcessor.process_text_pdf_content(original_content)
                 else:
                     # 普通文档：基础处理
-                    processed_content = await self._process_standard_content(original_content)
+                    processed_content = await TextProcessor.process_standard_content(original_content)
                 
                 # 质量检查
-                quality_score = self._calculate_content_quality(processed_content)
+                quality_score = TextProcessor.calculate_content_quality(processed_content)
                 
                 # 只保留质量达标的分块
                 if quality_score >= 0.3:  # 质量阈值
@@ -507,7 +506,7 @@ class RAGService:
                         'quality_score': quality_score,
                         'content_length_original': len(original_content),
                         'content_length_processed': len(processed_content),
-                        'processing_applied': self._get_processing_type(is_ocr, is_pdf, is_text_pdf),
+                        'processing_applied': TextProcessor.get_processing_type(is_ocr, is_pdf, is_text_pdf),
                         'optimization_version': '2.0'
                     })
                     
@@ -521,137 +520,6 @@ class RAGService:
         
         logger.info(f"分块优化完成: {len(chunks)} -> {len(optimized_chunks)}")
         return optimized_chunks
-
-    async def _process_ocr_content(self, content: str) -> str:
-        """处理OCR扫描内容 - 最严格的清理"""
-        # 基础清理
-        text = await self._process_standard_content(content)
-        
-        # OCR特殊错误清理
-        import re
-        
-        # 修正常见OCR错误
-        ocr_corrections = {
-            r'\b0\b': 'O',  # 数字0误识别为字母O
-            r'\bl\b': 'I',  # 小写l误识别为大写I
-            r'rn\b': 'm',   # rn误识别为m
-            r'\s+': ' ',    # 多空格合并
-        }
-        
-        for pattern, replacement in ocr_corrections.items():
-            text = re.sub(pattern, replacement, text)
-        
-        # 移除可能的OCR噪音
-        text = re.sub(r'[^\w\s\u4e00-\u9fff\u3000-\u303f\uff00-\uffef,.!?;:"\'()\-]', '', text)
-        
-        # 移除过短的行（可能是噪音）
-        lines = text.split('\n')
-        valid_lines = [line.strip() for line in lines if len(line.strip()) > 3]
-        
-        return '\n'.join(valid_lines)
-
-    async def _process_text_pdf_content(self, content: str) -> str:
-        """处理文本PDF内容 - 中等清理"""
-        # 基础清理
-        text = await self._process_standard_content(content)
-        
-        import re
-        
-        # PDF特殊格式清理
-        # 移除页眉页脚模式
-        text = re.sub(r'^第\s*\d+\s*页.*$', '', text, flags=re.MULTILINE)
-        text = re.sub(r'^\d+\s*/\s*\d+.*$', '', text, flags=re.MULTILINE)
-        
-        # 移除重复的分隔符
-        text = re.sub(r'-{3,}', '---', text)
-        text = re.sub(r'={3,}', '===', text)
-        
-        # 合并破碎的行
-        text = re.sub(r'(\w)\n(\w)', r'\1 \2', text)
-        
-        return text
-
-    async def _process_standard_content(self, content: str) -> str:
-        """标准内容处理 - 基础清理"""
-        import re
-        
-        # 基础文本清理
-        text = content.strip()
-        
-        # 标准化空白字符
-        text = re.sub(r'\r\n', '\n', text)  # 标准化换行符
-        text = re.sub(r'\r', '\n', text)
-        text = re.sub(r'\t', ' ', text)     # 制表符转空格
-        text = re.sub(r'[ ]{2,}', ' ', text)  # 多空格合并
-        
-        # 移除控制字符
-        text = re.sub(r'[\x00-\x08\x0b\x0c\x0e-\x1f\x7f-\x84\x86-\x9f]', '', text)
-        
-        # 移除空行过多的情况
-        text = re.sub(r'\n{3,}', '\n\n', text)
-        
-        return text.strip()
-
-    def _calculate_content_quality(self, content: str) -> float:
-        """计算内容质量分数"""
-        if not content or len(content.strip()) < 10:
-            return 0.0
-        
-        import re
-        
-        score = 1.0
-        
-        # 长度检查
-        length = len(content)
-        if length < 20:
-            score *= 0.5
-        elif length < 50:
-            score *= 0.8
-        
-        # 字符组成检查
-        total_chars = len(content)
-        if total_chars > 0:
-            # 中文字符比例
-            chinese_chars = len(re.findall(r'[\u4e00-\u9fff]', content))
-            chinese_ratio = chinese_chars / total_chars
-            
-            # 英文字母比例
-            alpha_chars = len(re.findall(r'[a-zA-Z]', content))
-            alpha_ratio = alpha_chars / total_chars
-            
-            # 数字比例
-            digit_chars = len(re.findall(r'\d', content))
-            digit_ratio = digit_chars / total_chars
-            
-            # 有意义字符比例
-            meaningful_ratio = chinese_ratio + alpha_ratio + digit_ratio
-            
-            if meaningful_ratio < 0.6:
-                score *= 0.6
-            elif meaningful_ratio < 0.8:
-                score *= 0.8
-        
-        # 特殊字符过多检查
-        special_chars = len(re.findall(r'[^\w\s\u4e00-\u9fff]', content))
-        if special_chars / total_chars > 0.3:
-            score *= 0.7
-        
-        # 重复内容检查
-        lines = content.split('\n')
-        unique_lines = set(line.strip() for line in lines if line.strip())
-        if len(lines) > 0 and len(unique_lines) / len(lines) < 0.7:
-            score *= 0.8
-        
-        return max(0.0, min(1.0, score))
-
-    def _get_processing_type(self, is_ocr: bool, is_pdf: bool, is_text_pdf: bool) -> str:
-        """获取处理类型标识"""
-        if is_ocr or (is_pdf and not is_text_pdf):
-            return 'ocr_enhanced'
-        elif is_pdf and is_text_pdf:
-            return 'pdf_optimized'
-        else:
-            return 'standard'
 
     async def _generate_optimized_embeddings(self, texts: List[str], metadatas: List[Dict]) -> np.ndarray:
         """根据文档类型生成优化的嵌入向量"""
@@ -713,12 +581,8 @@ class RAGService:
         return embeddings
     
     def _generate_doc_id(self, content: str, filename: str) -> str:
-        """生成文档唯一标识"""
-        # 使用内容和文件名的哈希作为文档ID
-        content_hash = hashlib.md5(
-            (content + filename).encode('utf-8')
-        ).hexdigest()
-        return f"doc_{content_hash[:16]}"
+        """生成文档唯一标识 """
+        return generate_doc_id(content, filename)
     
     async def _load_document_kb_mapping_from_db(self):
         """从数据库加载文档-知识库关联关系"""
@@ -1281,22 +1145,20 @@ class RAGService:
             logger.info(f"开始分析文档: {filename}, 大小: {content_length} 字符")
             
             # 根据文档大小选择处理策略
-            if content_length < 5000:
+            processing_strategy = DocumentAnalyzer.get_document_processing_strategy(content_length)
+            
+            if processing_strategy == "direct_analysis":
                 # 小文档：直接全文分析
                 analysis_content = content
-                processing_strategy = "direct_analysis"
-            elif content_length < 20000:
+            elif processing_strategy == "key_paragraphs":
                 # 中等文档：提取关键段落
-                analysis_content = await self._extract_key_paragraphs(content, filename)
-                processing_strategy = "key_paragraphs"
-            elif content_length < 100000:
+                analysis_content = await TextProcessor.extract_key_paragraphs(content, filename)
+            elif processing_strategy == "segment_summary":
                 # 大文档：分段摘要
-                analysis_content = await self._create_document_summary(content, filename)
-                processing_strategy = "segment_summary"
+                analysis_content = await TextProcessor.create_document_summary(content, filename)
             else:
                 # 特大文档：智能采样
-                analysis_content = await self._intelligent_sampling(content, filename)
-                processing_strategy = "intelligent_sampling"
+                analysis_content = await TextProcessor.intelligent_sampling(content, filename)
             
             logger.info(f"文档处理策略: {processing_strategy}, 分析内容长度: {len(analysis_content)}")
             
@@ -1325,171 +1187,16 @@ class RAGService:
             logger.error(f"文档分析失败: {e}")
     
     async def _extract_key_paragraphs(self, content: str, filename: str) -> str:
-        """提取关键段落（用于中等文档）"""
-        try:
-            lines = content.split('\n')
-            
-            # 获取文档开头（前20%或最多500行）
-            start_lines = int(min(len(lines) * 0.2, 500))
-            beginning = '\n'.join(lines[:start_lines])
-            
-            # 获取文档结尾（后10%或最多200行）
-            end_lines = int(min(len(lines) * 0.1, 200))
-            ending = '\n'.join(lines[-end_lines:]) if end_lines > 0 else ""
-            
-            # 查找包含关键词的段落
-            keywords = ['摘要', '总结', '概述', '简介', '目录', 'abstract', 'summary', 'introduction']
-            key_paragraphs = []
-            
-            for i, line in enumerate(lines):
-                line_lower = line.lower()
-                if any(keyword in line_lower for keyword in keywords):
-                    # 包含关键词的段落及其周围内容
-                    start_idx = max(0, i - 2)
-                    end_idx = min(len(lines), i + 5)
-                    key_paragraphs.append('\n'.join(lines[start_idx:end_idx]))
-            
-            # 组合内容
-            extracted_content = f"文档开头：\n{beginning}\n\n"
-            
-            if key_paragraphs:
-                extracted_content += f"关键段落：\n" + '\n\n'.join(key_paragraphs) + "\n\n"
-            
-            if ending:
-                extracted_content += f"文档结尾：\n{ending}"
-            
-            # 如果提取的内容太长，截断
-            if len(extracted_content) > 8000:
-                extracted_content = extracted_content[:8000] + "...\n[内容已截断]"
-            
-            return extracted_content
-            
-        except Exception as e:
-            logger.warning(f"提取关键段落失败: {e}")
-            return content[:5000] + "...\n[提取失败，使用开头内容]"
+        """提取关键段落 """
+        return await TextProcessor.extract_key_paragraphs(content, filename)
     
     async def _create_document_summary(self, content: str, filename: str) -> str:
-        """创建文档摘要（用于大文档）"""
-        try:
-            # 将文档分成多个段落
-            paragraphs = content.split('\n\n')
-            
-            # 每段最多1000字符
-            segments = []
-            current_segment = ""
-            
-            for paragraph in paragraphs:
-                if len(current_segment) + len(paragraph) < 1000:
-                    current_segment += paragraph + '\n\n'
-                else:
-                    if current_segment:
-                        segments.append(current_segment.strip())
-                    current_segment = paragraph + '\n\n'
-            
-            if current_segment:
-                segments.append(current_segment.strip())
-            
-            # 选择关键段落进行摘要
-            key_segments = []
-            
-            # 总是包含开头和结尾
-            if segments:
-                key_segments.append(segments[0])  # 开头
-                if len(segments) > 1:
-                    key_segments.append(segments[-1])  # 结尾
-            
-            # 添加中间的关键段落
-            for segment in segments[1:-1]:
-                segment_lower = segment.lower()
-                # 查找包含重要信息的段落
-                if any(keyword in segment_lower for keyword in [
-                    '摘要', '总结', '结论', '概述', '目的', '目标', '方法', '结果',
-                    'abstract', 'summary', 'conclusion', 'objective', 'purpose', 'method', 'result'
-                ]):
-                    key_segments.append(segment)
-                    if len(key_segments) >= 5:  # 限制段落数量
-                        break
-            
-            # 如果关键段落不够，随机选择一些段落
-            if len(key_segments) < 3 and len(segments) > 2:
-                import random
-                remaining_segments = [s for s in segments[1:-1] if s not in key_segments]
-                additional_count = min(3 - len(key_segments), len(remaining_segments))
-                key_segments.extend(random.sample(remaining_segments, additional_count))
-            
-            # 组合摘要
-            summary = f"文档摘要 ({len(segments)}个段落中的{len(key_segments)}个关键段落)：\n\n"
-            summary += '\n\n---段落分隔---\n\n'.join(key_segments)
-            
-            # 限制总长度
-            if len(summary) > 6000:
-                summary = summary[:6000] + "...\n[摘要已截断]"
-            
-            return summary
-            
-        except Exception as e:
-            logger.warning(f"创建文档摘要失败: {e}")
-            return content[:3000] + "...\n[摘要失败，使用开头内容]"
+        """创建文档摘要"""
+        return await TextProcessor.create_document_summary(content, filename)
     
     async def _intelligent_sampling(self, content: str, filename: str) -> str:
-        """智能采样（用于特大文档）"""
-        try:
-            total_length = len(content)
-            
-            # 提取开头、中间、结尾的样本
-            start_sample = content[:2000]  # 开头2000字符
-            end_sample = content[-1000:]   # 结尾1000字符
-            
-            # 中间采样：每隔一定间距采样
-            middle_samples = []
-            sample_interval = max(1000, total_length // 20)  # 最多采样20个片段
-            
-            for i in range(2000, total_length - 1000, sample_interval):
-                sample = content[i:i+500]  # 每次采样500字符
-                middle_samples.append(sample)
-                if len(middle_samples) >= 10:  # 最多10个中间样本
-                    break
-            
-            # 查找结构化信息（标题、目录等）
-            lines = content.split('\n')
-            structured_info = []
-            
-            for line in lines:
-                line_stripped = line.strip()
-                if line_stripped and (
-                    line_stripped.startswith('#') or  # Markdown标题
-                    line_stripped.endswith(':') or   # 冒号结尾（可能是标题）
-                    len(line_stripped) < 100 and (   # 短行且包含关键词
-                        any(keyword in line_stripped.lower() for keyword in [
-                            '第', '章', '节', '部分', 'chapter', 'section', 'part'
-                        ])
-                    )
-                ):
-                    structured_info.append(line_stripped)
-                    if len(structured_info) >= 20:  # 最多20个结构化信息
-                        break
-            
-            # 组合采样结果
-            sampled_content = f"超大文档智能采样 (总长度: {total_length} 字符)：\n\n"
-            sampled_content += f"文档开头：\n{start_sample}\n\n"
-            
-            if structured_info:
-                sampled_content += f"文档结构：\n" + '\n'.join(structured_info) + "\n\n"
-            
-            if middle_samples:
-                sampled_content += f"中间采样：\n" + '\n\n---采样分隔---\n\n'.join(middle_samples) + "\n\n"
-            
-            sampled_content += f"文档结尾：\n{end_sample}"
-            
-            # 限制总长度
-            if len(sampled_content) > 8000:
-                sampled_content = sampled_content[:8000] + "...\n[采样已截断]"
-            
-            return sampled_content
-            
-        except Exception as e:
-            logger.warning(f"智能采样失败: {e}")
-            return content[:3000] + "...\n[采样失败，使用开头内容]"
+        """智能采样 """
+        return await TextProcessor.intelligent_sampling(content, filename)
     
     async def _call_llm_for_analysis(
         self,
@@ -1499,207 +1206,28 @@ class RAGService:
         custom_analysis: bool,
         processing_strategy: str
     ) -> Dict:
-        """调用LLM进行文档内容分析"""
-        try:
-            # 构建系统提示词
-            system_prompt = """你是一个专业的文档分析专家，负责分析文档内容并决定最合适的知识库归档位置。
+        """调用LLM进行文档内容分析 """
+        return await LLMClient.call_llm_for_analysis(content, filename, analysis_prompt, custom_analysis, processing_strategy)
 
-            你的任务是：
-                1. 分析文档的主要内容和类型
-                2. 从以下预设知识库中选择最合适的归档位置：
-                - 个人简历：简历、CV、个人资料、求职相关
-                - 合同文档：合同、协议、法律文件
-                - 教育培训：培训材料、课程、教育内容
-                - 技术文档：API文档、技术规范、开发资料
-                - 商务文档：商业计划、市场分析、商务资料
-                - 操作手册：用户手册、操作指南、说明书
-                - 医疗健康：医疗报告、健康资料、医学文献
-                - 政策法规：政策文件、法规条例、规章制度
-
-                3. 如果文档不适合任何预设知识库，建议创建新的知识库
-
-                请返回JSON格式的分析结果：
-                {
-                    "knowledge_base_name": "知识库名称",
-                    "is_new_knowledge_base": false,
-                    "document_type": "文档类型",
-                    "reason": "选择理由",
-                    "confidence": 0.85
-                }"""
-
-            # 构建用户提示词
-            user_prompt = f"""请分析以下文档并决定最合适的知识库归档位置：
-
-                文件名：{filename}
-                用户提示：{analysis_prompt}
-                处理策略：{processing_strategy}
-
-                文档内容：
-                {content}
-
-                请仔细分析文档的主要内容、类型和用途，然后选择最合适的知识库进行归档。
-                如果用户提供了特定的分类建议，请优先考虑。"""
-
-            # 调用LLM
-            response = await self._make_llm_request(system_prompt, user_prompt)
-            
-            # 解析LLM响应
-            analysis_result = await self._parse_llm_response(response)
-            
-            # 验证和修正结果
-            return await self._validate_analysis_result(analysis_result, filename)
-            
-        except Exception as e:
-            logger.error(f"LLM分析调用失败: {e}")
-    
     async def _make_llm_request(self, system_prompt: str, user_prompt: str) -> str:
-        """向LM Studio发送请求"""
-        try:
-            async with httpx.AsyncClient(timeout=60.0) as client:
-                payload = {
-                    "model": settings.lm_studio_model,
-                    "messages": [
-                        {"role": "system", "content": system_prompt},
-                        {"role": "user", "content": user_prompt}
-                    ],
-                    "temperature": 0.3,  # 较低的温度以获得更一致的分析结果
-                    "max_tokens": 1000,
-                    "stream": False
-                }
-                
-                response = await client.post(
-                    f"{settings.lm_studio_base_url}/chat/completions",
-                    json=payload,
-                    headers={
-                        "Content-Type": "application/json",
-                        "Authorization": f"Bearer {settings.lm_studio_api_key}"
-                    }
-                )
-                
-                if response.status_code == 200:
-                    result = response.json()
-                    return result["choices"][0]["message"]["content"]
-                else:
-                    logger.error(f"LLM请求失败: {response.status_code} - {response.text}")
-                    raise Exception(f"LLM请求失败: {response.status_code}")
-                    
-        except Exception as e:
-            logger.error(f"LLM请求异常: {e}")
-            raise
-    
+        """向LM Studio发送请求 """
+        return await LLMClient.make_llm_request(system_prompt, user_prompt)
+
     async def _parse_llm_response(self, response: str) -> Dict:
-        """解析LLM响应，提取JSON结果"""
-        try:
-            # 尝试直接解析JSON
-            try:
-                return json.loads(response)
-            except json.JSONDecodeError:
-                pass
-            
-            # 如果直接解析失败，尝试提取JSON部分
-            import re
-            json_match = re.search(r'\{[^{}]*\}', response, re.DOTALL)
-            if json_match:
-                return json.loads(json_match.group())
-            
-            # 如果仍然失败，从文本中提取信息
-            knowledge_base_match = re.search(r'knowledge_base_name["\s]*:["\s]*([^"]*)', response)
-            is_new_match = re.search(r'is_new_knowledge_base["\s]*:["\s]*(true|false)', response)
-            doc_type_match = re.search(r'document_type["\s]*:["\s]*([^"]*)', response)
-            reason_match = re.search(r'reason["\s]*:["\s]*([^"]*)', response)
-            
-            return {
-                "knowledge_base_name": knowledge_base_match.group(1) if knowledge_base_match else "通用文档",
-                "is_new_knowledge_base": is_new_match.group(1).lower() == 'true' if is_new_match else False,
-                "document_type": doc_type_match.group(1) if doc_type_match else "未知",
-                "reason": reason_match.group(1) if reason_match else "AI分析结果",
-                "confidence": 0.5
-            }
-            
-        except Exception as e:
-            logger.warning(f"解析LLM响应失败: {e}")
-            return {
-                "knowledge_base_name": "通用文档",
-                "is_new_knowledge_base": False,
-                "document_type": "未知",
-                "reason": "解析失败，使用默认分类",
-                "confidence": 0.3
-            }
-    
+        """解析LLM响应 """
+        return DocumentAnalyzer.parse_llm_response(response)
+
     async def _validate_analysis_result(self, result: Dict, filename: str) -> Dict:
-        """验证和修正分析结果"""
-        try:
-            # 确保必要字段存在
-            if "knowledge_base_name" not in result:
-                result["knowledge_base_name"] = "通用文档"
-            
-            if "is_new_knowledge_base" not in result:
-                result["is_new_knowledge_base"] = False
-            
-            if "document_type" not in result:
-                result["document_type"] = "未知"
-            
-            if "reason" not in result:
-                result["reason"] = "AI智能分析结果"
-            
-            # 检查知识库名称是否在预设列表中
-            preset_knowledge_bases = {
-                "个人简历", "合同文档", "教育培训", "技术文档", 
-                "商务文档", "操作手册", "医疗健康", "政策法规"
-            }
-            
-            kb_name = result["knowledge_base_name"]
-            if kb_name not in preset_knowledge_bases:
-                # 如果不在预设列表中，标记为新知识库
-                result["is_new_knowledge_base"] = True
-                
-                # 但如果名称很相似，修正为预设名称
-                for preset in preset_knowledge_bases:
-                    if any(word in kb_name for word in preset.split()) or any(word in preset for word in kb_name.split()):
-                        result["knowledge_base_name"] = preset
-                        result["is_new_knowledge_base"] = False
-                        result["reason"] += f"（已修正为预设知识库：{preset}）"
-                        break
-            
-            return result
-            
-        except Exception as e:
-            logger.warning(f"验证分析结果失败: {e}")
-            return {
-                "knowledge_base_name": "通用文档",
-                "is_new_knowledge_base": False,
-                "document_type": "未知",
-                "reason": "验证失败，使用默认分类",
-                "confidence": 0.2
-            }
-    
+        """验证和修正分析结果 """
+        return DocumentAnalyzer.validate_analysis_result(result, filename)
+
     def _extract_document_type(self, filename: str, content: str) -> str:
-        """从文件名和内容中提取文档类型"""
-        filename_lower = filename.lower()
-        
-        # 从文件名推断类型
-        if 'report' in filename_lower or '报告' in filename_lower:
-            return '报告'
-        elif 'plan' in filename_lower or '计划' in filename_lower:
-            return '计划'
-        elif 'spec' in filename_lower or '规范' in filename_lower:
-            return '规范'
-        elif 'note' in filename_lower or '笔记' in filename_lower:
-            return '笔记'
-        elif 'summary' in filename_lower or '总结' in filename_lower:
-            return '总结'
-        else:
-            return '通用'
-    
+        """从文件名和内容中提取文档类型 """
+        return TextProcessor.extract_document_type(filename, content)
+
     def _get_random_color(self) -> str:
-        """获取随机颜色"""
-        colors = [
-            "#3B82F6", "#10B981", "#F59E0B", "#EF4444", 
-            "#8B5CF6", "#06B6D4", "#84CC16", "#F97316",
-            "#EC4899", "#6366F1"
-        ]
-        import random
-        return random.choice(colors)
+        """获取随机颜色 """
+        return get_random_color()
 
     async def analyze_existing_document_for_archive(
         self, 

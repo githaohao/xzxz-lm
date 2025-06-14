@@ -161,10 +161,6 @@ async def startup_event():
         
     except Exception as e:
         logger.warning(f"FunAudioLLM语音引擎连接检查失败: {e}")
-    
-    # 注意：user_rag_service 目前未被使用，暂时移除初始化
-    # 如果后续需要用户数据隔离功能，可以重新启用
-    
     logger.info("✅ 应用启动完成，准备接收请求...")
 
 @app.on_event("shutdown")

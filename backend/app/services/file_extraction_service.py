@@ -1,11 +1,9 @@
 import os
 import io
 import time
-import hashlib
 import tempfile
 from typing import Tuple, Optional, Dict, Any, Union
 import logging
-import mimetypes
 from pathlib import Path
 
 # 文档处理相关导入
@@ -17,49 +15,20 @@ import aiofiles
 from app.services.ocr_service import ocr_service
 from app.config import settings
 
+# 工具模块导入
+from app.utils import (
+    FileExtractionCache, 
+    FileTypeDetector, 
+    detect_file_type, 
+    get_supported_file_types, 
+    is_supported_file_type,
+    clean_extracted_text
+)
+
 logger = logging.getLogger(__name__)
 
 
-class FileExtractionCache:
-    """文件提取结果缓存"""
-    
-    def __init__(self, ttl: int = 3600):
-        self.cache: Dict[str, Tuple[str, float, Dict]] = {}  # {hash: (text, timestamp, metadata)}
-        self.ttl = ttl
-    
-    def _get_content_hash(self, content: bytes, filename: str) -> str:
-        """生成内容哈希值"""
-        hasher = hashlib.md5()
-        hasher.update(content)
-        hasher.update(filename.encode('utf-8'))
-        return hasher.hexdigest()
-    
-    def get(self, content: bytes, filename: str) -> Optional[Tuple[str, Dict]]:
-        """获取缓存结果"""
-        if not settings.rag_enable_cache:
-            return None
-            
-        content_hash = self._get_content_hash(content, filename)
-        if content_hash in self.cache:
-            text, timestamp, metadata = self.cache[content_hash]
-            if time.time() - timestamp < self.ttl:
-                logger.info(f"使用缓存的文件提取结果: {filename}")
-                return text, metadata
-            else:
-                del self.cache[content_hash]
-        return None
-    
-    def set(self, content: bytes, filename: str, text: str, metadata: Dict):
-        """设置缓存结果"""
-        if not settings.rag_enable_cache:
-            return
-            
-        content_hash = self._get_content_hash(content, filename)
-        self.cache[content_hash] = (text, time.time(), metadata)
-    
-    def clear(self):
-        """清空缓存"""
-        self.cache.clear()
+# FileExtractionCache 已移至 app.utils.cache_utils
 
 
 class FileExtractionService:
@@ -68,7 +37,8 @@ class FileExtractionService:
     def __init__(self):
         self.cache = FileExtractionCache(ttl=settings.rag_cache_ttl)
         
-        # 支持的文件类型映射
+        # 支持的文件类型映射（从FileTypeDetector获取）
+        supported_file_types = get_supported_file_types()
         self.supported_types = {
             # PDF文件
             'application/pdf': self._extract_from_pdf,
@@ -123,7 +93,7 @@ class FileExtractionService:
             
             # 检测文件类型
             if not file_type:
-                file_type = self._detect_file_type(file_content, filename)
+                file_type = detect_file_type(file_content, filename)
             
             logger.info(f"开始提取文件文本: {filename}, 类型: {file_type}, 大小: {len(file_content)} bytes")
             
@@ -137,7 +107,7 @@ class FileExtractionService:
                 text, extraction_metadata = await self._extract_from_text(file_content, filename)
             
             # 基本清理和验证
-            text = self._clean_extracted_text(text)
+            text = clean_extracted_text(text)
             
             # 生成完整的元数据
             metadata = {
@@ -175,31 +145,7 @@ class FileExtractionService:
             fallback_text = f"文档: {filename}\n[文本提取失败: {str(e)}]"
             return fallback_text, metadata
     
-    def _detect_file_type(self, file_content: bytes, filename: str) -> str:
-        """检测文件类型"""
-        try:
-            # 先尝试根据文件名检测
-            mime_type, _ = mimetypes.guess_type(filename)
-            if mime_type:
-                return mime_type
-            
-            # 检查文件签名（魔数）
-            if file_content.startswith(b'%PDF'):
-                return 'application/pdf'
-            elif file_content.startswith(b'PK\x03\x04'):
-                # 检查是否是DOCX文件
-                if b'word/' in file_content[:1024]:
-                    return 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'
-            elif file_content.startswith((b'\xff\xd8\xff', b'\x89PNG')):
-                # JPEG或PNG图片
-                return 'image/jpeg' if file_content.startswith(b'\xff\xd8\xff') else 'image/png'
-            
-            # 默认尝试作为文本
-            return 'text/plain'
-            
-        except Exception as e:
-            logger.warning(f"文件类型检测失败 {filename}: {e}")
-            return 'application/octet-stream'
+    # _detect_file_type 方法已移至 app.utils.file_utils
     
     async def _extract_from_pdf(self, file_content: bytes, filename: str) -> Tuple[str, Dict]:
         """从PDF文件提取文本"""
@@ -548,46 +494,15 @@ class FileExtractionService:
         
         return text, metadata
     
-    def _clean_extracted_text(self, text: str) -> str:
-        """清理提取的文本"""
-        if not text:
-            return ""
-        
-        # 基本清理
-        text = text.strip()
-        
-        # 移除过多的空行
-        import re
-        text = re.sub(r'\n\s*\n\s*\n', '\n\n', text)
-        
-        # 移除行首行尾多余空格
-        lines = []
-        for line in text.split('\n'):
-            lines.append(line.strip())
-        
-        return '\n'.join(lines)
+    # _clean_extracted_text 方法已移至 app.utils.text_processing
     
     def get_supported_file_types(self) -> Dict[str, str]:
         """获取支持的文件类型"""
-        return {
-            'application/pdf': 'PDF文档',
-            'text/plain': '文本文件',
-            'application/vnd.openxmlformats-officedocument.wordprocessingml.document': 'Word文档 (.docx)',
-            'application/msword': 'Word文档 (.doc)',
-            'image/png': 'PNG图片',
-            'image/jpeg': 'JPEG图片',
-            'image/jpg': 'JPG图片',
-            'image/bmp': 'BMP图片',
-            'image/tiff': 'TIFF图片',
-            'image/webp': 'WebP图片',
-            'audio/wav': 'WAV音频文件',
-            'audio/mpeg': 'MP3音频文件',
-            'audio/mp3': 'MP3音频文件'
-        }
+        return get_supported_file_types()
     
     def is_supported_file_type(self, file_type: str) -> bool:
         """检查文件类型是否支持"""
-        return file_type in self.supported_types
+        return is_supported_file_type(file_type)
     
     def clear_cache(self):
         """清空缓存"""

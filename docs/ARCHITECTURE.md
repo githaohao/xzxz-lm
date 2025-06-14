@@ -252,7 +252,6 @@ backend/app/
 ├── services/             # 业务逻辑层
 │   ├── chat_history_service.py    # 聊天历史服务
 │   ├── rag_service.py             # RAG检索服务
-│   ├── user_rag_service.py        # 用户RAG服务
 │   ├── ocr_service.py             # OCR处理服务
 │   ├── file_extraction_service.py # 文件提取服务
 │   ├── funaudio_service.py        # 语音识别服务

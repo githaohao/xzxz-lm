@@ -7,13 +7,10 @@ import logging
 import torch
 import numpy as np
 import asyncio
-import tempfile
-import os
 import json
 from typing import Optional, Dict, Any, List
 from io import BytesIO
 import soundfile as sf
-from pydub import AudioSegment
 
 # FunASR 相关导入
 try:
@@ -22,6 +19,12 @@ try:
     FUNASR_AVAILABLE = True
 except ImportError:
     FUNASR_AVAILABLE = False
+
+# 导入工具模块
+from app.utils import (
+    DeviceManager, AudioProcessor, EmotionAnalyzer, 
+    MessageProcessor, get_timestamp
+)
 
 logger = logging.getLogger(__name__)
 
@@ -35,21 +38,8 @@ class FunAudioLLMService:
         self.model = None
         self.vad_model = None
         
-        # Apple Silicon 优化设备选择
-        if torch.backends.mps.is_available():
-            self.device = "mps"
-            logger.info("🍎 检测到 Apple Silicon，使用 MPS 加速")
-        elif torch.cuda.is_available():
-            self.device = "cuda"
-            logger.info("🚀 检测到 CUDA，使用 GPU 加速")
-        else:
-            self.device = "cpu"
-            logger.info("🔧 使用 CPU 模式")
-            
-        # Apple Silicon 性能优化设置
-        if self.device == "mps":
-            os.environ["PYTORCH_ENABLE_MPS_FALLBACK"] = "1"
-            torch.backends.mps.allow_tf32 = True
+        # 使用DeviceManager获取最优设备
+        self.device = DeviceManager.get_optimal_device()
         
         self.conversation_history: Dict[str, List[Dict[str, Any]]] = {}
         self.max_history_length = 20
@@ -57,6 +47,13 @@ class FunAudioLLMService:
         self.is_initialized = False
         
         logger.info(f"🎤 初始化FunAudioLLM服务，设备: {self.device}")
+        
+        # 设备优化配置
+        optimization_result = DeviceManager.setup_device_optimization(self.device)
+        if optimization_result["success"]:
+            logger.info(f"✅ 设备优化已启用: {optimization_result['optimizations']}")
+        else:
+            logger.warning(f"⚠️ 设备优化配置失败: {optimization_result.get('error', '未知错误')}")
         
         if not FUNASR_AVAILABLE:
             logger.warning("⚠️ FunASR 未安装，请运行: pip install funasr")
@@ -74,8 +71,7 @@ class FunAudioLLMService:
             logger.info("📥 加载SenseVoice模型...")
             
             # 设置模型缓存目录
-            cache_dir = os.getenv("FUNAUDIO_CACHE_DIR", "./models/cache")
-            os.makedirs(cache_dir, exist_ok=True)
+            cache_dir = DeviceManager.get_cache_dir("FUNAUDIO_CACHE_DIR", "./models/cache")
             
             # 加载SenseVoice模型 - Apple Silicon 优化
             model_kwargs = {
@@ -87,16 +83,11 @@ class FunAudioLLMService:
             }
             
             # 根据设备类型优化配置
-            if self.device == "mps":
-                # Apple Silicon MPS 优化 - FunASR 暂不支持 MPS，使用 CPU
-                model_kwargs["device"] = "cpu"
-                logger.info("🍎 Apple Silicon 优化：使用 CPU 模式（FunASR 兼容性）")
-            elif self.device == "cuda":
-                # CUDA 优化
-                model_kwargs["device"] = self.device
-            else:
-                # CPU 模式
-                model_kwargs["device"] = self.device
+            device_config = DeviceManager.get_model_device_config(self.device, "funasr")
+            model_kwargs["device"] = device_config["device"]
+            
+            if device_config.get("fallback_reason"):
+                logger.info(f"🔄 设备回退: {device_config['fallback_reason']}")
             
             self.model = AutoModel(**model_kwargs)
             
@@ -128,7 +119,7 @@ class FunAudioLLMService:
             
             # 预处理音频数据
             try:
-                processed_audio_path = await self._preprocess_audio(audio_data)
+                processed_audio_path = await AudioProcessor.preprocess_audio(audio_data)
             except ValueError as ve:
                 # 音频预处理失败，返回特定错误
                 logger.error(f"❌ 音频预处理失败: {ve}")
@@ -189,8 +180,7 @@ class FunAudioLLMService:
                 
             finally:
                 # 清理临时文件
-                if os.path.exists(processed_audio_path):
-                    os.unlink(processed_audio_path)
+                AudioProcessor.cleanup_temp_file(processed_audio_path)
             
         except Exception as e:
             logger.error(f"❌ FunAudioLLM语音识别失败: {e}")
@@ -201,157 +191,19 @@ class FunAudioLLMService:
                 "recognized_text": ""
             }
     
-    async def _preprocess_audio(self, audio_data: bytes) -> str:
-        """预处理音频数据，转换为模型所需格式"""
-        try:
-            # 验证音频数据
-            if not audio_data or len(audio_data) < 100:  # 至少100字节
-                raise ValueError(f"音频数据太小或为空: {len(audio_data) if audio_data else 0} bytes")
-            
-            logger.info(f"🎵 开始音频预处理，数据大小: {len(audio_data)} bytes")
-            
-            # 创建临时文件
-            temp_input = tempfile.NamedTemporaryFile(delete=False, suffix='.webm')
-            temp_output = tempfile.NamedTemporaryFile(delete=False, suffix='.wav')
-            
-            try:
-                # 写入原始音频数据
-                temp_input.write(audio_data)
-                temp_input.close()
-                
-                # 验证文件是否写入成功
-                if not os.path.exists(temp_input.name) or os.path.getsize(temp_input.name) == 0:
-                    raise ValueError("临时音频文件创建失败")
-                
-                logger.info(f"📁 临时文件创建成功: {temp_input.name} ({os.path.getsize(temp_input.name)} bytes)")
-                
-                # 使用 pydub 转换音频格式
-                try:
-                    audio = AudioSegment.from_file(temp_input.name)
-                    logger.info(f"🎵 音频信息: 时长={len(audio)}ms, 采样率={audio.frame_rate}Hz, 声道={audio.channels}")
-                    
-                    # 检查音频时长
-                    if len(audio) < 100:  # 至少100毫秒
-                        raise ValueError(f"音频时长太短: {len(audio)}ms")
-                    
-                    # 转换为 16kHz 单声道 WAV
-                    audio = audio.set_frame_rate(16000).set_channels(1)
-                    audio.export(temp_output.name, format="wav")
-                    
-                    temp_output.close()
-                    
-                    # 验证输出文件
-                    if not os.path.exists(temp_output.name) or os.path.getsize(temp_output.name) == 0:
-                        raise ValueError("音频转换失败，输出文件为空")
-                    
-                    logger.info(f"✅ 音频转换成功: {temp_output.name} ({os.path.getsize(temp_output.name)} bytes)")
-                    
-                except Exception as audio_error:
-                    logger.error(f"❌ pydub音频处理失败: {audio_error}")
-                    # 尝试直接使用原始数据
-                    temp_output.close()
-                    with open(temp_output.name, 'wb') as f:
-                        f.write(audio_data)
-                    logger.info("🔄 使用原始音频数据作为备选方案")
-                
-            finally:
-                # 清理输入临时文件
-                if os.path.exists(temp_input.name):
-                    os.unlink(temp_input.name)
-            
-            return temp_output.name
-            
-        except Exception as e:
-            logger.error(f"❌ 音频预处理失败: {e}")
-            # 如果预处理完全失败，返回错误而不是创建无效文件
-            raise ValueError(f"音频预处理失败: {str(e)}")
+
     
     def _extract_emotion_info(self, processed_text: str) -> Dict[str, Any]:
         """从处理后的文本中提取情感信息"""
-        try:
-            # SenseVoice 的情感标记格式: <|HAPPY|>, <|SAD|>, <|ANGRY|>, etc.
-            emotions = {
-                "HAPPY": "开心",
-                "SAD": "悲伤", 
-                "ANGRY": "愤怒",
-                "SURPRISED": "惊讶",
-                "FEARFUL": "恐惧",
-                "DISGUSTED": "厌恶",
-                "NEUTRAL": "中性"
-            }
-            
-            detected_emotions = []
-            for emotion_en, emotion_zh in emotions.items():
-                if f"<|{emotion_en}|>" in processed_text:
-                    detected_emotions.append({
-                        "emotion": emotion_en.lower(),
-                        "emotion_zh": emotion_zh,
-                        "confidence": 0.8  # SenseVoice 不提供具体置信度
-                    })
-            
-            if detected_emotions:
-                return {
-                    "detected": True,
-                    "primary": detected_emotions[0]["emotion_zh"],
-                    "emotions": detected_emotions
-                }
-            else:
-                return {
-                    "detected": False,
-                    "primary": "中性",
-                    "emotions": []
-                }
-                
-        except Exception as e:
-            logger.error(f"❌ 情感信息提取失败: {e}")
-            return {"detected": False, "primary": "未知", "emotions": []}
+        return EmotionAnalyzer.extract_sensevoice_emotion_info(processed_text)
     
     def _extract_event_info(self, processed_text: str) -> List[str]:
         """从处理后的文本中提取声学事件信息"""
-        try:
-            # SenseVoice 的事件标记格式: <|MUSIC|>, <|APPLAUSE|>, etc.
-            events = {
-                "MUSIC": "音乐",
-                "APPLAUSE": "掌声",
-                "LAUGHTER": "笑声",
-                "CRYING": "哭声",
-                "COUGHING": "咳嗽",
-                "SNEEZING": "打喷嚏",
-                "BREATHING": "呼吸声",
-                "FOOTSTEPS": "脚步声",
-                "DOOR": "门声",
-                "PHONE": "电话铃声",
-                "ALARM": "警报声",
-                "SILENCE": "静音"
-            }
-            
-            detected_events = []
-            for event_en, event_zh in events.items():
-                if f"<|{event_en}|>" in processed_text:
-                    detected_events.append(event_zh)
-            
-            return detected_events
-            
-        except Exception as e:
-            logger.error(f"❌ 声学事件提取失败: {e}")
-            return []
+        return EmotionAnalyzer.extract_sensevoice_event_info(processed_text)
     
     def _clean_text(self, processed_text: str) -> str:
         """清理文本，移除特殊标记"""
-        try:
-            import re
-            
-            # 移除情感标记
-            text = re.sub(r'<\|[A-Z_]+\|>', '', processed_text)
-            
-            # 移除多余的空格
-            text = re.sub(r'\s+', ' ', text).strip()
-            
-            return text
-            
-        except Exception as e:
-            logger.error(f"❌ 文本清理失败: {e}")
-            return processed_text
+        return EmotionAnalyzer.clean_sensevoice_text(processed_text)
     
     async def get_health_status(self) -> Dict[str, Any]:
         """获取服务健康状态"""
@@ -360,9 +212,8 @@ class FunAudioLLMService:
             if not self.is_initialized:
                 await self.initialize()
             
-            # 检查 CUDA 可用性
-            cuda_available = torch.cuda.is_available()
-            cuda_device_count = torch.cuda.device_count() if cuda_available else 0
+            # 获取设备信息
+            device_info = DeviceManager.get_device_info()
             
             # 检查模型状态
             model_loaded = self.model is not None
@@ -392,8 +243,7 @@ class FunAudioLLMService:
                 ],
                 "system_info": {
                     "funasr_available": FUNASR_AVAILABLE,
-                    "cuda_available": cuda_available,
-                    "cuda_device_count": cuda_device_count,
+                    **device_info,
                     "torch_version": torch.__version__
                 },
                 "message": "FunAudioLLM SenseVoice 服务运行正常" if model_loaded else "模型未加载",
@@ -542,8 +392,7 @@ class FunAudioLLMService:
                 "available": True,
                 "model_name": self.model_name,
                 "device": self.device,
-                "cuda_available": torch.cuda.is_available(),
-                "mps_available": torch.backends.mps.is_available() if hasattr(torch.backends, 'mps') else False,
+                **DeviceManager.get_device_info(),
                 "lm_studio_available": lm_studio_available,
                 "audio_model": {
                     "name": "SenseVoice",
@@ -688,26 +537,7 @@ class FunAudioLLMService:
         """
         模糊匹配唤醒词，处理语音识别的不准确性
         """
-        # 移除空格和标点符号
-        import re
-        wake_word_clean = re.sub(r'[^\w]', '', wake_word)
-        recognized_clean = re.sub(r'[^\w]', '', recognized_text)
-        
-        # 检查是否包含主要字符
-        if "小智" in recognized_clean or "智能" in recognized_clean:
-            return True
-        
-        # 检查字符相似度
-        if len(wake_word_clean) > 0:
-            match_count = 0
-            for char in wake_word_clean:
-                if char in recognized_clean:
-                    match_count += 1
-            
-            similarity = match_count / len(wake_word_clean)
-            return similarity >= 0.6  # 60%相似度阈值
-        
-        return False
+        return EmotionAnalyzer.fuzzy_match_wake_word(wake_word, recognized_text)
 
 # 创建全局服务实例
 funaudio_service = FunAudioLLMService() 

@@ -6,6 +6,9 @@ from app.config import settings
 from app.models.schemas import ChatMessage, ChatRequest
 import logging
 
+# 导入工具模块
+from app.utils import MessageProcessor, get_timestamp, safe_str_convert
+
 logger = logging.getLogger(__name__)
 
 class LMStudioService:
@@ -29,35 +32,7 @@ class LMStudioService:
     
     def _prepare_messages(self, request: ChatRequest) -> List[Dict[str, str]]:
         """准备消息格式供LM Studio使用"""
-        messages = []
-        
-        # 添加系统提示
-        messages.append({
-            "role": "system",
-            "content": "你是一个智能助手，擅长处理文本、图像和语音等多模态内容。请用中文回答用户问题，保持友善和专业。"
-        })
-        
-        # 添加历史消息
-        for msg in request.history:
-            role = "user" if msg.is_user else "assistant"
-            content = msg.content
-            
-            # 如果是文件消息，添加文件信息
-            if msg.file_name:
-                content = f"[文件: {msg.file_name}]\n{content}"
-                
-            messages.append({
-                "role": role,
-                "content": content
-            })
-        
-        # 添加当前消息
-        messages.append({
-            "role": "user",
-            "content": request.message
-        })
-        
-        return messages
+        return MessageProcessor.prepare_lm_studio_messages(request)
     
     async def chat_completion(self, request: ChatRequest) -> str:
         """发送聊天请求到LM Studio"""

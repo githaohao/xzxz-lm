@@ -3,11 +3,15 @@ import torch
 import numpy as np
 from typing import Optional, Dict, Any, List
 from io import BytesIO
-import tempfile
-import os
 import asyncio
 from funasr import AutoModel
 from funasr.utils.postprocess_utils import rich_transcription_postprocess
+
+# 导入工具模块
+from app.utils import (
+    DeviceManager, AudioProcessor, EmotionAnalyzer, 
+    MessageProcessor, get_timestamp
+)
 
 logger = logging.getLogger(__name__)
 
@@ -20,13 +24,20 @@ class FunAudioLLMService:
     
     def __init__(self):
         self.model = None
-        self.device = "cuda" if torch.cuda.is_available() else "cpu"
+        self.device = DeviceManager.get_optimal_device()
         
         # 对话历史管理
         self.conversation_history: Dict[str, List[Dict[str, Any]]] = {}
         self.max_history_length = 20
         
         logger.info(f"🎤 初始化FunAudioLLM服务，设备: {self.device}")
+        
+        # 设备优化配置
+        optimization_result = DeviceManager.setup_device_optimization(self.device)
+        if optimization_result["success"]:
+            logger.info(f"✅ 设备优化已启用: {optimization_result['optimizations']}")
+        else:
+            logger.warning(f"⚠️ 设备优化配置失败: {optimization_result.get('error', '未知错误')}")
         
     async def initialize(self):
         """初始化SenseVoice模型"""
@@ -51,14 +62,7 @@ class FunAudioLLMService:
     
     def _save_audio_temp(self, audio_data: bytes) -> str:
         """保存音频数据到临时文件"""
-        try:
-            temp_file = tempfile.NamedTemporaryFile(delete=False, suffix='.wav')
-            temp_file.write(audio_data)
-            temp_file.close()
-            return temp_file.name
-        except Exception as e:
-            logger.error(f"❌ 保存临时音频文件失败: {e}")
-            raise
+        return AudioProcessor.save_audio_temp(audio_data)
     
     async def voice_recognition(self, audio_data: bytes, language: str = "auto") -> Dict[str, Any]:
         """
@@ -110,8 +114,7 @@ class FunAudioLLMService:
                 
             finally:
                 # 清理临时文件
-                if os.path.exists(temp_audio_path):
-                    os.unlink(temp_audio_path)
+                AudioProcessor.cleanup_temp_file(temp_audio_path)
             
         except Exception as e:
             logger.error(f"❌ FunAudioLLM语音识别失败: {e}")
@@ -143,12 +146,9 @@ class FunAudioLLMService:
                 self.conversation_history[session_id] = []
             
             # 构建包含情感信息的用户消息
-            user_message = {
-                "role": "user",
-                "content": recognized_text,
-                "emotion": emotion_info,
-                "timestamp": self._get_timestamp()
-            }
+            user_message = MessageProcessor.format_user_message(
+                recognized_text, emotion_info, get_timestamp()
+            )
             
             # 添加到历史
             self.conversation_history[session_id].append(user_message)
@@ -158,16 +158,15 @@ class FunAudioLLMService:
             response_text = self._generate_response(recognized_text, emotion_info)
             
             # 添加AI回复到历史
-            ai_message = {
-                "role": "assistant", 
-                "content": response_text,
-                "timestamp": self._get_timestamp()
-            }
+            ai_message = MessageProcessor.format_assistant_message(
+                response_text, get_timestamp()
+            )
             self.conversation_history[session_id].append(ai_message)
             
             # 限制历史长度
-            if len(self.conversation_history[session_id]) > self.max_history_length * 2:
-                self.conversation_history[session_id] = self.conversation_history[session_id][-self.max_history_length * 2:]
+            self.conversation_history[session_id] = MessageProcessor.limit_conversation_history(
+                self.conversation_history[session_id], self.max_history_length
+            )
             
             logger.info(f"✅ FunAudioLLM语音聊天成功")
             
@@ -194,52 +193,15 @@ class FunAudioLLMService:
     
     def _extract_emotion_info(self, text: str) -> Dict[str, Any]:
         """提取情感信息"""
-        emotions = {
-            "😊": "happy",
-            "😡": "angry", 
-            "😔": "sad",
-            "😀": "laugh",
-            "😭": "cry"
-        }
-        
-        detected_emotions = []
-        for emoji, emotion in emotions.items():
-            if emoji in text:
-                detected_emotions.append(emotion)
-        
-        return {
-            "detected": detected_emotions,
-            "primary": detected_emotions[0] if detected_emotions else "neutral"
-        }
+        return EmotionAnalyzer.extract_emotion_info(text)
     
     def _extract_event_info(self, text: str) -> List[str]:
         """提取声学事件信息"""
-        events = {
-            "🎼": "music",
-            "👏": "applause", 
-            "🤧": "cough_sneeze",
-            "😭": "crying",
-            "😀": "laughter"
-        }
-        
-        detected_events = []
-        for emoji, event in events.items():
-            if emoji in text:
-                detected_events.append(event)
-        
-        return detected_events
+        return EmotionAnalyzer.extract_event_info(text)
     
     def _clean_text(self, text: str) -> str:
         """清理文本，移除情感和事件标记"""
-        import re
-        # 移除emoji
-        emoji_pattern = re.compile("["
-                                 u"\U0001F600-\U0001F64F"  # emoticons
-                                 u"\U0001F300-\U0001F5FF"  # symbols & pictographs
-                                 u"\U0001F680-\U0001F6FF"  # transport & map symbols
-                                 u"\U0001F1E0-\U0001F1FF"  # flags (iOS)
-                                 "]+", flags=re.UNICODE)
-        return emoji_pattern.sub('', text).strip()
+        return EmotionAnalyzer.clean_text(text)
     
     def _generate_response(self, user_text: str, emotion_info: Dict[str, Any]) -> str:
         """生成简单的回复（可扩展接入其他LLM）"""
@@ -254,10 +216,7 @@ class FunAudioLLMService:
         else:
             return f"我听到你说：「{user_text}」。有什么我可以帮助你的吗？"
     
-    def _get_timestamp(self) -> float:
-        """获取当前时间戳"""
-        import time
-        return time.time()
+
     
     async def clear_conversation_history(self, session_id: str = "default") -> bool:
         """清除指定会话的对话历史"""

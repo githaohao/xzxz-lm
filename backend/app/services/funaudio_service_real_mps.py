@@ -12,6 +12,9 @@ import logging
 from typing import Dict, Any, Optional, List
 from pathlib import Path
 
+# 导入工具模块
+from app.utils import DeviceManager, EmotionAnalyzer, get_timestamp
+
 # 配置日志
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -21,28 +24,22 @@ class FunAudioServiceMPS:
     
     def __init__(self):
         self.model = None
-        self.device = self._get_optimal_device()
+        self.device = DeviceManager.get_optimal_device()
         self.model_cache_dir = os.getenv("FUNAUDIO_CACHE_DIR", "./models/cache")
         self.sessions = {}  # 会话管理
         
         logger.info(f"FunAudioLLM 服务初始化 - 设备: {self.device}")
         
-        # Apple Silicon 特定优化
-        if self.device == "mps":
-            # 启用 MPS 回退机制
-            os.environ["PYTORCH_ENABLE_MPS_FALLBACK"] = "1"
-            # 设置内存使用比例
-            torch.mps.set_per_process_memory_fraction(0.8)
-            logger.info("✅ Apple Silicon MPS 优化已启用")
+        # 设备优化配置
+        optimization_result = DeviceManager.setup_device_optimization(self.device)
+        if optimization_result["success"]:
+            logger.info(f"✅ {self.device.upper()} 设备优化已启用: {optimization_result['optimizations']}")
+        else:
+            logger.warning(f"⚠️ 设备优化配置失败: {optimization_result.get('error', '未知错误')}")
     
     def _get_optimal_device(self) -> str:
-        """获取最优设备"""
-        if torch.cuda.is_available():
-            return "cuda"
-        elif hasattr(torch.backends, 'mps') and torch.backends.mps.is_available():
-            return "mps"
-        else:
-            return "cpu"
+        """获取最优设备（已迁移到DeviceManager）"""
+        return DeviceManager.get_optimal_device()
     
     async def initialize(self) -> bool:
         """初始化语音识别模型"""
@@ -137,21 +134,13 @@ class FunAudioServiceMPS:
             }
     
     def _analyze_emotion(self, text: str) -> str:
-        """简单的情感分析"""
-        positive_words = ["开心", "高兴", "好", "棒", "喜欢", "爱", "满意"]
-        negative_words = ["难过", "生气", "不好", "讨厌", "愤怒", "失望"]
-        
-        if any(word in text for word in positive_words):
-            return "positive"
-        elif any(word in text for word in negative_words):
-            return "negative"
-        else:
-            return "neutral"
+        """简单的情感分析（已迁移到EmotionAnalyzer）"""
+        return EmotionAnalyzer.analyze_emotion(text)
     
     async def create_session(self, session_id: str) -> Dict[str, Any]:
         """创建新会话"""
         self.sessions[session_id] = {
-            "created_at": torch.backends.mps.current_allocated_memory() if self.device == "mps" else 0,
+            "created_at": get_timestamp(),
             "messages": [],
             "total_duration": 0
         }
@@ -168,11 +157,8 @@ class FunAudioServiceMPS:
         if session_id in self.sessions:
             del self.sessions[session_id]
         
-        # Apple Silicon 内存清理
-        if self.device == "mps":
-            torch.mps.empty_cache()
-        elif self.device == "cuda":
-            torch.cuda.empty_cache()
+        # 设备缓存清理
+        DeviceManager.clear_device_cache(self.device)
         
         return {
             "success": True,
@@ -194,18 +180,8 @@ class FunAudioServiceMPS:
         }
     
     def _get_memory_usage(self) -> str:
-        """获取内存使用情况"""
-        try:
-            if self.device == "mps":
-                allocated = torch.mps.current_allocated_memory() / 1024 / 1024  # MB
-                return f"{allocated:.1f} MB (MPS)"
-            elif self.device == "cuda":
-                allocated = torch.cuda.memory_allocated() / 1024 / 1024  # MB
-                return f"{allocated:.1f} MB (CUDA)"
-            else:
-                return "CPU 模式"
-        except:
-            return "未知"
+        """获取内存使用情况（已迁移到DeviceManager）"""
+        return DeviceManager.get_memory_usage(self.device)
     
     async def health_check(self) -> Dict[str, Any]:
         """健康检查"""
