@@ -93,7 +93,10 @@ class VoiceProcessor:
 
     @staticmethod
     def split_text_for_tts(text: str) -> List[str]:
-        """智能文本分块，用于TTS合成"""
+        """
+        智能文本分块，用于TTS合成
+        返回可以立即合成的完整文本块
+        """
         if not text.strip():
             return []
         
@@ -103,10 +106,58 @@ class VoiceProcessor:
         if not clean_text.strip():
             return []
         
-        # 按句子分割的正则表达式
-        sentence_endings = r'[.!?。！？；;]\s*'
-        sentences = re.split(sentence_endings, clean_text)
+        # 按句子分割的正则表达式（包含中英文句号）
+        # 使用更精确的分割方式
+        sentences = []
         
+        # 先按主要句子结束符分割
+        sentence_pattern = r'([.!?。！？；;])\s*'
+        parts = re.split(sentence_pattern, clean_text)
+        
+        # 重新组合句子（将标点符号附加到前面的句子）
+        current_sentence = ""
+        for i in range(len(parts)):
+            if i % 2 == 0:  # 文本部分
+                current_sentence += parts[i]
+            else:  # 标点符号部分
+                current_sentence += parts[i]
+                if current_sentence.strip():
+                    sentences.append(current_sentence.strip())
+                current_sentence = ""
+        
+        # 处理最后一个没有标点的部分
+        if current_sentence.strip():
+            sentences.append(current_sentence.strip())
+        
+        # 如果没有找到句子分隔符，尝试按逗号分割
+        if not sentences and clean_text.strip():
+            # 如果文本较短且没有句号，直接返回
+            if len(clean_text) <= 100:
+                return [clean_text.strip()]
+            else:
+                # 文本较长但没有句号，按逗号分割
+                comma_pattern = r'([,，])\s*'
+                comma_parts = re.split(comma_pattern, clean_text)
+                
+                current_part = ""
+                for i in range(len(comma_parts)):
+                    if i % 2 == 0:  # 文本部分
+                        current_part += comma_parts[i]
+                    else:  # 逗号部分
+                        current_part += comma_parts[i]
+                        if current_part.strip():
+                            sentences.append(current_part.strip())
+                        current_part = ""
+                
+                # 处理最后一个没有逗号的部分
+                if current_part.strip():
+                    sentences.append(current_part.strip())
+                
+                # 如果还是没有分割出句子，直接返回原文本
+                if not sentences:
+                    sentences = [clean_text.strip()]
+        
+        # 对于流式TTS，优化分块策略以提高语音流畅度
         chunks = []
         current_chunk = ""
         
@@ -115,28 +166,79 @@ class VoiceProcessor:
             if not sentence:
                 continue
                 
-            # 检查当前块+新句子的长度
-            potential_chunk = current_chunk + sentence
-            
-            if len(potential_chunk) <= 100:  # 最大块大小
-                current_chunk = potential_chunk
-            else:
-                # 当前块达到合适大小，添加到结果中
+            # 如果句子本身就很长（>120字符），直接作为一个块
+            if len(sentence) > 120:
+                # 先处理当前累积的块
                 if current_chunk:
-                    chunks.append(current_chunk.strip())
-                current_chunk = sentence
+                    chunks.append(current_chunk)
+                    current_chunk = ""
+                # 长句子单独作为一个块
+                chunks.append(sentence)
+            # 如果句子较短（<40字符），尝试与前面的句子合并
+            elif len(sentence) < 40:
+                if current_chunk:
+                    potential_chunk = current_chunk + " " + sentence
+                    # 合并后的块不超过150字符
+                    if len(potential_chunk) <= 150:
+                        current_chunk = potential_chunk
+                    else:
+                        # 合并后太长，先输出当前块
+                        chunks.append(current_chunk)
+                        current_chunk = sentence
+                else:
+                    # 没有当前块，开始新的块
+                    current_chunk = sentence
+            else:
+                # 中等长度的句子（40-120字符）
+                if current_chunk:
+                    # 如果当前块较短，尝试合并
+                    if len(current_chunk) < 60:
+                        potential_chunk = current_chunk + " " + sentence
+                        if len(potential_chunk) <= 150:
+                            current_chunk = potential_chunk
+                        else:
+                            # 合并后太长，分别输出
+                            chunks.append(current_chunk)
+                            chunks.append(sentence)
+                            current_chunk = ""
+                    else:
+                        # 当前块已经足够长，分别输出
+                        chunks.append(current_chunk)
+                        chunks.append(sentence)
+                        current_chunk = ""
+                else:
+                    # 没有当前块，直接输出
+                    chunks.append(sentence)
         
-        # 处理最后一个不完整的块
-        # 只有在原始文本以句号结尾时才处理剩余部分
-        if current_chunk and (clean_text.rstrip().endswith('.') or 
-                             clean_text.rstrip().endswith('!') or 
-                             clean_text.rstrip().endswith('?') or
-                             clean_text.rstrip().endswith('。') or
-                             clean_text.rstrip().endswith('！') or
-                             clean_text.rstrip().endswith('？')):
-            chunks.append(current_chunk.strip())
+        # 添加最后一个块（如果存在）
+        if current_chunk:
+            chunks.append(current_chunk)
         
-        return chunks
+        # 过滤掉空块和只包含标点符号的块，并确保最小长度
+        valid_chunks = []
+        for chunk in chunks:
+            chunk = chunk.strip()
+            if chunk and re.search(r'[\w\u4e00-\u9fff]', chunk):  # 包含字母或中文字符
+                # 确保块的最小长度（至少8个字符或3个中文字符）
+                text_content = re.sub(r'[^\w\u4e00-\u9fff]', '', chunk)
+                if len(text_content) >= 3:  # 至少3个有效字符
+                    valid_chunks.append(chunk)
+                else:
+                    # 太短的块尝试与前一个块合并
+                    if valid_chunks:
+                        last_chunk = valid_chunks[-1]
+                        merged_chunk = last_chunk + " " + chunk
+                        if len(merged_chunk) <= 150:
+                            valid_chunks[-1] = merged_chunk
+                        else:
+                            # 合并后太长，保持原样（但这种情况应该很少）
+                            valid_chunks.append(chunk)
+                    else:
+                        # 没有前一个块可以合并，但如果内容有意义就保留
+                        if len(chunk.strip()) >= 2:
+                            valid_chunks.append(chunk)
+        
+        return valid_chunks
 
     @staticmethod
     async def synthesize_speech_chunk(text: str) -> Optional[bytes]:

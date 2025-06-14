@@ -223,6 +223,8 @@ export class AudioPlayQueue {
       // 创建音频元素
       const audio = new Audio(audioUrl)
       audio.volume = 0.8
+      // 预加载音频以减少播放延迟
+      audio.preload = 'auto'
 
       // 添加到队列
       this.queue.push({ audio, text, chunkId })
@@ -261,8 +263,10 @@ export class AudioPlayQueue {
         this.onPlayEnd?.(text, chunkId)
         // 清理资源
         URL.revokeObjectURL(audio.src)
-        // 播放下一个
-        this.playNext()
+        // 添加短暂延迟以确保音频完全播放完毕，然后播放下一个
+        setTimeout(() => {
+          this.playNext()
+        }, 50) // 50ms的小延迟，确保音频播放完整
       }
 
       audio.onerror = (event) => {
