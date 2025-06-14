@@ -7,7 +7,7 @@ from app.models.schemas import ChatMessage, ChatRequest
 import logging
 
 # 导入工具模块
-from app.utils import MessageProcessor, get_timestamp, safe_str_convert
+from app.utils import MessageProcessor, get_timestamp, safe_str_convert, prepare_lm_studio_messages
 
 logger = logging.getLogger(__name__)
 
@@ -32,7 +32,7 @@ class LMStudioService:
     
     def _prepare_messages(self, request: ChatRequest) -> List[Dict[str, str]]:
         """准备消息格式供LM Studio使用"""
-        return MessageProcessor.prepare_lm_studio_messages(request)
+        return prepare_lm_studio_messages(request)
     
     async def chat_completion(self, request: ChatRequest) -> str:
         """发送聊天请求到LM Studio"""

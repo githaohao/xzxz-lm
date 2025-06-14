@@ -23,7 +23,10 @@ except ImportError:
 # 导入工具模块
 from app.utils import (
     DeviceManager, AudioProcessor, EmotionAnalyzer, 
-    MessageProcessor, get_timestamp
+    MessageProcessor, get_timestamp,
+    extract_sensevoice_emotion_info,
+    extract_sensevoice_event_info,
+    clean_sensevoice_text
 )
 
 logger = logging.getLogger(__name__)
@@ -195,15 +198,15 @@ class FunAudioLLMService:
     
     def _extract_emotion_info(self, processed_text: str) -> Dict[str, Any]:
         """从处理后的文本中提取情感信息"""
-        return EmotionAnalyzer.extract_sensevoice_emotion_info(processed_text)
+        return extract_sensevoice_emotion_info(processed_text)
     
     def _extract_event_info(self, processed_text: str) -> List[str]:
         """从处理后的文本中提取声学事件信息"""
-        return EmotionAnalyzer.extract_sensevoice_event_info(processed_text)
+        return extract_sensevoice_event_info(processed_text)
     
     def _clean_text(self, processed_text: str) -> str:
         """清理文本，移除特殊标记"""
-        return EmotionAnalyzer.clean_sensevoice_text(processed_text)
+        return clean_sensevoice_text(processed_text)
     
     async def get_health_status(self) -> Dict[str, Any]:
         """获取服务健康状态"""
@@ -537,7 +540,7 @@ class FunAudioLLMService:
         """
         模糊匹配唤醒词，处理语音识别的不准确性
         """
-        return EmotionAnalyzer.fuzzy_match_wake_word(wake_word, recognized_text)
+        return EmotionAnalyzer.fuzzy_match(wake_word, recognized_text)
 
 # 创建全局服务实例
 funaudio_service = FunAudioLLMService() 

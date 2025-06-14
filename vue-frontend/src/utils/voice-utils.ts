@@ -43,8 +43,46 @@ export function formatFileSize(bytes: number): string {
 export function cleanTextForSpeech(text: string): string {
   if (!text) return ''
   
-  // 移除思考标签及其内容（包括不完整的标签）
-  let cleaned = text.replace(/<think>[\s\S]*?<\/think>/g, '')
+  // 移除思考标签及其内容（处理嵌套标签）
+  // 使用循环处理嵌套的思考标签
+  let cleaned = text
+  while (cleaned.includes('<think>')) {
+    // 找到第一个开始标签
+    const startPos = cleaned.indexOf('<think>')
+    if (startPos === -1) break
+    
+    // 从开始标签位置开始，找到匹配的结束标签
+    // 需要处理嵌套情况
+    let pos = startPos + 7 // '<think>'.length
+    let depth = 1
+    let endPos = -1
+    
+    while (pos < cleaned.length && depth > 0) {
+      if (cleaned.substring(pos, pos + 7) === '<think>') {
+        depth++
+        pos += 7
+      } else if (cleaned.substring(pos, pos + 8) === '</think>') {
+        depth--
+        if (depth === 0) {
+          endPos = pos + 8
+          break
+        }
+        pos += 8
+      } else {
+        pos++
+      }
+    }
+    
+    if (endPos !== -1) {
+      // 找到匹配的结束标签，移除整个标签及其内容
+      cleaned = cleaned.substring(0, startPos) + cleaned.substring(endPos)
+    } else {
+      // 没有找到匹配的结束标签，移除从开始标签到文本末尾的所有内容
+      cleaned = cleaned.substring(0, startPos)
+      break
+    }
+  }
+  
   // 移除不完整的思考标签（只有开始标签的情况）
   cleaned = cleaned.replace(/<think>.*$/g, '')
   

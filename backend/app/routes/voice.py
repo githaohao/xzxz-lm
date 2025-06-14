@@ -683,39 +683,73 @@ async def voice_chat_stream(
                         # 发送AI生成的文字片段
                         yield f"data: {json.dumps({'type': 'ai_text', 'content': ai_chunk})}\n\n"
                         
+                        # 在进行TTS分块前，先清理思考标签
+                        # 这是额外的安全措施，确保思考标签不会进入TTS系统
+                        cleaned_buffer = clean_text_for_speech(text_buffer)
+                        
                         # 检查是否可以进行TTS分块
-                        chunks_to_synthesize = split_text_for_tts(text_buffer)
+                        chunks_to_synthesize = split_text_for_tts(cleaned_buffer)
                         
                         if chunks_to_synthesize:
                             # 对每个完整的文本块进行TTS
                             for chunk_text in chunks_to_synthesize:
                                 try:
+                                    # 再次确保文本清理（双重保险）
+                                    final_clean_text = clean_text_for_speech(chunk_text)
+                                    
+                                    if not final_clean_text.strip():
+                                        logger.info("跳过空的文本块")
+                                        # 从原始缓冲区移除已处理的文本
+                                        text_buffer = text_buffer.replace(chunk_text, "", 1).strip()
+                                        continue
+                                    
                                     # TTS合成
-                                    audio_buffer = await synthesize_speech_chunk(chunk_text)
+                                    audio_buffer = await synthesize_speech_chunk(final_clean_text)
                                     if audio_buffer:
                                         # 将音频数据编码为base64
                                         audio_base64 = base64.b64encode(audio_buffer).decode('utf-8')
                                         
                                         # 发送音频数据
-                                        yield f"data: {json.dumps({'type': 'audio_chunk', 'audio': audio_base64, 'text': chunk_text, 'chunk_id': chunk_counter})}\n\n"
+                                        yield f"data: {json.dumps({'type': 'audio_chunk', 'audio': audio_base64, 'text': final_clean_text, 'chunk_id': chunk_counter})}\n\n"
                                         chunk_counter += 1
                                         
-                                        # 从缓冲区移除已处理的文本
-                                        text_buffer = text_buffer.replace(chunk_text, "", 1).strip()
+                                        logger.info(f"✅ 音频块 {chunk_counter-1} 发送成功: {len(audio_buffer)} 字节")
+                                    else:
+                                        logger.info(f"⚠️ 音频块TTS跳过: {repr(final_clean_text[:50])}")
+                                        # 即使TTS失败，也发送一个状态消息
+                                        yield f"data: {json.dumps({'type': 'tts_skip', 'message': '跳过无效文本块', 'text': final_clean_text})}\n\n"
+                                    
+                                    # 从原始缓冲区移除已处理的文本
+                                    # 使用原始chunk_text进行移除，保持缓冲区状态正确
+                                    text_buffer = text_buffer.replace(chunk_text, "", 1).strip()
                                         
                                 except Exception as e:
-                                    logger.error(f"TTS合成失败: {e}")
-                                    yield f"data: {json.dumps({'type': 'tts_error', 'message': f'语音合成失败: {str(e)}'})}\n\n"
+                                    logger.error(f"❌ TTS合成异常: {e}, 文本: {repr(chunk_text[:100])}")
+                                    yield f"data: {json.dumps({'type': 'tts_error', 'message': f'语音合成失败: {str(e)}', 'text': chunk_text[:100]})}\n\n"
+                                    # 即使出错，也要移除已处理的文本，继续处理下一个块
+                                    text_buffer = text_buffer.replace(chunk_text, "", 1).strip()
                 
                 # 处理剩余的文本缓冲区
                 if text_buffer.strip():
                     try:
-                        audio_buffer = await synthesize_speech_chunk(text_buffer)
-                        if audio_buffer:
-                            audio_base64 = base64.b64encode(audio_buffer).decode('utf-8')
-                            yield f"data: {json.dumps({'type': 'audio_chunk', 'audio': audio_base64, 'text': text_buffer, 'chunk_id': chunk_counter})}\n\n"
+                        # 清理剩余文本
+                        final_clean_text = clean_text_for_speech(text_buffer)
+                        
+                        if final_clean_text.strip():
+                            logger.info(f"🔚 处理剩余文本: {repr(final_clean_text[:100])}")
+                            audio_buffer = await synthesize_speech_chunk(final_clean_text)
+                            if audio_buffer:
+                                audio_base64 = base64.b64encode(audio_buffer).decode('utf-8')
+                                yield f"data: {json.dumps({'type': 'audio_chunk', 'audio': audio_base64, 'text': final_clean_text, 'chunk_id': chunk_counter})}\n\n"
+                                logger.info(f"✅ 最终音频块发送成功: {len(audio_buffer)} 字节")
+                            else:
+                                logger.info(f"⚠️ 最终文本块TTS跳过: {repr(final_clean_text[:50])}")
+                                yield f"data: {json.dumps({'type': 'tts_skip', 'message': '跳过最终无效文本块', 'text': final_clean_text})}\n\n"
+                        else:
+                            logger.info("剩余文本清理后为空，跳过TTS合成")
                     except Exception as e:
-                        logger.error(f"最终TTS合成失败: {e}")
+                        logger.error(f"❌ 最终TTS合成失败: {e}, 原始文本: {repr(text_buffer[:200])}")
+                        yield f"data: {json.dumps({'type': 'tts_error', 'message': f'最终语音合成失败: {str(e)}', 'text': text_buffer[:100]})}\n\n"
                 
                 # 发送完成信号
                 yield f"data: {json.dumps({'type': 'complete'})}\n\n"

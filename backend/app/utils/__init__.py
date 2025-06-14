@@ -77,6 +77,8 @@ from .audio_utils import (
 from .device_utils import (
     DeviceManager,
     get_optimal_device,
+    get_cache_dir,
+    get_model_device_config,
     setup_mps_optimization,
     setup_device_optimization,
     get_memory_usage,
@@ -191,6 +193,8 @@ __all__ = [
     # 设备管理
     'DeviceManager',
     'get_optimal_device',
+    'get_cache_dir',
+    'get_model_device_config',
     'setup_mps_optimization',
     'setup_device_optimization',
     'get_memory_usage',
