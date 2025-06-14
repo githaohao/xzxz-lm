@@ -20,7 +20,7 @@ class Settings(BaseSettings):
     # 文件上传配置
     upload_dir: str = "uploads"
     max_file_size: int = 50 * 1024 * 1024  # 50MB
-    allowed_file_types: str = ".pdf,.png,.jpg,.jpeg,.wav,.mp3"  # 改为字符串格式
+    allowed_file_types: str = ".pdf,.png,.jpg,.jpeg,.wav,.mp3,.txt,.doc,.docx"  # 改为字符串格式
     
     # OCR 配置
     tesseract_path: str = "/usr/local/bin/tesseract"  # macOS 默认路径
@@ -54,6 +54,8 @@ class Settings(BaseSettings):
     rag_chunk_overlap: int = 200
     rag_default_top_k: int = 5
     rag_default_min_similarity: float = 0.355  # 精确调优的阈值，确保姓名查询通过
+    rag_enable_cache: bool = True  # 启用RAG缓存
+    rag_cache_ttl: int = 3600  # RAG缓存时间（秒）
     tts_rate: str = "+0%"
     tts_volume: str = "+0%"
     

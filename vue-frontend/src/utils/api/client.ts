@@ -234,6 +234,71 @@ export class ApiClient {
       )
     }
   }
+
+  // 二进制响应请求（如音频、图片等）
+  async binary(
+    endpoint: string, 
+    data?: any, 
+    method: string = 'POST'
+  ): Promise<ArrayBuffer> {
+    const url = `${this.baseURL}${endpoint}`
+    
+    // 创建AbortController用于超时控制
+    const controller = new AbortController()
+    const timeoutId = setTimeout(() => controller.abort(), this.timeout)
+
+    // 准备请求头
+    const headers: Record<string, string> = {
+      'Content-Type': 'application/json',
+    }
+
+    // 添加认证头
+    if (authManager.getToken()) {
+      Object.assign(headers, authManager.getAuthHeader())
+    }
+
+    try {
+      const response = await fetch(url, {
+        method,
+        headers,
+        body: data ? JSON.stringify(data) : undefined,
+        signal: controller.signal,
+      })
+
+      clearTimeout(timeoutId)
+
+      if (!response.ok) {
+        throw new ApiError(
+          `HTTP ${response.status}: ${response.statusText}`,
+          response.status,
+          endpoint
+        )
+      }
+
+      // 直接返回二进制数据
+      return await response.arrayBuffer()
+    } catch (error: any) {
+      clearTimeout(timeoutId)
+      
+      if (error instanceof ApiError) {
+        throw error
+      }
+
+      if (error.name === 'AbortError') {
+        throw new ApiError(`${API_CONFIG.ERROR_MESSAGES.TIMEOUT} (${this.timeout}ms)`, 408, endpoint)
+      }
+
+      if (error instanceof TypeError && error.message.includes('fetch')) {
+        throw new ApiError(API_CONFIG.ERROR_MESSAGES.NETWORK, 0, endpoint)
+      }
+
+      throw new ApiError(
+        error.message || API_CONFIG.ERROR_MESSAGES.UNKNOWN,
+        0,
+        endpoint
+      )
+    }
+  }
 }
 
 // 创建API客户端实例

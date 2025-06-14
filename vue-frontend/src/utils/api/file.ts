@@ -291,6 +291,7 @@ export async function analyzeDocumentsForArchive(data: {
       knowledgeBaseId?: string
       documentType: string
       textContent: string
+      docId?: string  // ✨ 新增：文档ID（分析阶段已生成）
       success: boolean
       error?: string
     }>
@@ -317,13 +318,14 @@ export async function analyzeDocumentsForArchive(data: {
 }
 
 /**
- * 确认归档分析结果，执行实际归档操作
+ * 确认归档分析结果，执行文档与知识库的关联操作
+ * （文档在分析阶段已保存，这里只做关联）
  */
 export async function confirmSmartArchive(data: {
   files: Array<{
     fileName: string
     fileType: string
-    content: string // Base64编码的文件内容
+    content?: string // ⚠️ 已弃用，保留兼容性
   }>
   analysisResults: Array<{
     fileName: string
@@ -332,6 +334,7 @@ export async function confirmSmartArchive(data: {
     reason?: string
     knowledgeBaseId?: string
     documentType: string
+    docId?: string  // ✨ 新增：文档ID（分析阶段生成）
     success: boolean
     error?: string
   }>
@@ -397,4 +400,72 @@ export async function batchSmartArchive(data: {
     formData, 
     API_CONFIG.TIMEOUT.RAG * 2 // 批量处理需要更长时间
   )
-} 
+}
+
+/**
+ * 分析已有文档进行智能归档
+ */
+export async function analyzeExistingDocumentsForArchive(data: {
+  docIds: string[]
+  prompt: string
+  customAnalysis?: boolean
+}): Promise<{
+  code: number
+  msg: string
+  data: {
+    results: Array<{
+      docId: string
+      filename: string
+      knowledgeBaseName: string
+      isNewKnowledgeBase: boolean
+      reason?: string
+      knowledgeBaseId?: string
+      documentType: string
+      textContent: string
+      success: boolean
+      error?: string
+    }>
+    totalDocuments: number
+    successCount: number
+    failureCount: number
+  }
+}> {
+  return api.post('/api/lm/rag/analyze-existing-documents', data)
+}
+
+/**
+ * 确认已有文档的智能归档
+ */
+export async function confirmExistingArchive(data: {
+  analysisResults: Array<{
+    docId: string
+    filename: string
+    knowledgeBaseName: string
+    isNewKnowledgeBase: boolean
+    reason?: string
+    knowledgeBaseId?: string
+    documentType: string
+    success: boolean
+    error?: string
+  }>
+}): Promise<{
+  code: number
+  msg: string
+  data: {
+    results: Array<{
+      docId: string
+      filename: string
+      knowledgeBaseName: string
+      isNewKnowledgeBase: boolean
+      reason?: string
+      knowledgeBaseId: string
+      success: boolean
+      error?: string
+    }>
+    totalDocuments: number
+    successCount: number
+    failureCount: number
+  }
+}> {
+  return api.post('/api/lm/rag/confirm-existing-archive', data)
+}

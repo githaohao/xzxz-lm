@@ -11,6 +11,8 @@ from typing import List, Dict, Optional, Tuple
 from datetime import datetime
 import asyncio
 from concurrent.futures import ThreadPoolExecutor
+import json
+import httpx
 
 import chromadb
 from chromadb.config import Settings
@@ -42,6 +44,8 @@ class RAGService:
         self.db = Database()  # 数据库连接
         # 文档-知识库关联关系缓存，从数据库加载
         self.document_kb_mapping = {}  # doc_id -> [kb_id1, kb_id2, ...]  
+        # 文档分析结果缓存，避免重复分析
+        self.analysis_cache = {}  # content_hash -> analysis_result
         self._initialize()
     
     def _initialize(self):
@@ -1074,7 +1078,7 @@ class RAGService:
         custom_analysis: bool = False
     ) -> Dict:
         """
-        分析文档内容，预览归档建议（不实际保存文档）
+        分析文档内容并保存到向量数据库，预览归档建议
         
         Args:
             file_content: 文件内容（字节）
@@ -1084,11 +1088,15 @@ class RAGService:
             custom_analysis: 是否使用自定义分析
             
         Returns:
-            分析结果信息（不包含实际的docId）
+            分析结果信息（包含实际的docId）
         """
         try:
-            # 提取文档内容用于分析
+            # 提取文档内容
             text_content = await self._extract_text_from_file(file_content, filename, file_type)
+            
+            # 🚀 优化：在分析阶段就保存文档到向量数据库
+            doc_id = await self.process_document(text_content, filename, file_type)
+            logger.info(f"文档已保存到向量数据库: {filename} (doc_id: {doc_id})")
             
             # 使用AI分析文档内容并匹配知识库
             analysis_result = await self._analyze_document_content(
@@ -1123,10 +1131,11 @@ class RAGService:
                 "knowledgeBaseId": kb_id,
                 "documentType": analysis_result.get('document_type', '未知'),
                 "textContent": text_content[:500] + "..." if len(text_content) > 500 else text_content,  # 预览内容
+                "docId": doc_id,  # ✨ 新增：返回文档ID
                 "analysisTime": datetime.now().timestamp()
             }
             
-            logger.info(f"文档分析完成: {filename} -> {knowledge_base_name} ({'新建' if is_new_kb else '现有'})")
+            logger.info(f"文档分析和保存完成: {filename} -> {knowledge_base_name} ({'新建' if is_new_kb else '现有'}), doc_id: {doc_id}")
             return result
             
         except Exception as e:
@@ -1135,40 +1144,29 @@ class RAGService:
 
     async def confirm_archive_document(
         self,
-        file_content: str,  # Base64编码的文件内容或原始内容
+        file_content: str,  # 已弃用，保留用于兼容性
         filename: str,
         file_type: str,
         analysis_result: Dict
     ) -> Dict:
         """
-        确认归档文档，执行实际的保存操作
+        确认归档文档，仅执行文档与知识库的关联操作
+        （文档在analyze阶段已保存到向量数据库）
         
         Args:
-            file_content: 文件内容（可能是Base64编码）
+            file_content: 已弃用，文档已在分析阶段保存
             filename: 文件名
-            file_type: 文件类型
-            analysis_result: 之前的分析结果
+            file_type: 文件类型  
+            analysis_result: 分析结果（包含doc_id）
             
         Returns:
             归档结果信息
         """
         try:
-            # 如果是Base64编码的内容，需要解码
-            if isinstance(file_content, str):
-                import base64
-                try:
-                    content_bytes = base64.b64decode(file_content)
-                except:
-                    # 如果解码失败，假设是文本内容
-                    content_bytes = file_content.encode('utf-8')
-            else:
-                content_bytes = file_content
-            
-            # 提取文档内容
-            text_content = analysis_result.get('textContent', '') or await self._extract_text_from_file(content_bytes, filename, file_type)
-            
-            # 处理文档获得doc_id
-            doc_id = await self.process_document(text_content, filename, file_type)
+            # 🚀 优化：从分析结果直接获取doc_id，不再重复处理文档
+            doc_id = analysis_result.get('docId')
+            if not doc_id:
+                raise ValueError("分析结果中缺少文档ID，请重新分析文档")
             
             knowledge_base_name = analysis_result['knowledgeBaseName']
             is_new_kb = analysis_result['isNewKnowledgeBase']
@@ -1209,7 +1207,7 @@ class RAGService:
                     kb_id = kb['id']
                     is_new_kb = True
             
-            # 将文档添加到知识库
+            # ⚡ 核心：将已保存的文档关联到知识库
             await self.add_documents_to_knowledge_base(kb_id, [doc_id])
             
             result = {
@@ -1221,123 +1219,40 @@ class RAGService:
                 "knowledgeBaseId": kb_id
             }
             
-            logger.info(f"确认归档完成: {filename} -> {knowledge_base_name} ({'新建' if is_new_kb else '现有'})")
+            logger.info(f"确认归档完成（仅关联）: {filename} -> {knowledge_base_name} ({'新建' if is_new_kb else '现有'}), doc_id: {doc_id}")
             return result
             
         except Exception as e:
             logger.error(f"确认归档失败 {filename}: {e}")
             raise
 
-    async def smart_archive_document(
-        self, 
-        file_content: bytes, 
-        filename: str, 
-        file_type: str,
-        analysis_prompt: str,
-        custom_analysis: bool = False
-    ) -> Dict:
-        """
-        智能文档归档功能（一步到位，保留兼容性）
-        
-        Args:
-            file_content: 文件内容（字节）
-            filename: 文件名
-            file_type: 文件类型
-            analysis_prompt: 分析提示词
-            custom_analysis: 是否使用自定义分析
-            
-        Returns:
-            归档结果信息
-        """
-        try:
-            # 先处理文档内容（例如OCR等）
-            text_content = await self._extract_text_from_file(file_content, filename, file_type)
-            
-            # 处理文档获得doc_id
-            doc_id = await self.process_document(text_content, filename, file_type)
-            
-            # 使用AI分析文档内容并匹配知识库
-            analysis_result = await self._analyze_document_content(
-                content=text_content,
-                filename=filename,
-                analysis_prompt=analysis_prompt,
-                custom_analysis=custom_analysis
-            )
-            
-            knowledge_base_name = analysis_result['knowledge_base_name']
-            is_new_kb = analysis_result['is_new_knowledge_base']
-            reason = analysis_result.get('reason', '')
-            
-            # 获取或创建知识库
-            if is_new_kb:
-                kb = await self.create_knowledge_base(
-                    name=knowledge_base_name,
-                    description=f"由AI智能分析创建的知识库，用于存储{analysis_result.get('document_type', '相关')}类型的文档",
-                    color=self._get_random_color()
-                )
-                kb_id = kb['id']
-                logger.info(f"创建新知识库: {knowledge_base_name} (ID: {kb_id})")
-            else:
-                # 查找现有知识库
-                all_kbs = await self.get_all_knowledge_bases()
-                matching_kb = None
-                for kb in all_kbs:
-                    if kb['name'] == knowledge_base_name:
-                        matching_kb = kb
-                        break
-                
-                if matching_kb:
-                    kb_id = matching_kb['id']
-                else:
-                    # 如果没找到匹配的知识库，创建新的
-                    kb = await self.create_knowledge_base(
-                        name=knowledge_base_name,
-                        description=f"智能归档创建的知识库",
-                        color=self._get_random_color()
-                    )
-                    kb_id = kb['id']
-                    is_new_kb = True
-                    logger.info(f"未找到匹配知识库，创建新知识库: {knowledge_base_name}")
-            
-            # 将文档添加到知识库
-            await self.add_documents_to_knowledge_base(kb_id, [doc_id])
-            
-            result = {
-                "fileName": filename,
-                "knowledgeBaseName": knowledge_base_name,
-                "isNewKnowledgeBase": is_new_kb,
-                "reason": reason,
-                "docId": doc_id,
-                "knowledgeBaseId": kb_id
-            }
-            
-            logger.info(f"智能归档完成: {filename} -> {knowledge_base_name} ({'新建' if is_new_kb else '现有'})")
-            return result
-            
-        except Exception as e:
-            logger.error(f"智能归档失败 {filename}: {e}")
-            raise
     
     async def _extract_text_from_file(self, file_content: bytes, filename: str, file_type: str) -> str:
         """从文件中提取文本内容"""
         try:
-            # 根据文件类型处理
-            if file_type == 'application/pdf':
-                # 简单的PDF文本提取（实际应该集成OCR服务）
-                return f"PDF文档内容: {filename}\n这是一个PDF文档的模拟文本内容。"
-            elif file_type.startswith('image/'):
-                # 图像文件（应该调用OCR服务）
-                return f"图像文档内容: {filename}\n这是一个图像文档的模拟OCR文本内容。"
-            elif file_type == 'text/plain':
-                # 纯文本文件
-                return file_content.decode('utf-8', errors='ignore')
-            else:
-                # 其他文件类型
-                return f"文档内容: {filename}\n文件类型: {file_type}\n这是模拟的文档文本内容。"
+            from app.services.file_extraction_service import file_extraction_service
+            
+            # 使用统一的文件提取服务
+            text, metadata = await file_extraction_service.extract_text_from_file(
+                file_content, filename, file_type
+            )
+            
+            # 记录提取元数据到日志
+            extraction_method = metadata.get('extraction_method', 'unknown')
+            processing_time = metadata.get('extraction_time', 0)
+            confidence = metadata.get('confidence', None)
+            
+            log_msg = f"文件提取完成: {filename}, 方法: {extraction_method}, 耗时: {processing_time:.2f}秒"
+            if confidence is not None:
+                log_msg += f", 置信度: {confidence:.2f}"
+            
+            logger.info(log_msg)
+            
+            return text
                 
         except Exception as e:
             logger.error(f"文本提取失败 {filename}: {e}")
-            return f"文档: {filename}\n内容提取失败，使用文件名作为内容。"
+            return f"文档: {filename}\n内容提取失败: {str(e)}"
     
     async def _analyze_document_content(
         self, 
@@ -1347,100 +1262,415 @@ class RAGService:
         custom_analysis: bool = False
     ) -> Dict:
         """
-        使用AI分析文档内容并决定归档位置
+        使用真正的LLM分析文档内容并决定归档位置
         
-        这里是模拟实现，实际应该调用LLM服务进行分析
+        对于特大文档采用智能处理策略：
+        1. 小文档(<5000字符)：直接全文分析
+        2. 中等文档(5000-20000字符)：提取关键段落分析
+        3. 大文档(20000-100000字符)：分段摘要分析
+        4. 特大文档(>100000字符)：智能采样+关键信息提取
         """
         try:
-            # 模拟AI分析过程
-            content_lower = content.lower()
-            filename_lower = filename.lower()
-            prompt_lower = analysis_prompt.lower()
+            # 检查缓存
+            content_hash = hashlib.md5((content + filename + analysis_prompt).encode('utf-8')).hexdigest()
+            if content_hash in self.analysis_cache:
+                logger.info(f"使用缓存的分析结果: {filename}")
+                return self.analysis_cache[content_hash]
             
-            # 基于关键词的简单分类逻辑（实际应该使用LLM）
-            if any(keyword in content_lower or keyword in filename_lower or keyword in prompt_lower 
-                   for keyword in ['合同', 'contract', '协议', 'agreement']):
-                return {
-                    'knowledge_base_name': '合同文档',
-                    'is_new_knowledge_base': False,
-                    'document_type': '合同',
-                    'reason': '文档内容包含合同相关关键词，自动归档到合同文档知识库'
-                }
+            content_length = len(content)
+            logger.info(f"开始分析文档: {filename}, 大小: {content_length} 字符")
             
-            elif any(keyword in content_lower or keyword in filename_lower or keyword in prompt_lower 
-                     for keyword in ['培训', '教育', '课程', 'training', 'education', 'course']):
-                return {
-                    'knowledge_base_name': '教育培训',
-                    'is_new_knowledge_base': False,
-                    'document_type': '教育',
-                    'reason': '文档内容与教育培训相关，归档到教育培训知识库'
-                }
-            
-            elif any(keyword in content_lower or keyword in filename_lower or keyword in prompt_lower 
-                     for keyword in ['技术', '开发', 'api', 'technical', 'development']):
-                return {
-                    'knowledge_base_name': '技术文档',
-                    'is_new_knowledge_base': False,
-                    'document_type': '技术',
-                    'reason': '文档内容包含技术相关内容，归档到技术文档知识库'
-                }
-            
-            elif any(keyword in content_lower or keyword in filename_lower or keyword in prompt_lower 
-                     for keyword in ['商务', '商业', '市场', 'business', 'commercial', 'market']):
-                return {
-                    'knowledge_base_name': '商务文档',
-                    'is_new_knowledge_base': False,
-                    'document_type': '商务',
-                    'reason': '文档内容与商务相关，归档到商务文档知识库'
-                }
-            
-            elif any(keyword in content_lower or keyword in filename_lower or keyword in prompt_lower 
-                     for keyword in ['手册', '指南', 'manual', 'guide', '操作', 'operation']):
-                return {
-                    'knowledge_base_name': '操作手册',
-                    'is_new_knowledge_base': False,
-                    'document_type': '手册',
-                    'reason': '文档为操作手册类型，归档到操作手册知识库'
-                }
-            
-            elif any(keyword in content_lower or keyword in filename_lower or keyword in prompt_lower 
-                     for keyword in ['医疗', '健康', '医学', 'medical', 'health']):
-                return {
-                    'knowledge_base_name': '医疗健康',
-                    'is_new_knowledge_base': False,
-                    'document_type': '医疗',
-                    'reason': '文档内容与医疗健康相关，归档到医疗健康知识库'
-                }
-            
-            elif any(keyword in content_lower or keyword in filename_lower or keyword in prompt_lower 
-                     for keyword in ['政策', '法规', '法律', 'policy', 'regulation', 'law']):
-                return {
-                    'knowledge_base_name': '政策法规',
-                    'is_new_knowledge_base': False,
-                    'document_type': '政策',
-                    'reason': '文档内容涉及政策法规，归档到政策法规知识库'
-                }
-            
+            # 根据文档大小选择处理策略
+            if content_length < 5000:
+                # 小文档：直接全文分析
+                analysis_content = content
+                processing_strategy = "direct_analysis"
+            elif content_length < 20000:
+                # 中等文档：提取关键段落
+                analysis_content = await self._extract_key_paragraphs(content, filename)
+                processing_strategy = "key_paragraphs"
+            elif content_length < 100000:
+                # 大文档：分段摘要
+                analysis_content = await self._create_document_summary(content, filename)
+                processing_strategy = "segment_summary"
             else:
-                # 默认创建新的知识库
-                doc_type = self._extract_document_type(filename, content)
-                kb_name = f"{doc_type}文档"
-                
-                return {
-                    'knowledge_base_name': kb_name,
-                    'is_new_knowledge_base': True,
-                    'document_type': doc_type,
-                    'reason': f'未找到匹配的现有知识库，创建新的{doc_type}知识库'
-                }
-                
+                # 特大文档：智能采样
+                analysis_content = await self._intelligent_sampling(content, filename)
+                processing_strategy = "intelligent_sampling"
+            
+            logger.info(f"文档处理策略: {processing_strategy}, 分析内容长度: {len(analysis_content)}")
+            
+            # 调用LLM进行分析
+            analysis_result = await self._call_llm_for_analysis(
+                content=analysis_content,
+                filename=filename,
+                analysis_prompt=analysis_prompt,
+                custom_analysis=custom_analysis,
+                processing_strategy=processing_strategy
+            )
+            
+            # 缓存结果
+            self.analysis_cache[content_hash] = analysis_result
+            
+            # 限制缓存大小
+            if len(self.analysis_cache) > 100:
+                # 移除最旧的缓存项
+                oldest_key = next(iter(self.analysis_cache))
+                del self.analysis_cache[oldest_key]
+            
+            logger.info(f"文档分析完成: {filename} -> {analysis_result['knowledge_base_name']}")
+            return analysis_result
+            
         except Exception as e:
             logger.error(f"文档分析失败: {e}")
-            # 默认归档
+    
+    async def _extract_key_paragraphs(self, content: str, filename: str) -> str:
+        """提取关键段落（用于中等文档）"""
+        try:
+            lines = content.split('\n')
+            
+            # 获取文档开头（前20%或最多500行）
+            start_lines = int(min(len(lines) * 0.2, 500))
+            beginning = '\n'.join(lines[:start_lines])
+            
+            # 获取文档结尾（后10%或最多200行）
+            end_lines = int(min(len(lines) * 0.1, 200))
+            ending = '\n'.join(lines[-end_lines:]) if end_lines > 0 else ""
+            
+            # 查找包含关键词的段落
+            keywords = ['摘要', '总结', '概述', '简介', '目录', 'abstract', 'summary', 'introduction']
+            key_paragraphs = []
+            
+            for i, line in enumerate(lines):
+                line_lower = line.lower()
+                if any(keyword in line_lower for keyword in keywords):
+                    # 包含关键词的段落及其周围内容
+                    start_idx = max(0, i - 2)
+                    end_idx = min(len(lines), i + 5)
+                    key_paragraphs.append('\n'.join(lines[start_idx:end_idx]))
+            
+            # 组合内容
+            extracted_content = f"文档开头：\n{beginning}\n\n"
+            
+            if key_paragraphs:
+                extracted_content += f"关键段落：\n" + '\n\n'.join(key_paragraphs) + "\n\n"
+            
+            if ending:
+                extracted_content += f"文档结尾：\n{ending}"
+            
+            # 如果提取的内容太长，截断
+            if len(extracted_content) > 8000:
+                extracted_content = extracted_content[:8000] + "...\n[内容已截断]"
+            
+            return extracted_content
+            
+        except Exception as e:
+            logger.warning(f"提取关键段落失败: {e}")
+            return content[:5000] + "...\n[提取失败，使用开头内容]"
+    
+    async def _create_document_summary(self, content: str, filename: str) -> str:
+        """创建文档摘要（用于大文档）"""
+        try:
+            # 将文档分成多个段落
+            paragraphs = content.split('\n\n')
+            
+            # 每段最多1000字符
+            segments = []
+            current_segment = ""
+            
+            for paragraph in paragraphs:
+                if len(current_segment) + len(paragraph) < 1000:
+                    current_segment += paragraph + '\n\n'
+                else:
+                    if current_segment:
+                        segments.append(current_segment.strip())
+                    current_segment = paragraph + '\n\n'
+            
+            if current_segment:
+                segments.append(current_segment.strip())
+            
+            # 选择关键段落进行摘要
+            key_segments = []
+            
+            # 总是包含开头和结尾
+            if segments:
+                key_segments.append(segments[0])  # 开头
+                if len(segments) > 1:
+                    key_segments.append(segments[-1])  # 结尾
+            
+            # 添加中间的关键段落
+            for segment in segments[1:-1]:
+                segment_lower = segment.lower()
+                # 查找包含重要信息的段落
+                if any(keyword in segment_lower for keyword in [
+                    '摘要', '总结', '结论', '概述', '目的', '目标', '方法', '结果',
+                    'abstract', 'summary', 'conclusion', 'objective', 'purpose', 'method', 'result'
+                ]):
+                    key_segments.append(segment)
+                    if len(key_segments) >= 5:  # 限制段落数量
+                        break
+            
+            # 如果关键段落不够，随机选择一些段落
+            if len(key_segments) < 3 and len(segments) > 2:
+                import random
+                remaining_segments = [s for s in segments[1:-1] if s not in key_segments]
+                additional_count = min(3 - len(key_segments), len(remaining_segments))
+                key_segments.extend(random.sample(remaining_segments, additional_count))
+            
+            # 组合摘要
+            summary = f"文档摘要 ({len(segments)}个段落中的{len(key_segments)}个关键段落)：\n\n"
+            summary += '\n\n---段落分隔---\n\n'.join(key_segments)
+            
+            # 限制总长度
+            if len(summary) > 6000:
+                summary = summary[:6000] + "...\n[摘要已截断]"
+            
+            return summary
+            
+        except Exception as e:
+            logger.warning(f"创建文档摘要失败: {e}")
+            return content[:3000] + "...\n[摘要失败，使用开头内容]"
+    
+    async def _intelligent_sampling(self, content: str, filename: str) -> str:
+        """智能采样（用于特大文档）"""
+        try:
+            total_length = len(content)
+            
+            # 提取开头、中间、结尾的样本
+            start_sample = content[:2000]  # 开头2000字符
+            end_sample = content[-1000:]   # 结尾1000字符
+            
+            # 中间采样：每隔一定间距采样
+            middle_samples = []
+            sample_interval = max(1000, total_length // 20)  # 最多采样20个片段
+            
+            for i in range(2000, total_length - 1000, sample_interval):
+                sample = content[i:i+500]  # 每次采样500字符
+                middle_samples.append(sample)
+                if len(middle_samples) >= 10:  # 最多10个中间样本
+                    break
+            
+            # 查找结构化信息（标题、目录等）
+            lines = content.split('\n')
+            structured_info = []
+            
+            for line in lines:
+                line_stripped = line.strip()
+                if line_stripped and (
+                    line_stripped.startswith('#') or  # Markdown标题
+                    line_stripped.endswith(':') or   # 冒号结尾（可能是标题）
+                    len(line_stripped) < 100 and (   # 短行且包含关键词
+                        any(keyword in line_stripped.lower() for keyword in [
+                            '第', '章', '节', '部分', 'chapter', 'section', 'part'
+                        ])
+                    )
+                ):
+                    structured_info.append(line_stripped)
+                    if len(structured_info) >= 20:  # 最多20个结构化信息
+                        break
+            
+            # 组合采样结果
+            sampled_content = f"超大文档智能采样 (总长度: {total_length} 字符)：\n\n"
+            sampled_content += f"文档开头：\n{start_sample}\n\n"
+            
+            if structured_info:
+                sampled_content += f"文档结构：\n" + '\n'.join(structured_info) + "\n\n"
+            
+            if middle_samples:
+                sampled_content += f"中间采样：\n" + '\n\n---采样分隔---\n\n'.join(middle_samples) + "\n\n"
+            
+            sampled_content += f"文档结尾：\n{end_sample}"
+            
+            # 限制总长度
+            if len(sampled_content) > 8000:
+                sampled_content = sampled_content[:8000] + "...\n[采样已截断]"
+            
+            return sampled_content
+            
+        except Exception as e:
+            logger.warning(f"智能采样失败: {e}")
+            return content[:3000] + "...\n[采样失败，使用开头内容]"
+    
+    async def _call_llm_for_analysis(
+        self,
+        content: str,
+        filename: str,
+        analysis_prompt: str,
+        custom_analysis: bool,
+        processing_strategy: str
+    ) -> Dict:
+        """调用LLM进行文档内容分析"""
+        try:
+            # 构建系统提示词
+            system_prompt = """你是一个专业的文档分析专家，负责分析文档内容并决定最合适的知识库归档位置。
+
+            你的任务是：
+                1. 分析文档的主要内容和类型
+                2. 从以下预设知识库中选择最合适的归档位置：
+                - 个人简历：简历、CV、个人资料、求职相关
+                - 合同文档：合同、协议、法律文件
+                - 教育培训：培训材料、课程、教育内容
+                - 技术文档：API文档、技术规范、开发资料
+                - 商务文档：商业计划、市场分析、商务资料
+                - 操作手册：用户手册、操作指南、说明书
+                - 医疗健康：医疗报告、健康资料、医学文献
+                - 政策法规：政策文件、法规条例、规章制度
+
+                3. 如果文档不适合任何预设知识库，建议创建新的知识库
+
+                请返回JSON格式的分析结果：
+                {
+                    "knowledge_base_name": "知识库名称",
+                    "is_new_knowledge_base": false,
+                    "document_type": "文档类型",
+                    "reason": "选择理由",
+                    "confidence": 0.85
+                }"""
+
+            # 构建用户提示词
+            user_prompt = f"""请分析以下文档并决定最合适的知识库归档位置：
+
+                文件名：{filename}
+                用户提示：{analysis_prompt}
+                处理策略：{processing_strategy}
+
+                文档内容：
+                {content}
+
+                请仔细分析文档的主要内容、类型和用途，然后选择最合适的知识库进行归档。
+                如果用户提供了特定的分类建议，请优先考虑。"""
+
+            # 调用LLM
+            response = await self._make_llm_request(system_prompt, user_prompt)
+            
+            # 解析LLM响应
+            analysis_result = await self._parse_llm_response(response)
+            
+            # 验证和修正结果
+            return await self._validate_analysis_result(analysis_result, filename)
+            
+        except Exception as e:
+            logger.error(f"LLM分析调用失败: {e}")
+    
+    async def _make_llm_request(self, system_prompt: str, user_prompt: str) -> str:
+        """向LM Studio发送请求"""
+        try:
+            async with httpx.AsyncClient(timeout=60.0) as client:
+                payload = {
+                    "model": settings.lm_studio_model,
+                    "messages": [
+                        {"role": "system", "content": system_prompt},
+                        {"role": "user", "content": user_prompt}
+                    ],
+                    "temperature": 0.3,  # 较低的温度以获得更一致的分析结果
+                    "max_tokens": 1000,
+                    "stream": False
+                }
+                
+                response = await client.post(
+                    f"{settings.lm_studio_base_url}/chat/completions",
+                    json=payload,
+                    headers={
+                        "Content-Type": "application/json",
+                        "Authorization": f"Bearer {settings.lm_studio_api_key}"
+                    }
+                )
+                
+                if response.status_code == 200:
+                    result = response.json()
+                    return result["choices"][0]["message"]["content"]
+                else:
+                    logger.error(f"LLM请求失败: {response.status_code} - {response.text}")
+                    raise Exception(f"LLM请求失败: {response.status_code}")
+                    
+        except Exception as e:
+            logger.error(f"LLM请求异常: {e}")
+            raise
+    
+    async def _parse_llm_response(self, response: str) -> Dict:
+        """解析LLM响应，提取JSON结果"""
+        try:
+            # 尝试直接解析JSON
+            try:
+                return json.loads(response)
+            except json.JSONDecodeError:
+                pass
+            
+            # 如果直接解析失败，尝试提取JSON部分
+            import re
+            json_match = re.search(r'\{[^{}]*\}', response, re.DOTALL)
+            if json_match:
+                return json.loads(json_match.group())
+            
+            # 如果仍然失败，从文本中提取信息
+            knowledge_base_match = re.search(r'knowledge_base_name["\s]*:["\s]*([^"]*)', response)
+            is_new_match = re.search(r'is_new_knowledge_base["\s]*:["\s]*(true|false)', response)
+            doc_type_match = re.search(r'document_type["\s]*:["\s]*([^"]*)', response)
+            reason_match = re.search(r'reason["\s]*:["\s]*([^"]*)', response)
+            
             return {
-                'knowledge_base_name': '通用文档',
-                'is_new_knowledge_base': False,
-                'document_type': '通用',
-                'reason': '分析失败，归档到通用文档知识库'
+                "knowledge_base_name": knowledge_base_match.group(1) if knowledge_base_match else "通用文档",
+                "is_new_knowledge_base": is_new_match.group(1).lower() == 'true' if is_new_match else False,
+                "document_type": doc_type_match.group(1) if doc_type_match else "未知",
+                "reason": reason_match.group(1) if reason_match else "AI分析结果",
+                "confidence": 0.5
+            }
+            
+        except Exception as e:
+            logger.warning(f"解析LLM响应失败: {e}")
+            return {
+                "knowledge_base_name": "通用文档",
+                "is_new_knowledge_base": False,
+                "document_type": "未知",
+                "reason": "解析失败，使用默认分类",
+                "confidence": 0.3
+            }
+    
+    async def _validate_analysis_result(self, result: Dict, filename: str) -> Dict:
+        """验证和修正分析结果"""
+        try:
+            # 确保必要字段存在
+            if "knowledge_base_name" not in result:
+                result["knowledge_base_name"] = "通用文档"
+            
+            if "is_new_knowledge_base" not in result:
+                result["is_new_knowledge_base"] = False
+            
+            if "document_type" not in result:
+                result["document_type"] = "未知"
+            
+            if "reason" not in result:
+                result["reason"] = "AI智能分析结果"
+            
+            # 检查知识库名称是否在预设列表中
+            preset_knowledge_bases = {
+                "个人简历", "合同文档", "教育培训", "技术文档", 
+                "商务文档", "操作手册", "医疗健康", "政策法规"
+            }
+            
+            kb_name = result["knowledge_base_name"]
+            if kb_name not in preset_knowledge_bases:
+                # 如果不在预设列表中，标记为新知识库
+                result["is_new_knowledge_base"] = True
+                
+                # 但如果名称很相似，修正为预设名称
+                for preset in preset_knowledge_bases:
+                    if any(word in kb_name for word in preset.split()) or any(word in preset for word in kb_name.split()):
+                        result["knowledge_base_name"] = preset
+                        result["is_new_knowledge_base"] = False
+                        result["reason"] += f"（已修正为预设知识库：{preset}）"
+                        break
+            
+            return result
+            
+        except Exception as e:
+            logger.warning(f"验证分析结果失败: {e}")
+            return {
+                "knowledge_base_name": "通用文档",
+                "is_new_knowledge_base": False,
+                "document_type": "未知",
+                "reason": "验证失败，使用默认分类",
+                "confidence": 0.2
             }
     
     def _extract_document_type(self, filename: str, content: str) -> str:
@@ -1470,6 +1700,149 @@ class RAGService:
         ]
         import random
         return random.choice(colors)
+
+    async def analyze_existing_document_for_archive(
+        self, 
+        doc_id: str,
+        filename: str, 
+        file_type: str,
+        text_content: str,
+        analysis_prompt: str,
+        custom_analysis: bool = False
+    ) -> Dict:
+        """
+        分析已有文档进行智能归档建议
+        
+        Args:
+            doc_id: 文档ID
+            filename: 文件名
+            file_type: 文件类型
+            text_content: 文档内容
+            analysis_prompt: 分析提示词
+            custom_analysis: 是否使用自定义分析
+            
+        Returns:
+            分析结果信息
+        """
+        try:
+            # 使用AI分析文档内容并匹配知识库
+            analysis_result = await self._analyze_document_content(
+                content=text_content,
+                filename=filename,
+                analysis_prompt=analysis_prompt,
+                custom_analysis=custom_analysis
+            )
+            
+            knowledge_base_name = analysis_result['knowledge_base_name']
+            is_new_kb = analysis_result['is_new_knowledge_base']
+            reason = analysis_result.get('reason', '')
+            
+            # 如果不是新建知识库，检查现有知识库是否存在
+            kb_id = None
+            if not is_new_kb:
+                all_kbs = await self.get_all_knowledge_bases()
+                for kb in all_kbs:
+                    if kb['name'] == knowledge_base_name:
+                        kb_id = kb['id']
+                        break
+                
+                # 如果没找到匹配的知识库，标记为新建
+                if not kb_id:
+                    is_new_kb = True
+            
+            result = {
+                "filename": filename,
+                "knowledgeBaseName": knowledge_base_name,
+                "isNewKnowledgeBase": is_new_kb,
+                "reason": reason,
+                "knowledgeBaseId": kb_id,
+                "documentType": analysis_result.get('document_type', '未知'),
+                "textContent": text_content[:500] + "..." if len(text_content) > 500 else text_content,  # 预览内容
+                "docId": doc_id,  # 文档ID（已存在）
+                "analysisTime": datetime.now().timestamp()
+            }
+            
+            logger.info(f"已有文档分析完成: {filename} -> {knowledge_base_name} ({'新建' if is_new_kb else '现有'}), doc_id: {doc_id}")
+            return result
+            
+        except Exception as e:
+            logger.error(f"已有文档分析失败 {filename}: {e}")
+            raise
+
+    async def confirm_existing_document_archive(
+        self,
+        doc_id: str,
+        analysis_result: Dict
+    ) -> Dict:
+        """
+        确认已有文档的归档操作，执行文档与知识库的关联
+        
+        Args:
+            doc_id: 文档ID
+            analysis_result: 分析结果
+            
+        Returns:
+            归档结果信息
+        """
+        try:
+            knowledge_base_name = analysis_result['knowledgeBaseName']
+            is_new_kb = analysis_result['isNewKnowledgeBase']
+            reason = analysis_result.get('reason', '')
+            kb_id = analysis_result.get('knowledgeBaseId')
+            filename = analysis_result.get('filename', '未知文档')
+            
+            # 获取或创建知识库
+            if is_new_kb or not kb_id:
+                kb = await self.create_knowledge_base(
+                    name=knowledge_base_name,
+                    description=f"由AI智能分析创建的知识库，用于存储{analysis_result.get('documentType', '相关')}类型的文档",
+                    color=self._get_random_color()
+                )
+                kb_id = kb['id']
+                logger.info(f"创建新知识库: {knowledge_base_name} (ID: {kb_id})")
+            else:
+                # 验证知识库是否仍然存在
+                try:
+                    all_kbs = await self.get_all_knowledge_bases()
+                    kb_exists = any(kb['id'] == kb_id for kb in all_kbs)
+                    if not kb_exists:
+                        # 知识库不存在，创建新的
+                        kb = await self.create_knowledge_base(
+                            name=knowledge_base_name,
+                            description=f"智能归档创建的知识库",
+                            color=self._get_random_color()
+                        )
+                        kb_id = kb['id']
+                        is_new_kb = True
+                        logger.info(f"原知识库不存在，创建新知识库: {knowledge_base_name}")
+                except Exception as e:
+                    logger.warning(f"验证知识库时出错: {e}，创建新知识库")
+                    kb = await self.create_knowledge_base(
+                        name=knowledge_base_name,
+                        description=f"智能归档创建的知识库",
+                        color=self._get_random_color()
+                    )
+                    kb_id = kb['id']
+                    is_new_kb = True
+            
+            # 将文档关联到知识库
+            await self.add_documents_to_knowledge_base(kb_id, [doc_id])
+            
+            result = {
+                "filename": filename,
+                "knowledgeBaseName": knowledge_base_name,
+                "isNewKnowledgeBase": is_new_kb,
+                "reason": reason,
+                "docId": doc_id,
+                "knowledgeBaseId": kb_id
+            }
+            
+            logger.info(f"已有文档归档完成: {filename} -> {knowledge_base_name} ({'新建' if is_new_kb else '现有'}), doc_id: {doc_id}")
+            return result
+            
+        except Exception as e:
+            logger.error(f"已有文档归档失败: {e}")
+            raise
 
     def __del__(self):
         """清理资源"""

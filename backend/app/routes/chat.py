@@ -25,6 +25,8 @@ from app.models.chat_history import CreateMessageDto, MessageRole, MessageType a
 from app.config import settings
 from app.middleware.auth import get_current_user_id
 from app.database import database
+# 导入文件提取服务
+from app.services.file_extraction_service import file_extraction_service
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/chat", tags=["chat"])
@@ -128,91 +130,79 @@ async def upload_file(
         
         logger.info(f"文件上传成功: {safe_filename}")
         
-        # 构建基础响应
-        response = FileUploadResponse(
-            file_id=file_id,
-            file_name=file.filename,
-            file_path=file_path,
-            file_size=len(content),
-            file_type=file_ext,
-            is_pdf=(file_ext == '.pdf')
-        )
-        
-        # 如果是PDF文件，进行智能检测和处理
-        if file_ext == '.pdf':
-            try:
-                logger.info(f"📄 开始处理PDF文件: {file.filename}")
-                
-                # 1. 检测PDF类型
-                is_text_pdf, extracted_text, char_count = await ocr_service.detect_pdf_text_content(file_path)
-                
-                response.is_text_pdf = is_text_pdf
-                response.char_count = char_count
-                
-                if is_text_pdf:
-                    # 文本PDF：提取完整内容进行RAG处理
-                    logger.info(f"✅ 检测为文本PDF，开始提取完整内容进行RAG处理")
+        # 使用统一文件提取服务处理所有支持的文件类型
+        try:
+            logger.info(f"📄 开始处理文件: {file.filename}")
+            
+            # 使用统一的文件提取服务
+            extracted_text, extraction_metadata = await file_extraction_service.extract_text_from_file(
+                file_content=content,
+                filename=file.filename,
+                file_type=file.content_type
+            )
+            
+            # 构建响应，集成提取结果
+            response = FileUploadResponse(
+                file_id=file_id,
+                file_name=file.filename,
+                file_path=file_path,
+                file_size=len(content),
+                file_type=file_ext,
+                is_pdf=extraction_metadata.get('is_pdf', False),
+                is_text_pdf=extraction_metadata.get('is_text_pdf', False),
+                char_count=extraction_metadata.get('char_count', 0),
+                text_content=extracted_text if extracted_text and extracted_text.strip() else None,
+                processing_status=extraction_metadata.get('processing_status', 'processed')
+            )
+            
+            # 如果提取到了文本内容，进行RAG处理
+            if extracted_text and extracted_text.strip():
+                try:
+                    doc_id = await rag_service.process_document(
+                        content=extracted_text,
+                        filename=file.filename,
+                        file_type=file_ext
+                    )
+                    response.doc_id = doc_id
+                    response.rag_processed = True
                     
-                    # 提取完整的PDF文本内容
-                    full_text_content = await ocr_service.extract_full_pdf_text(file_path)
-                    
-                    # 如果完整提取失败，使用检测阶段提取的文本内容
-                    if not full_text_content and extracted_text:
-                        logger.warning("完整提取失败，使用检测阶段提取的文本内容")
-                        full_text_content = extracted_text
-                    
-                    if full_text_content:
-                        response.text_content = full_text_content
-                        response.processing_status = "文本PDF - 完整内容RAG处理"
-                        
-                        # 进行RAG处理
-                        doc_id = await rag_service.process_document(
-                            content=full_text_content,
-                            filename=file.filename,
-                            file_type=file_ext
-                        )
-                        response.doc_id = doc_id
-                        response.rag_processed = True
-                        
-                        logger.info(f"🚀 文本PDF完整内容RAG处理完成，doc_id: {doc_id}，文本长度: {len(full_text_content)}")
+                    # 更新处理状态
+                    extraction_method = extraction_metadata.get('extraction_method', 'unknown')
+                    if extraction_method == 'text_pdf':
+                        response.processing_status = f"文本PDF - RAG处理完成"
+                    elif extraction_method == 'ocr_pdf':
+                        confidence = extraction_metadata.get('confidence', 0)
+                        response.processing_status = f"扫描PDF - OCR+RAG完成 (置信度: {confidence:.2f})"
+                    elif extraction_method == 'ocr_image':
+                        confidence = extraction_metadata.get('confidence', 0)
+                        response.processing_status = f"图片OCR+RAG完成 (置信度: {confidence:.2f})"
                     else:
-                        logger.error("提取完整PDF文本失败，降级为扫描PDF处理")
-                        response.processing_status = "文本PDF提取失败 - 降级扫描处理"
-                        # 降级为扫描PDF处理逻辑
-                        is_text_pdf = False
+                        response.processing_status = f"{extraction_method.upper()}文件 - RAG处理完成"
+                    
+                    logger.info(f"🚀 文件RAG处理完成: {file.filename}, doc_id: {doc_id}, 文本长度: {len(extracted_text)}")
+                    
+                except Exception as rag_error:
+                    logger.warning(f"⚠️ RAG处理失败: {rag_error}")
+                    response.processing_status = f"{extraction_metadata.get('processing_status', 'processed')} - RAG处理失败"
+                    # RAG失败不影响文件上传
+            else:
+                logger.warning(f"⚠️ 文件未提取到有效文本内容: {file.filename}")
+                response.processing_status = f"{extraction_metadata.get('processing_status', 'processed')} - 无文本内容"
                 
-                # 处理扫描PDF或降级处理的情况
-                if not is_text_pdf:
-                    # 扫描PDF：需要OCR处理
-                    logger.info(f"🔍 检测为扫描PDF，开始OCR处理")
-                    response.processing_status = "扫描PDF - OCR处理中"
-                    
-                    # 进行OCR处理
-                    ocr_text, confidence, processing_time = await ocr_service.extract_text_from_pdf(file_path)
-                    
-                    if ocr_text.strip():
-                        logger.info(f"📝 OCR处理完成，置信度: {confidence:.2f}")
-                        response.text_content = ocr_text
-                        response.processing_status = f"扫描PDF - OCR完成 (置信度: {confidence:.2f})"
-                        
-                        # OCR完成后进行RAG处理
-                        doc_id = await rag_service.process_document(
-                            content=ocr_text,
-                            filename=file.filename,
-                            file_type=file_ext
-                        )
-                        response.doc_id = doc_id
-                        response.rag_processed = True
-                        
-                        logger.info(f"🚀 扫描PDF OCR+RAG处理完成，doc_id: {doc_id}")
-                    else:
-                        logger.warning(f"⚠️ OCR未能提取到有效文本")
-                        response.processing_status = "扫描PDF - OCR未提取到有效文本"
-                        
-            except Exception as pdf_error:
-                logger.error(f"❌ PDF处理失败: {pdf_error}")
-                response.processing_status = f"PDF处理失败: {str(pdf_error)}"
-                # PDF处理失败不影响文件上传，文件仍然可用
+        except Exception as extraction_error:
+            logger.error(f"❌ 文件处理失败: {extraction_error}")
+            
+            # 处理失败时返回基础信息
+            response = FileUploadResponse(
+                file_id=file_id,
+                file_name=file.filename,
+                file_path=file_path,
+                file_size=len(content),
+                file_type=file_ext,
+                is_pdf=(file_ext == '.pdf'),
+                processing_status=f"文件处理失败: {str(extraction_error)}"
+            )
+            # 文件处理失败不影响文件上传，文件仍然可用
         
         # 如果提供了session_id且RAG处理成功，创建会话文档关联
         if session_id and response.doc_id and response.rag_processed:
@@ -641,3 +631,50 @@ async def get_document_chunk_count(doc_id: str) -> int:
     except Exception as e:
         logger.warning(f"获取文档分块数量失败: {e}")
         return 0
+
+@router.post("/extract-file-text")
+async def extract_file_text(
+    file: UploadFile = File(...),
+    user_id: int = Depends(get_current_user_id)
+):
+    """
+    文件文本提取测试端点
+    支持PDF、DOCX、TXT、图片等多种格式
+    """
+    try:
+        # 读取文件内容
+        file_content = await file.read()
+        
+        # 检查文件大小
+        if len(file_content) > settings.max_file_size:
+            raise HTTPException(
+                status_code=413,
+                detail=f"文件大小超过限制 ({settings.max_file_size / 1024 / 1024:.1f}MB)"
+            )
+        
+        # 使用统一的文件提取服务
+        extracted_text, metadata = await file_extraction_service.extract_text_from_file(
+            file_content, file.filename, file.content_type
+        )
+        
+        return {
+            "status": "success",
+            "filename": file.filename,
+            "file_type": file.content_type,
+            "file_size": len(file_content),
+            "extracted_text": extracted_text,
+            "metadata": metadata,
+            "supported_types": file_extraction_service.get_supported_file_types()
+        }
+        
+    except Exception as e:
+        logger.error(f"文件提取失败: {e}")
+        raise HTTPException(status_code=500, detail=f"文件提取失败: {str(e)}")
+
+@router.get("/supported-file-types")
+async def get_supported_file_types():
+    """获取支持的文件类型"""
+    return {
+        "supported_types": file_extraction_service.get_supported_file_types(),
+        "allowed_extensions": settings.allowed_file_types_list
+    }

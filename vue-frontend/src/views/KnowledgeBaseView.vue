@@ -414,7 +414,7 @@
           </p>
         </div>
 
-        <div v-else-if="enhancedFilteredDocuments.length === 0" class="flex flex-col items-center justify-center py-20">
+        <div v-else-if="enhancedFilteredDocuments.length === 0 " class="flex flex-col items-center justify-center py-20">
           <Search class="h-20 w-20 text-slate-300 dark:text-slate-600 mb-6" />
           <h3 class="text-lg font-medium text-slate-700 dark:text-slate-300 mb-2">
             {{ searchType === 'content' ? '未找到相关内容' : '未找到匹配的文档' }}
@@ -753,17 +753,39 @@
   </Dialog>
 
   <!-- 未分类文档对话框 -->
-  <Dialog v-model:open="showUncategorized">
-    <DialogContent class="max-w-4xl max-h-[80vh] flex flex-col">
+  <Dialog v-model:open="showUncategorized" @update:open="(open) => !open && resetUncategorizedArchiveState()">
+    <DialogContent class="max-w-5xl max-h-[90vh] flex flex-col overflow-y-auto">
       <DialogHeader>
-        <DialogTitle>未分类文档</DialogTitle>
-        <DialogDescription>
-          以下文档还未添加到任何知识库，建议将它们分类整理
-        </DialogDescription>
+        <div class="flex items-center justify-between">
+          <div>
+            <DialogTitle>未分类文档</DialogTitle>
+            <DialogDescription>
+              {{ showUncategorizedSuggestions ? '智能归档建议' : '以下文档还未添加到任何知识库，建议将它们分类整理' }}
+            </DialogDescription>
+          </div>
+          
+          <!-- 智能归档按钮 -->
+          <Button
+            v-if="!showUncategorizedSuggestions && uncategorizedDocuments.length > 0"
+            @click="handleUncategorizedSmartArchive"
+            :disabled="isAnalyzingUncategorized"
+            class="bg-gradient-to-r from-purple-600 to-blue-600 hover:from-purple-700 hover:to-blue-700 text-white mr-10"
+          >
+            <template v-if="isAnalyzingUncategorized">
+              <Loader2 class="h-4 w-4 animate-spin mr-2" />
+              AI分析中...
+            </template>
+            <template v-else>
+              <Sparkles class="h-4 w-4 mr-3" />
+              一键智能归档
+            </template>
+          </Button>
+        </div>
       </DialogHeader>
       
       <ScrollArea class="flex-1 mt-4">
-        <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+        <!-- 未分析状态：显示原始文档列表 -->
+        <div v-if="!showUncategorizedSuggestions" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
           <div
             v-for="document in uncategorizedDocuments"
             :key="document.doc_id"
@@ -792,7 +814,155 @@
             </Select>
           </div>
         </div>
+
+        <!-- 智能归档建议状态：显示AI分析结果 -->
+        <div v-else class="space-y-4">
+          <div class="bg-blue-50 dark:bg-blue-950/30 p-4 rounded-lg border border-blue-200 dark:border-blue-700">
+            <div class="flex items-center gap-2 mb-2">
+              <Sparkles class="h-5 w-5 text-blue-600" />
+              <h4 class="font-medium text-blue-900 dark:text-blue-100">AI智能归档建议</h4>
+            </div>
+            <p class="text-sm text-blue-700 dark:text-blue-300">
+              AI已为您分析了 {{ uncategorizedArchiveSuggestions.length }} 个文档，请确认以下归档建议后点击保存生效。
+            </p>
+          </div>
+
+          <div class="grid grid-cols-1 lg:grid-cols-2 gap-4">
+            <div
+              v-for="suggestion in uncategorizedArchiveSuggestions"
+              :key="suggestion.docId"
+              class="p-4 border border-slate-200 dark:border-slate-700 rounded-lg bg-white dark:bg-slate-800"
+            >
+              <!-- 文档信息 -->
+              <div class="flex items-center gap-2 mb-3">
+                <FileText class="h-5 w-5 text-blue-500" />
+                <span class="text-sm font-medium truncate">{{ suggestion.document.filename }}</span>
+              </div>
+
+              <!-- AI分析结果 -->
+              <div v-if="suggestion.suggestion.success" class="space-y-3">
+                <!-- 推荐知识库 -->
+                <div class="p-3 bg-green-50 dark:bg-green-950/20 rounded border border-green-200 dark:border-green-700">
+                  <div class="flex items-center gap-2 mb-1">
+                    <div class="w-2 h-2 rounded-full bg-green-500"></div>
+                    <span class="text-sm font-medium text-green-800 dark:text-green-200">
+                      推荐归档至：{{ suggestion.suggestion.knowledgeBaseName }}
+                    </span>
+                    <Badge v-if="suggestion.suggestion.isNewKnowledgeBase" variant="secondary" class="text-xs">
+                      新建
+                    </Badge>
+                  </div>
+                  <p class="text-xs text-green-700 dark:text-green-300">
+                    {{ suggestion.suggestion.reason }}
+                  </p>
+                </div>
+
+                <!-- 文档类型 -->
+                <div class="flex items-center gap-2 text-xs text-slate-600 dark:text-slate-400">
+                  <span class="px-2 py-1 bg-slate-100 dark:bg-slate-700 rounded">
+                    {{ suggestion.suggestion.documentType }}
+                  </span>
+                  <span>{{ suggestion.document.chunk_count }} 片段</span>
+                  <span>{{ formatFileSize(suggestion.document.total_length) }}</span>
+                </div>
+
+                <!-- 知识库选择器 -->
+                <div>
+                  <Label class="text-xs text-slate-600 dark:text-slate-400">最终归档到：</Label>
+                  <Select 
+                    :model-value="suggestion.selectedKbId" 
+                    @update:model-value="(value: any) => value && typeof value === 'string' && updateArchiveSuggestion(suggestion.docId, value)"
+                  >
+                    <SelectTrigger class="h-8 text-xs mt-1">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <!-- 现有知识库 -->
+                      <SelectItem
+                        v-for="kb in knowledgeBases"
+                        :key="kb.id"
+                        :value="kb.id"
+                      >
+                        {{ kb.name }}
+                      </SelectItem>
+                      <!-- 新建知识库选项 -->
+                      <SelectItem 
+                        v-if="suggestion.suggestion.isNewKnowledgeBase"
+                        :value="'new_' + suggestion.suggestion.knowledgeBaseName.replace(/\s+/g, '_')"
+                      >
+                        🆕 创建 "{{ suggestion.suggestion.knowledgeBaseName }}"
+                      </SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+              </div>
+
+              <!-- 分析失败 -->
+              <div v-else class="p-3 bg-red-50 dark:bg-red-950/20 rounded border border-red-200 dark:border-red-700">
+                <div class="flex items-center gap-2 mb-1">
+                  <AlertTriangle class="h-4 w-4 text-red-500" />
+                  <span class="text-sm font-medium text-red-800 dark:text-red-200">分析失败</span>
+                </div>
+                <p class="text-xs text-red-700 dark:text-red-300">
+                  {{ suggestion.suggestion.error || '无法分析该文档，请手动选择知识库' }}
+                </p>
+                <Select 
+                  class="mt-2"
+                  @update:model-value="(value: any) => value && typeof value === 'string' && updateArchiveSuggestion(suggestion.docId, value)"
+                >
+                  <SelectTrigger class="h-8 text-xs">
+                    <SelectValue placeholder="手动选择知识库..." />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem
+                      v-for="kb in knowledgeBases"
+                      :key="kb.id"
+                      :value="kb.id"
+                    >
+                      {{ kb.name }}
+                    </SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+          </div>
+        </div>
       </ScrollArea>
+
+      <!-- 底部操作栏 -->
+      <div v-if="showUncategorizedSuggestions" class="flex justify-between items-center pt-4 border-t border-slate-200 dark:border-slate-700">
+        <Button 
+          variant="outline" 
+          @click="resetUncategorizedArchiveState"
+          :disabled="isAnalyzingUncategorized"
+        >
+          取消
+        </Button>
+        
+        <div class="flex gap-2">
+          <Button 
+            variant="outline" 
+            @click="handleUncategorizedSmartArchive"
+            :disabled="isAnalyzingUncategorized"
+          >
+            重新分析
+          </Button>
+          <Button 
+            @click="saveUncategorizedArchiveSuggestions"
+            :disabled="isAnalyzingUncategorized || uncategorizedArchiveSuggestions.length === 0"
+            class="bg-blue-600 hover:bg-blue-700 text-white"
+          >
+            <template v-if="isAnalyzingUncategorized">
+              <Loader2 class="h-4 w-4 animate-spin mr-2" />
+              保存中...
+            </template>
+            <template v-else>
+              <Check class="h-4 w-4 mr-2" />
+              保存归档 ({{ uncategorizedArchiveSuggestions.filter(s => s.suggestion.success).length }})
+            </template>
+          </Button>
+        </div>
+      </div>
     </DialogContent>
   </Dialog>
 
@@ -1000,6 +1170,9 @@ import SmartArchiveDialog from '@/components/SmartArchiveDialog.vue'
 import { searchDocuments } from '@/utils/api'
 import type { RAGSearchRequest, RAGSearchResponse, DocumentChunk } from '@/types'
 
+// 智能归档相关导入
+import { analyzeExistingDocumentsForArchive, confirmExistingArchive } from '@/utils/api/file'
+
 // Store
 const knowledgeBaseStore = useKnowledgeBaseStore()
 const {
@@ -1048,6 +1221,12 @@ const isUploading = ref(false)
 const searchType = ref('filename')
 const isSearching = ref(false)
 const viewMode = ref<'grid' | 'list'>('list')
+
+// 新增：未分类文档智能归档相关状态
+const isAnalyzingUncategorized = ref(false)
+const uncategorizedArchiveSuggestions = ref<any[]>([])
+const showUncategorizedSuggestions = ref(false)
+const uncategorizedSuggestionChanges = ref<Map<string, string>>(new Map()) // docId -> kbId
 
 // RAG内容搜索相关状态
 const semanticSearchResults = ref<RAGSearchResponse | null>(null)
@@ -1169,11 +1348,18 @@ onMounted(async () => {
 function getFileTypeDisplay(type: string): string {
   const typeMap: Record<string, string> = {
     'application/pdf': 'PDF',
-    'image/png': 'PNG',
-    'image/jpeg': 'JPG',
-    'image/jpg': 'JPG',
-    'audio/wav': 'WAV',
-    'audio/mp3': 'MP3'
+    'application/vnd.openxmlformats-officedocument.wordprocessingml.document': 'Word文档',
+    'application/msword': 'Word文档',
+    'text/plain': '文本文件',
+    'image/png': 'PNG图片',
+    'image/jpeg': 'JPG图片',
+    'image/jpg': 'JPG图片',
+    'image/bmp': 'BMP图片',
+    'image/tiff': 'TIFF图片',
+    'image/webp': 'WebP图片',
+    'audio/wav': 'WAV音频',
+    'audio/mp3': 'MP3音频',
+    'audio/mpeg': 'MP3音频'
   }
   return typeMap[type] || type.split('/').pop()?.toUpperCase() || '未知'
 }
@@ -1555,7 +1741,170 @@ function handleSmartArchiveSuccess(results: any[]) {
   // 显示成功提示
   const successCount = results.length
   const newKbCount = results.filter(r => r.isNewKnowledgeBase).length
+}
+
+// 新增：未分类文档智能归档函数 - 使用真正的AI分析
+async function handleUncategorizedSmartArchive() {
+  if (uncategorizedDocuments.value.length === 0) return
   
-  alert(`智能归档完成！\n- 成功归档 ${successCount} 个文档\n- 新建 ${newKbCount} 个知识库`)
+  isAnalyzingUncategorized.value = true
+  uncategorizedArchiveSuggestions.value = []
+  
+  try {
+    // 调用后端AI分析API
+    const docIds = uncategorizedDocuments.value.map(doc => doc.doc_id)
+    const prompt = "请根据文档内容自动判断文档类型和主题，选择最合适的知识库进行归档，如果没有匹配的知识库请创建新的知识库"
+    
+    console.log('🤖 开始AI分析未分类文档:', {
+      count: docIds.length,
+      docIds,
+      prompt
+    })
+    
+    const response = await analyzeExistingDocumentsForArchive({
+      docIds,
+      prompt,
+      customAnalysis: true
+    })
+    
+    if (response.code === 200 && response.data && response.data.results) {
+      // 处理AI分析结果
+      uncategorizedArchiveSuggestions.value = response.data.results.map(result => {
+        // 找到对应的文档信息
+        const document = uncategorizedDocuments.value.find(doc => doc.doc_id === result.docId)
+        
+        return {
+          docId: result.docId,
+          document: document || { 
+            doc_id: result.docId, 
+            filename: result.filename,
+            chunk_count: 0,
+            total_length: 0
+          },
+          suggestion: {
+            fileName: result.filename,
+            knowledgeBaseName: result.knowledgeBaseName,
+            isNewKnowledgeBase: result.isNewKnowledgeBase,
+            reason: result.reason,
+            knowledgeBaseId: result.knowledgeBaseId,
+            documentType: result.documentType,
+            success: result.success,
+            error: result.error
+          },
+          selectedKbId: result.knowledgeBaseId || 'new_' + result.knowledgeBaseName.replace(/\s+/g, '_')
+        }
+      })
+      
+      showUncategorizedSuggestions.value = true
+      
+      console.log('✅ AI分析完成:', {
+        total: response.data.totalDocuments,
+        success: response.data.successCount,
+        failure: response.data.failureCount,
+        results: uncategorizedArchiveSuggestions.value
+      })
+    } else {
+      throw new Error(response.msg || 'AI分析API调用失败')
+    }
+    
+  } catch (error) {
+    console.error('❌ 未分类文档AI分析失败:', error)
+    alert('AI智能分析失败，请稍后重试。\n错误信息：' + (error instanceof Error ? error.message : '未知错误'))
+  } finally {
+    isAnalyzingUncategorized.value = false
+  }
+}
+
+// 移除：基于文档名称的本地分析函数（已替换为真正的AI分析）
+// 现在使用后端AI分析API进行真正的智能文档分析
+
+// 新增：保存未分类文档的归档建议 - 使用后端AI归档API
+async function saveUncategorizedArchiveSuggestions() {
+  if (uncategorizedArchiveSuggestions.value.length === 0) return
+  
+  isAnalyzingUncategorized.value = true
+  
+  try {
+    // 准备归档数据，只包含成功分析的文档
+    const successfulSuggestions = uncategorizedArchiveSuggestions.value.filter(s => s.suggestion.success)
+    
+    if (successfulSuggestions.length === 0) {
+      alert('没有成功分析的文档可以归档')
+      return
+    }
+    
+    // 构建归档请求数据
+    const analysisResults = successfulSuggestions.map(suggestion => ({
+      docId: suggestion.docId,
+      filename: suggestion.suggestion.fileName,
+      knowledgeBaseName: suggestion.suggestion.knowledgeBaseName,
+      isNewKnowledgeBase: suggestion.suggestion.isNewKnowledgeBase,
+      reason: suggestion.suggestion.reason,
+      knowledgeBaseId: suggestion.suggestion.knowledgeBaseId,
+      documentType: suggestion.suggestion.documentType,
+      success: suggestion.suggestion.success,
+      error: suggestion.suggestion.error
+    }))
+    
+    console.log('📤 提交归档请求:', {
+      count: analysisResults.length,
+      results: analysisResults
+    })
+    
+    // 调用后端确认归档API
+    const response = await confirmExistingArchive({
+      analysisResults
+    })
+    
+    if (response.code === 200 && response.data) {
+      const { successCount, failureCount, results } = response.data
+      
+      console.log('✅ 归档完成:', {
+        total: results.length,
+        success: successCount,
+        failure: failureCount,
+        results
+      })
+      
+      // 刷新数据
+      await fetchAllDocuments()
+      
+      // 重置状态
+      resetUncategorizedArchiveState()
+      
+      // 显示结果统计
+      if (failureCount > 0) {
+        alert(`归档完成！成功 ${successCount} 个，失败 ${failureCount} 个文档`)
+      } else {
+        alert(`✅ 智能归档完成！成功处理 ${successCount} 个文档`)
+      }
+    } else {
+      throw new Error(response.msg || '归档API调用失败')
+    }
+    
+  } catch (error) {
+    console.error('❌ 保存归档失败:', error)
+    alert('保存归档失败，请稍后重试。\n错误信息：' + (error instanceof Error ? error.message : '未知错误'))
+  } finally {
+    isAnalyzingUncategorized.value = false
+  }
+}
+
+// 新增：重置未分类文档归档状态
+function resetUncategorizedArchiveState() {
+  showUncategorizedSuggestions.value = false
+  uncategorizedArchiveSuggestions.value = []
+  uncategorizedSuggestionChanges.value.clear()
+}
+
+// 新增：更新归档建议的目标知识库
+function updateArchiveSuggestion(docId: string, newKbId: string) {
+  uncategorizedSuggestionChanges.value.set(docId, newKbId)
+  
+  // 更新对应的建议项
+  const suggestion = uncategorizedArchiveSuggestions.value.find(s => s.docId === docId)
+  if (suggestion) {
+    suggestion.selectedKbId = newKbId
+  }
 }
 </script> 

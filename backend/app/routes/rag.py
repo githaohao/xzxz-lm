@@ -405,60 +405,6 @@ async def get_knowledge_base_documents(kb_id: str):
         raise HTTPException(status_code=500, detail=f"获取知识库文档失败: {str(e)}")
 
 
-# 智能归档接口
-@router.post("/smart-archive")
-async def smart_archive_document(
-    file: UploadFile = File(...),
-    prompt: str = Form(...),
-    custom_analysis: Optional[str] = Form(None)
-):
-    """智能文档分类和归档"""
-    try:
-        start_time = time.time()
-        
-        # 检查文件类型
-        file_ext = file.filename.split('.')[-1].lower() if file.filename else ''
-        if f".{file_ext}" not in settings.allowed_file_types:
-            raise HTTPException(
-                status_code=400,
-                detail=f"不支持的文件类型: {file_ext}"
-            )
-        
-        # 读取文件内容
-        content = await file.read()
-        if len(content) > settings.max_file_size:
-            raise HTTPException(
-                status_code=400,
-                detail=f"文件大小超过限制: {settings.max_file_size / 1024 / 1024:.1f}MB"
-            )
-        
-        # 调用智能归档服务
-        result = await rag_service.smart_archive_document(
-            file_content=content,
-            filename=file.filename or "unknown",
-            file_type=file.content_type or "application/octet-stream",
-            analysis_prompt=prompt,
-            custom_analysis=custom_analysis == "true"
-        )
-        
-        processing_time = time.time() - start_time
-        
-        return ChatHistoryResponse(
-            code=200,
-            msg="智能归档完成",
-            data={
-                **result,
-                "processing_time": processing_time
-            }
-        )
-        
-    except HTTPException:
-        raise
-    except Exception as e:
-        logger.error(f"智能归档失败: {e}")
-        raise HTTPException(status_code=500, detail=f"智能归档失败: {str(e)}")
-
-
 @router.post("/analyze-documents")
 async def analyze_documents_for_archive(
     files: List[UploadFile] = File(...),
@@ -621,69 +567,81 @@ async def confirm_smart_archive(
         logger.error(f"确认归档失败: {e}")
         raise HTTPException(status_code=500, detail=f"确认归档失败: {str(e)}")
 
-
-@router.post("/batch-smart-archive")
-async def batch_smart_archive(
-    files: List[UploadFile] = File(...),
-    prompt: str = Form(...),
-    custom_analysis: Optional[str] = Form(None)
+@router.post("/analyze-existing-documents")
+async def analyze_existing_documents_for_archive(
+    request: dict
 ):
-    """批量智能文档归档（保留兼容性，直接归档）"""
+    """分析已有文档进行智能归档（基于doc_id）"""
     try:
         start_time = time.time()
         
-        if len(files) > 20:  # 限制批量上传数量
+        doc_ids = request.get("docIds", [])
+        prompt = request.get("prompt", "请根据文档内容自动判断文档类型和主题，选择最合适的知识库进行归档")
+        custom_analysis = request.get("customAnalysis", True)
+        
+        if len(doc_ids) > 20:  # 限制批量分析数量
             raise HTTPException(
                 status_code=400,
-                detail="批量上传文件数量不能超过20个"
+                detail="批量分析文档数量不能超过20个"
             )
         
         results = []
         success_count = 0
         failure_count = 0
         
-        for file in files:
+        # 获取所有文档信息
+        all_docs = await rag_service.get_all_documents()
+        doc_map = {doc["doc_id"]: doc for doc in all_docs}
+        
+        for doc_id in doc_ids:
             try:
-                # 检查文件类型
-                file_ext = file.filename.split('.')[-1].lower() if file.filename else ''
-                if f".{file_ext}" not in settings.allowed_file_types:
+                if doc_id not in doc_map:
                     results.append({
-                        "fileName": file.filename or "unknown",
+                        "docId": doc_id,
                         "success": False,
-                        "error": f"不支持的文件类型: {file_ext}"
+                        "error": "文档不存在"
                     })
                     failure_count += 1
                     continue
                 
-                # 读取文件内容
-                content = await file.read()
-                if len(content) > settings.max_file_size:
+                doc_info = doc_map[doc_id]
+                
+                # 获取文档内容（从已存储的分块中重构）
+                chunks = await rag_service.get_document_chunks(doc_id)
+                if not chunks:
                     results.append({
-                        "fileName": file.filename or "unknown",
+                        "docId": doc_id,
+                        "filename": doc_info.get("filename", "unknown"),
                         "success": False,
-                        "error": f"文件大小超过限制"
+                        "error": "无法获取文档内容"
                     })
                     failure_count += 1
                     continue
                 
-                # 调用智能归档服务
-                result = await rag_service.smart_archive_document(
-                    file_content=content,
-                    filename=file.filename or "unknown",
-                    file_type=file.content_type or "application/octet-stream",
+                # 重构文档内容
+                text_content = "\n".join([chunk["content"] for chunk in chunks])
+                
+                # 调用文档分析服务
+                result = await rag_service.analyze_existing_document_for_archive(
+                    doc_id=doc_id,
+                    filename=doc_info.get("filename", "unknown"),
+                    file_type=doc_info.get("file_type", "application/octet-stream"),
+                    text_content=text_content,
                     analysis_prompt=prompt,
-                    custom_analysis=custom_analysis == "true"
+                    custom_analysis=custom_analysis
                 )
                 
                 results.append({
                     **result,
+                    "docId": doc_id,
                     "success": True
                 })
                 success_count += 1
                 
             except Exception as e:
                 results.append({
-                    "fileName": file.filename or "unknown",
+                    "docId": doc_id,
+                    "filename": doc_map.get(doc_id, {}).get("filename", "unknown"),
                     "success": False,
                     "error": str(e)
                 })
@@ -693,10 +651,10 @@ async def batch_smart_archive(
         
         return ChatHistoryResponse(
             code=200,
-            msg=f"批量归档完成: 成功{success_count}个, 失败{failure_count}个",
+            msg=f"文档分析完成: 成功{success_count}个, 失败{failure_count}个",
             data={
                 "results": results,
-                "totalFiles": len(files),
+                "totalDocuments": len(doc_ids),
                 "successCount": success_count,
                 "failureCount": failure_count,
                 "processing_time": processing_time
@@ -706,5 +664,74 @@ async def batch_smart_archive(
     except HTTPException:
         raise
     except Exception as e:
-        logger.error(f"批量智能归档失败: {e}")
-        raise HTTPException(status_code=500, detail=f"批量智能归档失败: {str(e)}")
+        logger.error(f"分析已有文档失败: {e}")
+        raise HTTPException(status_code=500, detail=f"分析已有文档失败: {str(e)}")
+
+
+@router.post("/confirm-existing-archive")
+async def confirm_existing_archive(
+    request: dict
+):
+    """确认已有文档的归档操作"""
+    try:
+        start_time = time.time()
+        
+        analysis_results = request.get("analysisResults", [])
+        
+        results = []
+        success_count = 0
+        failure_count = 0
+        
+        for analysis_result in analysis_results:
+            try:
+                if not analysis_result.get("success"):
+                    results.append({
+                        "docId": analysis_result.get("docId"),
+                        "filename": analysis_result.get("filename", "unknown"),
+                        "success": False,
+                        "error": analysis_result.get("error", "分析失败")
+                    })
+                    failure_count += 1
+                    continue
+                
+                # 执行实际归档操作
+                result = await rag_service.confirm_existing_document_archive(
+                    doc_id=analysis_result.get("docId"),
+                    analysis_result=analysis_result
+                )
+                
+                results.append({
+                    **result,
+                    "docId": analysis_result.get("docId"),
+                    "success": True
+                })
+                success_count += 1
+                
+            except Exception as e:
+                results.append({
+                    "docId": analysis_result.get("docId"),
+                    "filename": analysis_result.get("filename", "unknown"),
+                    "success": False,
+                    "error": str(e)
+                })
+                failure_count += 1
+        
+        processing_time = time.time() - start_time
+        
+        return ChatHistoryResponse(
+            code=200,
+            msg=f"智能归档完成: 成功{success_count}个, 失败{failure_count}个",
+            data={
+                "results": results,
+                "totalDocuments": len(analysis_results),
+                "successCount": success_count,
+                "failureCount": failure_count,
+                "processing_time": processing_time
+            }
+        )
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"确认已有文档归档失败: {e}")
+        raise HTTPException(status_code=500, detail=f"确认已有文档归档失败: {str(e)}")

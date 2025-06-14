@@ -12,6 +12,40 @@
           </p>
         </div>
 
+        <!-- 知识库选择区域 -->
+        <Card class="border-0 shadow-lg">
+          <CardHeader>
+            <CardTitle class="flex items-center gap-2">
+              <Database class="h-6 w-6 text-purple-500" />
+              知识库设置
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div class="flex items-center justify-between">
+              <div class="flex-1">
+                <KnowledgeBaseSelector v-model="localSelectedKnowledgeBase" />
+              </div>
+              <div class="flex items-center gap-2 ml-4">
+                <Badge v-if="localSelectedKnowledgeBase && currentKnowledgeBaseDocumentsCount > 0" variant="outline" class="text-green-600 border-green-300">
+                  🗂️ {{ currentKnowledgeBaseDocumentsCount }} 个文档
+                </Badge>
+                <Badge v-else-if="localSelectedKnowledgeBase" variant="outline" class="text-gray-500 border-gray-300">
+                  🗂️ 空知识库
+                </Badge>
+                <Badge v-else variant="outline" class="text-gray-400 border-gray-300">
+                  💬 常规对话
+                </Badge>
+              </div>
+            </div>
+            <div v-if="localSelectedKnowledgeBase" class="mt-2 text-sm text-gray-600 dark:text-gray-400">
+              💡 已选择知识库"{{ localSelectedKnowledgeBase.name }}"，语音对话将基于知识库内容进行智能问答
+            </div>
+            <div v-else class="mt-2 text-sm text-gray-500 dark:text-gray-500">
+              💬 当前为常规对话模式，选择知识库可开启基于文档的智能问答
+            </div>
+          </CardContent>
+        </Card>
+
       <!-- 状态显示 -->
       <Card class="border-0 shadow-lg">
         <CardHeader>
@@ -249,6 +283,10 @@
                   <Volume2 class="h-4 w-4 text-purple-500" />
                   <span>支持静音控制和会话管理</span>
                 </div>
+                <div class="flex items-center gap-2">
+                  <Database class="h-4 w-4 text-green-500" />
+                  <span>选择知识库进行基于文档的智能问答</span>
+                </div>
               </div>
             </div>
             <div class="space-y-3">
@@ -302,7 +340,8 @@ import {
   Zap,
   Heart,
   Globe,
-  Shield
+  Shield,
+  Database
 } from 'lucide-vue-next'
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
@@ -311,7 +350,11 @@ import { Avatar, AvatarFallback } from '@/components/ui/avatar'
 import Alert from '@/components/ui/Alert.vue'
 import AlertDescription from '@/components/ui/AlertDescription.vue'
 import { useVoiceStore } from '@/stores/voice'
+import { useKnowledgeBaseStore } from '@/stores/knowledgeBase'
 import { formatTime } from '@/utils/voice-utils'
+import KnowledgeBaseSelector from '@/components/KnowledgeBaseSelector.vue'
+import { ref, computed, watch } from 'vue'
+import type { KnowledgeBase } from '@/types'
 
 const voiceStore = useVoiceStore()
 const {
@@ -323,7 +366,8 @@ const {
   conversationRounds,
   funAudioAvailable,
   hasMessages,
-  canStartCall
+  canStartCall,
+  selectedKnowledgeBase
 } = storeToRefs(voiceStore)
 
 const {
@@ -334,8 +378,32 @@ const {
   interruptAI,
   clearHistory,
   restartSession,
-  getStatusText
+  getStatusText,
+  setSelectedKnowledgeBase
 } = voiceStore
+
+// 知识库Store
+const knowledgeBaseStore = useKnowledgeBaseStore()
+const { currentKnowledgeBaseDocuments } = storeToRefs(knowledgeBaseStore)
+
+// 本地知识库选择状态（用于KnowledgeBaseSelector组件）
+const localSelectedKnowledgeBase = ref<KnowledgeBase | null>(null)
+
+// 计算当前知识库的文档数量
+const currentKnowledgeBaseDocumentsCount = computed(() => currentKnowledgeBaseDocuments.value.length)
+
+// 监听本地知识库选择变化，同步到voice store
+watch(localSelectedKnowledgeBase, (newKb) => {
+  setSelectedKnowledgeBase(newKb)
+  if (newKb) {
+    knowledgeBaseStore.setSelectedKnowledgeBase(newKb)
+  }
+})
+
+// 监听voice store中知识库选择变化，同步到本地
+watch(selectedKnowledgeBase, (newKb) => {
+  localSelectedKnowledgeBase.value = newKb
+})
 
 // 处理开始通话
 async function handleStartCall() {
@@ -368,5 +436,7 @@ function getStatusColor() {
 
 onMounted(() => {
   checkServiceStatus()
+  // 初始化知识库数据
+  knowledgeBaseStore.initialize()
 })
 </script>

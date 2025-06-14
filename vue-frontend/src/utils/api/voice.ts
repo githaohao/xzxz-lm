@@ -8,12 +8,18 @@ import { api } from './client'
 export async function sendVoiceMessage(
   audioBlob: Blob,
   sessionId: string,
-  language: string = 'auto'
+  language: string = 'auto',
+  knowledgeBaseId?: string
 ): Promise<VoiceRecognitionResponse> {
   const formData = new FormData()
   formData.append('audio', audioBlob, 'voice.wav')
   formData.append('session_id', sessionId)
   formData.append('language', language)
+  
+  // 如果指定了知识库ID，添加到请求中
+  if (knowledgeBaseId) {
+    formData.append('knowledge_base_id', knowledgeBaseId)
+  }
 
   return api.upload<VoiceRecognitionResponse>(
     API_CONFIG.ENDPOINTS.VOICE_CHAT, 
@@ -23,12 +29,10 @@ export async function sendVoiceMessage(
 }
 
 /**
- * TTS语音合成API
+ * TTS语音合成API - 返回音频数据流
  */
 export async function synthesizeSpeech(params: TTSRequest): Promise<ArrayBuffer> {
-  return api.post<ArrayBuffer>(API_CONFIG.ENDPOINTS.VOICE_TTS, params, {
-    headers: API_CONFIG.HEADERS.BINARY
-  })
+  return api.binary(API_CONFIG.ENDPOINTS.VOICE_TTS, params)
 }
 
 /**

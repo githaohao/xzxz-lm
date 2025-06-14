@@ -12,8 +12,6 @@ from datetime import datetime
 import chromadb
 from chromadb.config import Settings
 from sentence_transformers import SentenceTransformer
-import PyPDF2
-from docx import Document
 import aiofiles
 
 from app.database import Database
@@ -194,56 +192,37 @@ class UserRAGService:
             return False
     
     async def _extract_text_from_file(self, file_path: str) -> str:
-        """从文件中提取文本内容"""
-        _, ext = os.path.splitext(file_path.lower())
-        
+        """从文件中提取文本内容 - 使用统一的文件提取服务"""
         try:
-            if ext == '.pdf':
-                return await self._extract_from_pdf(file_path)
-            elif ext in ['.docx', '.doc']:
-                return await self._extract_from_docx(file_path)
-            elif ext == '.txt':
-                return await self._extract_from_txt(file_path)
-            else:
-                raise ValueError(f"不支持的文件格式: {ext}")
+            from app.services.file_extraction_service import file_extraction_service
+            
+            # 读取文件内容
+            async with aiofiles.open(file_path, 'rb') as file:
+                file_content = await file.read()
+            
+            # 获取文件名
+            filename = os.path.basename(file_path)
+            
+            # 使用统一的文件提取服务
+            text, metadata = await file_extraction_service.extract_text_from_file(
+                file_content, filename, None  # 让服务自动检测文件类型
+            )
+            
+            # 记录提取元数据到日志
+            extraction_method = metadata.get('extraction_method', 'unknown')
+            processing_time = metadata.get('extraction_time', 0)
+            confidence = metadata.get('confidence', None)
+            
+            log_msg = f"用户RAG文件提取完成: {filename}, 方法: {extraction_method}, 耗时: {processing_time:.2f}秒"
+            if confidence is not None:
+                log_msg += f", 置信度: {confidence:.2f}"
+            
+            logger.info(log_msg)
+            
+            return text
+            
         except Exception as e:
             logger.error(f"提取文件内容失败: {e}")
-            raise e
-    
-    async def _extract_from_pdf(self, file_path: str) -> str:
-        """从PDF文件提取文本"""
-        text = ""
-        try:
-            with open(file_path, 'rb') as file:
-                pdf_reader = PyPDF2.PdfReader(file)
-                for page in pdf_reader.pages:
-                    text += page.extract_text() + "\n"
-        except Exception as e:
-            logger.error(f"PDF文本提取失败: {e}")
-            raise e
-        
-        return text.strip()
-    
-    async def _extract_from_docx(self, file_path: str) -> str:
-        """从DOCX文件提取文本"""
-        try:
-            doc = Document(file_path)
-            text = ""
-            for paragraph in doc.paragraphs:
-                text += paragraph.text + "\n"
-            return text.strip()
-        except Exception as e:
-            logger.error(f"DOCX文本提取失败: {e}")
-            raise e
-    
-    async def _extract_from_txt(self, file_path: str) -> str:
-        """从TXT文件提取文本"""
-        try:
-            async with aiofiles.open(file_path, 'r', encoding='utf-8') as file:
-                content = await file.read()
-            return content.strip()
-        except Exception as e:
-            logger.error(f"TXT文本提取失败: {e}")
             raise e
     
     def _split_text(self, text: str, chunk_size: int = 1000, overlap: int = 200) -> List[str]:

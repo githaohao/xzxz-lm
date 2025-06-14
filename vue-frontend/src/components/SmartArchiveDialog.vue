@@ -1,6 +1,6 @@
 <template>
   <Dialog :open="isOpen" @update:open="value => emit('update:isOpen', value)">
-    <DialogContent class="sm:max-w-2xl">
+    <DialogContent class="max-h-[90vh] overflow-y-auto">
       <DialogHeader>
         <DialogTitle class="flex items-center gap-2">
           <Sparkles class="h-5 w-5 text-blue-500" />
@@ -207,56 +207,66 @@
           </div>
         </div>
 
-        <!-- 智能分析结果预览 -->
-        <div v-if="showAnalysisResults && analysisResults.length > 0" class="space-y-3">
-          <Label class="text-sm font-medium text-blue-600">🧠 AI分析结果 - 请确认归档建议</Label>
-          <div class="space-y-2">
-            <div
-              v-for="result in analysisResults"
-              :key="result.fileName"
-              class="p-3 bg-blue-50 dark:bg-blue-950/20 border border-blue-200 dark:border-blue-800 rounded-lg"
-            >
-              <div class="flex items-center justify-between">
-                <span class="text-sm font-medium text-blue-900 dark:text-blue-100">
-                  📄 {{ result.fileName }}
-                </span>
-                <div class="flex items-center gap-2">
-                  <Badge variant="outline" class="text-xs">
-                    {{ result.documentType }}
-                  </Badge>
-                  <Badge 
-                    :variant="result.isNewKnowledgeBase ? 'default' : 'secondary'"
-                    class="text-xs"
-                  >
-                    {{ result.isNewKnowledgeBase ? '新建' : '已有' }}
-                  </Badge>
-                </div>
+        <!-- 智能分析结果摘要 -->
+        <div v-if="showAnalysisResults && analysisResults.length > 0" class="space-y-4">
+          <div class="bg-gradient-to-r from-blue-50 to-purple-50 dark:from-blue-950/30 dark:to-purple-950/30 border border-blue-200 dark:border-blue-800 rounded-xl p-5">
+            <div class="flex items-center gap-3 mb-4">
+              <div class="p-2 bg-blue-100 dark:bg-blue-900/30 rounded-full">
+                <Brain class="h-5 w-5 text-blue-600 dark:text-blue-400" />
               </div>
-              <p class="text-xs text-blue-700 dark:text-blue-300 mt-1">
-                📂 建议归档至：{{ result.knowledgeBaseName }}
-              </p>
-              <p v-if="result.reason" class="text-xs text-blue-600 dark:text-blue-400 mt-1">
-                💡 {{ result.reason }}
-              </p>
-              <div v-if="result.textContent" class="mt-2 p-2 bg-slate-100 dark:bg-slate-800 rounded text-xs">
-                <p class="text-slate-600 dark:text-slate-400 font-medium mb-1">文档预览：</p>
-                <p class="text-slate-700 dark:text-slate-300 line-clamp-3">{{ result.textContent }}</p>
+              <div>
+                <h3 class="font-medium text-blue-900 dark:text-blue-100">🧠 AI 分析完成</h3>
+                <p class="text-sm text-blue-700 dark:text-blue-300">已完成 {{ analysisResults.length }} 个文档的智能分析</p>
               </div>
             </div>
-          </div>
-          
-          <div class="flex justify-end gap-2 pt-2 border-t border-blue-200 dark:border-blue-800">
-            <Button variant="outline" @click="showAnalysisResults = false" size="sm">
-              重新分析
-            </Button>
-            <Button 
-              @click="handleConfirmArchive" 
-              class="bg-blue-600 hover:bg-blue-700 text-white"
-              size="sm"
-            >
-              <Check class="h-4 w-4 mr-1" />
-              确认归档
-            </Button>
+            
+            <!-- 分析统计 -->
+            <div class="grid grid-cols-2 md:grid-cols-4 gap-4 mb-4">
+              <div class="text-center p-3 bg-white dark:bg-slate-800 rounded-lg border border-blue-200 dark:border-blue-700">
+                <div class="text-lg font-semibold text-green-600">{{ successfulAnalysisCount }}</div>
+                <div class="text-xs text-slate-600 dark:text-slate-400">分析成功</div>
+              </div>
+              <div class="text-center p-3 bg-white dark:bg-slate-800 rounded-lg border border-blue-200 dark:border-blue-700">
+                <div class="text-lg font-semibold text-purple-600">{{ newKnowledgeBasesCount }}</div>
+                <div class="text-xs text-slate-600 dark:text-slate-400">新建知识库</div>
+              </div>
+              <div class="text-center p-3 bg-white dark:bg-slate-800 rounded-lg border border-blue-200 dark:border-blue-700">
+                <div class="text-lg font-semibold text-blue-600">{{ existingKnowledgeBasesCount }}</div>
+                <div class="text-xs text-slate-600 dark:text-slate-400">已有知识库</div>
+              </div>
+              <div v-if="failedAnalysisCount > 0" class="text-center p-3 bg-white dark:bg-slate-800 rounded-lg border border-red-200 dark:border-red-700">
+                <div class="text-lg font-semibold text-red-600">{{ failedAnalysisCount }}</div>
+                <div class="text-xs text-slate-600 dark:text-slate-400">分析失败</div>
+              </div>
+            </div>
+            
+            <!-- 操作按钮 -->
+            <div class="flex justify-between items-center pt-3 border-t border-blue-200 dark:border-blue-700">
+              <Button 
+                variant="outline" 
+                @click="showAnalysisPreview = true" 
+                size="sm"
+                class="flex items-center gap-2"
+              >
+                <Eye class="h-4 w-4" />
+                查看详细结果
+              </Button>
+              
+              <div class="flex gap-2">
+                <Button variant="outline" @click="handleReanalyze" size="sm">
+                  重新分析
+                </Button>
+                <Button 
+                  @click="handleConfirmArchive" 
+                  class="bg-blue-600 hover:bg-blue-700 text-white"
+                  size="sm"
+                  :disabled="successfulAnalysisCount === 0"
+                >
+                  <Check class="h-4 w-4 mr-1" />
+                  确认归档 ({{ successfulAnalysisCount }})
+                </Button>
+              </div>
+            </div>
           </div>
         </div>
 
@@ -312,6 +322,15 @@
       </div>
     </DialogContent>
   </Dialog>
+
+  <!-- 分析结果详细预览对话框 -->
+  <AnalysisResultsDialog
+    :isOpen="showAnalysisPreview"
+    :analysisResults="analysisResults"
+    @update:isOpen="showAnalysisPreview = $event"
+    @confirm-archive="handleConfirmArchive"
+    @reanalyze="handleReanalyze"
+  />
 </template>
 
 <script setup lang="ts">
@@ -329,6 +348,7 @@ import { Badge } from '@/components/ui/badge'
 import { Textarea } from '@/components/ui/textarea'
 import { Switch } from '@/components/ui/switch'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
+import AnalysisResultsDialog from '@/components/AnalysisResultsDialog.vue'
 import {
   Upload,
   FileText,
@@ -345,7 +365,9 @@ import {
   BookOpen,
   Heart,
   Shield,
-  Zap
+  Zap,
+  Brain,
+  Eye
 } from 'lucide-vue-next'
 
 // Props
@@ -379,6 +401,7 @@ interface AnalysisResult {
   knowledgeBaseId?: string
   documentType: string
   textContent: string
+  docId?: string  // ✨ 新增：文档ID（分析阶段已生成）
   success: boolean
   error?: string
 }
@@ -405,19 +428,25 @@ interface PresetPrompt {
 const selectedFiles = ref<File[]>([])
 const isDragOver = ref(false)
 const enableSmartArchive = ref(true)
-const selectedPreset = ref<string>('')
-const customPrompt = ref('')
+const selectedPreset = ref<string>('other')
+const customPrompt = ref('请根据文档内容自动判断文档类型和主题，选择最合适的知识库进行归档，如果没有匹配的知识库请创建新的知识库')
 const isUploading = ref(false)
 const uploadProgress = ref<UploadProgress[]>([])
 const showResults = ref(false)
 const showAnalysisResults = ref(false)
+const showAnalysisPreview = ref(false)
 const archiveResults = ref<ArchiveResult[]>([])
 const analysisResults = ref<AnalysisResult[]>([])
-const filesForArchive = ref<{fileName: string, content: string, fileType: string}[]>([])
 const fileInputRef = ref<HTMLInputElement | null>(null)
 
 // 预设提示词配置
 const presetPrompts: PresetPrompt[] = [
+  {
+    id: 'resume',
+    name: '个人简历',
+    icon: GraduationCap,
+    prompt: '这是个人简历相关的文档，包含个人简历、履历表、个人资料、求职材料、工作经历等。请分析文档内容，判断是否属于简历类文档，如果是则归档到"个人简历"知识库。'
+  },
   {
     id: 'contract',
     name: '合同文档',
@@ -462,8 +491,8 @@ const presetPrompts: PresetPrompt[] = [
   },
   {
     id: 'other',
-    name: '自定义分析',
-    icon: Zap,
+    name: '智能分析',
+    icon: Sparkles,
     prompt: '请根据文档内容自动判断文档类型和主题，选择最合适的知识库进行归档，如果没有匹配的知识库请创建新的知识库。'
   }
 ]
@@ -475,6 +504,22 @@ const overallProgress = computed(() => {
   if (totalUploads.value === 0) return 0
   return (completedUploads.value / totalUploads.value) * 100
 })
+
+const successfulAnalysisCount = computed(() => 
+  analysisResults.value.filter(result => result.success).length
+)
+
+const failedAnalysisCount = computed(() => 
+  analysisResults.value.filter(result => !result.success).length
+)
+
+const newKnowledgeBasesCount = computed(() => 
+  analysisResults.value.filter(result => result.success && result.isNewKnowledgeBase).length
+)
+
+const existingKnowledgeBasesCount = computed(() => 
+  analysisResults.value.filter(result => result.success && !result.isNewKnowledgeBase).length
+)
 
 // 监听对话框打开状态
 watch(() => props.isOpen, (isOpen) => {
@@ -559,14 +604,7 @@ async function handleAnalyzeDocuments() {
     // 导入API函数
     const { analyzeDocumentsForArchive } = await import('@/utils/api/file')
     
-    // 先将文件转换为Base64格式保存
-    filesForArchive.value = await Promise.all(
-      selectedFiles.value.map(async (file) => ({
-        fileName: file.name,
-        fileType: file.type,
-        content: await fileToBase64(file)
-      }))
-    )
+    // 🚀 优化：不再需要Base64转换，文档在分析阶段直接保存
     
     // 调用分析API
     const response = await analyzeDocumentsForArchive({
@@ -627,9 +665,13 @@ async function handleConfirmArchive() {
     // 导入API函数
     const { confirmSmartArchive } = await import('@/utils/api/file')
     
-    // 调用确认归档API
+    // 🚀 优化：不再需要传递文件内容，分析结果中已包含doc_id
     const response = await confirmSmartArchive({
-      files: filesForArchive.value,
+      files: selectedFiles.value.map(file => ({
+        fileName: file.name,
+        fileType: file.type
+        // ⚠️ 不再传递content，因为文档已在分析阶段保存
+      })),
       analysisResults: analysisResults.value
     })
     
@@ -726,28 +768,18 @@ async function handleRegularUpload() {
   }
 }
 
-// 将文件转换为Base64格式
-function fileToBase64(file: File): Promise<string> {
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader()
-    reader.onload = () => {
-      if (typeof reader.result === 'string') {
-        // 移除data:开头部分，只保留Base64编码
-        const base64 = reader.result.split(',')[1]
-        resolve(base64)
-      } else {
-        reject(new Error('文件读取失败'))
-      }
-    }
-    reader.onerror = reject
-    reader.readAsDataURL(file)
-  })
-}
+
 
 function handleCancel() {
   if (!isUploading.value) {
     emit('update:isOpen', false)
   }
+}
+
+function handleReanalyze() {
+  showAnalysisResults.value = false
+  showAnalysisPreview.value = false
+  analysisResults.value = []
 }
 
 function resetDialog() {
@@ -760,9 +792,9 @@ function resetDialog() {
   uploadProgress.value = []
   showResults.value = false
   showAnalysisResults.value = false
+  showAnalysisPreview.value = false
   archiveResults.value = []
   analysisResults.value = []
-  filesForArchive.value = []
 }
 
 // 模拟方法（实际使用时需要调用真实API）

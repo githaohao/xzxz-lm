@@ -33,6 +33,7 @@ sentence-transformers>=2.2.0
 langchain>=0.0.3550
 PyPDF2>=3.0.0
 python-docx>=0.8.11
+docx2txt>=0.8  # 🔧 支持老版Word文档(.doc)文本提取
 
 # 并发处理优化
 asyncio-pool>=0.6.0

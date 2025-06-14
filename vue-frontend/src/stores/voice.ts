@@ -1,6 +1,6 @@
 import { defineStore } from 'pinia'
 import { ref, computed } from 'vue'
-import type { VoiceMessage, CallState } from '@/types'
+import type { VoiceMessage, CallState, KnowledgeBase } from '@/types'
 import { generateId, cleanTextForSpeech } from '@/utils/voice-utils'
 import { 
   sendVoiceMessage, 
@@ -21,6 +21,9 @@ export const useVoiceStore = defineStore('voice', () => {
   const currentTranscript = ref('')
   const funAudioAvailable = ref(false)
   const speechRecognitionAvailable = ref(false)
+  
+  // 知识库相关状态
+  const selectedKnowledgeBase = ref<KnowledgeBase | null>(null)
 
   // 音频相关引用
   const audioStream = ref<MediaStream | null>(null)
@@ -226,7 +229,12 @@ export const useVoiceStore = defineStore('voice', () => {
       if (funAudioAvailable.value && audioBlob) {
         console.log('🎯 使用FunAudioLLM流程')
 
-        const result = await sendVoiceMessage(audioBlob, sessionId.value, 'auto')
+        const result = await sendVoiceMessage(
+          audioBlob, 
+          sessionId.value, 
+          'auto',
+          selectedKnowledgeBase.value?.id
+        )
 
         if (result.success) {
           userMessage = addMessage({
@@ -484,6 +492,12 @@ export const useVoiceStore = defineStore('voice', () => {
     }
   }
 
+  // 设置选中的知识库
+  function setSelectedKnowledgeBase(knowledgeBase: KnowledgeBase | null): void {
+    selectedKnowledgeBase.value = knowledgeBase
+    console.log('📚 语音聊天知识库已切换:', knowledgeBase?.name || '无')
+  }
+
   // 配置智能静音检测参数
   function configureSilenceDetection(config: {
     threshold?: number
@@ -532,6 +546,9 @@ export const useVoiceStore = defineStore('voice', () => {
     minRecordingTime,
     maxRecordingTime,
     
+    // 知识库相关状态
+    selectedKnowledgeBase,
+    
     // 计算属性
     hasMessages,
     isConnected,
@@ -549,6 +566,7 @@ export const useVoiceStore = defineStore('voice', () => {
     clearHistory,
     restartSession,
     getStatusText,
-    configureSilenceDetection
+    configureSilenceDetection,
+    setSelectedKnowledgeBase
   }
 }) 
