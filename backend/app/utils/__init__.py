@@ -93,13 +93,11 @@ from .emotion_utils import (
     extract_emotion_info,
     extract_event_info,
     clean_text,
-    fuzzy_match,
     generate_simple_response,
     # SenseVoice 专用函数
     extract_sensevoice_emotion_info,
     extract_sensevoice_event_info,
-    clean_sensevoice_text,
-    fuzzy_match_wake_word
+    clean_sensevoice_text
 )
 
 # LLM工具
@@ -207,13 +205,11 @@ __all__ = [
     'extract_emotion_info',
     'extract_event_info',
     'clean_text',
-    'fuzzy_match',
     'generate_simple_response',
     # SenseVoice 专用函数
     'extract_sensevoice_emotion_info',
     'extract_sensevoice_event_info',
     'clean_sensevoice_text',
-    'fuzzy_match_wake_word',
     
     # LLM工具
     'MessageProcessor',

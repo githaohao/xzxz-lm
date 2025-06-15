@@ -65,18 +65,14 @@ class NacosService:
             
             # 获取所有网络接口的IP地址
             interfaces = self._get_all_interfaces()
-            logger.info(f"🔍 检测到的网络接口: {interfaces}")
-            
             # 优先选择192.168.x.x网段的IP（局域网）
             for interface_name, ip in interfaces.items():
                 if ip.startswith('192.168.'):
-                    logger.info(f"✅ 选择局域网IP: {ip} (接口: {interface_name})")
                     return ip
             
             # 其次选择10.x.x.x网段的IP
             for interface_name, ip in interfaces.items():
                 if ip.startswith('10.'):
-                    logger.info(f"✅ 选择私有网络IP: {ip} (接口: {interface_name})")
                     return ip
             
             # 最后选择172.16-31.x.x网段的IP
@@ -84,20 +80,17 @@ class NacosService:
                 if ip.startswith('172.'):
                     octets = ip.split('.')
                     if len(octets) >= 2 and 16 <= int(octets[1]) <= 31:
-                        logger.info(f"✅ 选择私有网络IP: {ip} (接口: {interface_name})")
                         return ip
             
             # 如果没有找到私有网络IP，使用第一个非回环IP
             for interface_name, ip in interfaces.items():
                 if not ip.startswith('127.'):
-                    logger.info(f"✅ 选择公网IP: {ip} (接口: {interface_name})")
                     return ip
             
             # 最后的备用方案：使用socket连接方式
             with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as s:
                 s.connect(("8.8.8.8", 80))
                 ip = s.getsockname()[0]
-                logger.info(f"🔍 备用方案检测到IP: {ip}")
                 return ip
                 
         except Exception as e:
@@ -243,7 +236,7 @@ class NacosService:
         """心跳循环"""
         while self.is_registered:
             try:
-                await asyncio.sleep(30)  # 每30秒发送一次心跳
+                await asyncio.sleep(15)  # 每30秒发送一次心跳
                 
                 if self.client and self.is_registered:
                     ip = self._get_local_ip()

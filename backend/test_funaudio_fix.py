@@ -98,10 +98,6 @@ async def test_emotion_analyzer():
         clean_text = clean_sensevoice_text(test_text)
         logger.info(f"✅ 清理后文本: '{clean_text}'")
         
-        # 测试模糊匹配
-        fuzzy_result = EmotionAnalyzer.fuzzy_match("小智小智", "小智你好")
-        logger.info(f"✅ 模糊匹配结果: {fuzzy_result}")
-        
         return True
         
     except Exception as e:
@@ -134,9 +130,6 @@ async def test_funaudio_service():
         
         clean_text = service._clean_text(test_text)
         logger.info(f"✅ 内部文本清理: '{clean_text}'")
-        
-        fuzzy_match = service._fuzzy_match("小智小智", "小智你好")
-        logger.info(f"✅ 内部模糊匹配: {fuzzy_match}")
         
         return True
         

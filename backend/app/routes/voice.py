@@ -318,13 +318,13 @@ async def clear_conversation_history(session_id: str):
 @router.websocket("/ws/voice")
 async def voice_websocket(websocket: WebSocket):
     """
-    统一语音WebSocket端点
+    语音WebSocket端点 - 支持流式音频传输
     
-    支持实时音频流处理、唤醒词检测和语音对话
+    支持实时语音对话和流式音频传输
     消息格式:
-    - 配置: {"type": "config", "wake_words": [...], "confidence_threshold": 0.6, "session_id": "optional"}
-    - 音频: {"type": "audio", "data": "base64_audio_data", "timestamp": 1234567890, "mode": "wake_word|voice_chat"}
-    - 语音对话: {"type": "voice_chat", "data": "base64_audio_data", "session_id": "optional", "language": "auto"}
+    - 配置: {"type": "config", "session_id": "optional", "language": "auto"}
+    - 流式音频: 直接发送二进制音频数据
+    - 语音对话: {"type": "voice_chat", "session_id": "optional", "language": "auto"} + 二进制数据
     - 状态: {"type": "status", "status": "connected|listening|processing|error"}
     - 心跳: {"type": "ping"} / {"type": "pong"}
     """
@@ -335,16 +335,22 @@ async def voice_websocket(websocket: WebSocket):
         await websocket.send_json({
             "type": "status",
             "status": "connected",
-            "message": "语音WebSocket连接已建立",
+            "message": "语音WebSocket连接已建立，支持流式音频传输",
             "session_id": voice_manager.get_session_id(websocket),
+            "features": ["stream_audio", "binary_transfer", "real_time"],
             "timestamp": asyncio.get_event_loop().time()
         })
         
         while True:
-            # 接收消息
+            # 接收消息 - 支持JSON、文本和二进制数据
             try:
-                message = await websocket.receive_json()
-                await handle_voice_message(websocket, message)
+                # 尝试接收消息
+                data = await websocket.receive()
+                if "bytes" in data:
+                    # 处理二进制消息（音频数据）
+                    binary_data = data["bytes"]
+                    await handle_stream_audio_data(websocket, binary_data)
+                        
             except Exception as e:
                 logger.error(f"❌ 处理WebSocket消息失败: {e}")
                 await websocket.send_json({
@@ -360,189 +366,223 @@ async def voice_websocket(websocket: WebSocket):
     finally:
         voice_manager.disconnect(websocket)
 
-
-
-async def handle_voice_message(websocket: WebSocket, message: Dict):
-    """处理统一语音WebSocket消息"""
-    message_type = message.get("type")
-    
-    if message_type == "config":
-        # 配置消息
-        config = {
-            "wake_words": message.get("wake_words", ["小智小智", "小智", "智能助手"]),
-            "confidence_threshold": message.get("confidence_threshold", 0.6),
-            "language": message.get("language", "zh"),
-            "session_id": message.get("session_id") or voice_manager.get_session_id(websocket)
-        }
-        voice_manager.set_config(websocket, config)
-        
-        await websocket.send_json({
-            "type": "config_ack",
-            "config": config,
-            "message": "配置已更新",
-            "timestamp": asyncio.get_event_loop().time()
-        })
-        
-    elif message_type == "audio":
-        # 音频数据消息 - 根据mode决定处理方式
-        mode = message.get("mode", "wake_word")
-        if mode == "wake_word":
-            await process_wake_word_audio(websocket, message)
-        elif mode == "voice_chat":
-            await process_voice_chat_audio(websocket, message)
-        else:
-            await websocket.send_json({
-                "type": "error",
-                "error": f"未知音频模式: {mode}",
-                "timestamp": asyncio.get_event_loop().time()
-            })
-        
-    elif message_type == "voice_chat":
-        # 语音对话消息
-        await process_voice_chat_audio(websocket, message)
-        
-    elif message_type == "ping":
-        # 心跳消息
-        await websocket.send_json({
-            "type": "pong",
-            "timestamp": asyncio.get_event_loop().time()
-        })
-        
-    else:
-        await websocket.send_json({
-            "type": "error",
-            "error": f"未知消息类型: {message_type}",
-            "timestamp": asyncio.get_event_loop().time()
-        })
-
-# 保持向后兼容性
-async def handle_wake_word_message(websocket: WebSocket, message: Dict):
-    """向后兼容的唤醒词消息处理"""
-    await handle_voice_message(websocket, message)
-
-async def process_wake_word_audio(websocket: WebSocket, message: Dict):
-    """处理音频数据进行唤醒词检测"""
+async def handle_stream_audio_data(websocket: WebSocket, audio_data: bytes):
+    """处理流式音频数据"""
     try:
         # 获取配置
         config = voice_manager.get_config(websocket)
-        if not config:
+        session_id = config.get("session_id") or voice_manager.get_session_id(websocket)
+        language = config.get("language", "auto")
+        
+        logger.info(f"🎵 接收到流式音频数据: {len(audio_data)} 字节")
+        
+        # 发送处理状态
+        await websocket.send_json({
+            "type": "status",
+            "status": "processing",
+            "message": "正在处理流式音频数据",
+            "audio_size": len(audio_data),
+            "timestamp": asyncio.get_event_loop().time()
+        })
+        
+        if len(audio_data) == 0:
+            raise ValueError("音频数据为空")
+        
+        # 调用FunAudioLLM进行语音识别
+        recognition_result = await funaudio_service.voice_recognition(
+            audio_data=audio_data,
+            language=language
+        )
+        
+        if not recognition_result["success"]:
             await websocket.send_json({
                 "type": "error",
-                "error": "请先发送配置信息",
+                "error": "语音识别失败",
+                "details": recognition_result.get("error", "未知错误"),
                 "timestamp": asyncio.get_event_loop().time()
             })
             return
         
-        # 发送处理状态
+        recognized_text = recognition_result["recognized_text"]
+        
+        if not recognized_text.strip():
+            await websocket.send_json({
+                "type": "recognition_result",
+                "success": False,
+                "message": "未识别到有效语音内容",
+                "timestamp": asyncio.get_event_loop().time()
+            })
+            return
+        
+        # 发送识别结果
         await websocket.send_json({
-            "type": "status",
-            "status": "processing",
+            "type": "recognition_result",
+            "success": True,
+            "recognized_text": recognized_text,
+            "emotion": recognition_result.get("emotion", {}),
             "timestamp": asyncio.get_event_loop().time()
         })
         
-        # 解码音频数据
-        audio_data_b64 = message.get("data")
-        if not audio_data_b64:
-            raise ValueError("音频数据为空")
-        
-        audio_data = base64.b64decode(audio_data_b64)
-        
-        if len(audio_data) == 0:
-            raise ValueError("音频数据解码后为空")
-        
-        # 调用FunAudioLLM进行唤醒词检测
-        result = await funaudio_service.wake_word_detection(
-            audio_data=audio_data,
-            wake_words=config["wake_words"]
-        )
-        
-        # 发送检测结果
-        response = {
-            "type": "detection",
-            "wake_word_detected": result["wake_word_detected"],
-            "detected_word": result.get("detected_word", ""),
-            "recognized_text": result.get("recognized_text", ""),
-            "confidence": result.get("confidence", 0.0),
-            "engine": result.get("engine", "FunAudioLLM-SenseVoice"),
-            "timestamp": asyncio.get_event_loop().time(),
-            "success": result["success"]
-        }
-        
-        if result["wake_word_detected"]:
-            logger.info(f"✅ WebSocket检测到唤醒词: {result['detected_word']}")
-        
-        await websocket.send_json(response)
-        
-        # 发送监听状态
-        await websocket.send_json({
-            "type": "status",
-            "status": "listening",
-            "timestamp": asyncio.get_event_loop().time()
-        })
+        # 开始流式AI对话处理
+        await process_stream_ai_response(websocket, recognized_text, session_id)
         
     except Exception as e:
-        logger.error(f"❌ WebSocket音频处理失败: {e}")
+        logger.error(f"❌ 处理流式音频数据失败: {e}")
         await websocket.send_json({
             "type": "error",
-            "error": str(e),
+            "error": f"处理音频数据失败: {str(e)}",
             "timestamp": asyncio.get_event_loop().time()
         })
 
-async def process_voice_chat_audio(websocket: WebSocket, message: Dict):
-    """处理音频数据进行语音对话"""
+async def process_stream_ai_response(websocket: WebSocket, user_text: str, session_id: str):
+    """处理流式AI响应和TTS合成"""
     try:
-        # 获取配置
-        config = voice_manager.get_config(websocket)
-        session_id = message.get("session_id") or voice_manager.get_session_id(websocket)
-        language = message.get("language", config.get("language", "auto"))
-        
-        # 发送处理状态
+        # 准备AI聊天请求
         await websocket.send_json({
-            "type": "status",
-            "status": "processing",
-            "message": "正在处理语音对话",
+            "type": "ai_thinking",
+            "message": "AI正在思考回复...",
             "timestamp": asyncio.get_event_loop().time()
         })
         
-        # 解码音频数据
-        audio_data_b64 = message.get("data")
-        if not audio_data_b64:
-            raise ValueError("音频数据为空")
-        
-        audio_data = base64.b64decode(audio_data_b64)
-        
-        if len(audio_data) == 0:
-            raise ValueError("音频数据解码后为空")
-        
-        # 调用FunAudioLLM进行语音对话
-        result = await funaudio_service.voice_chat(
-            audio_data=audio_data,
-            session_id=session_id,
-            language=language
+        chat_request = ChatRequest(
+            message=user_text,
+            history=[],  # 可以根据需要添加历史记录
+            temperature=0.7,
+            max_tokens=2048,
+            stream=True
         )
         
-        # 发送对话结果
-        response = {
-            "type": "voice_chat_response",
-            "success": result["success"],
-            "recognized_text": result.get("recognized_text", ""),
-            "response": result.get("response", ""),
-            "session_id": session_id,
-            "history_length": result.get("history_length", 0),
-            "engine": result.get("engine", "FunAudioLLM-SenseVoice"),
-            "emotion": result.get("emotion", {}),
+        # 流式AI对话 + 实时TTS
+        text_buffer = ""
+        processed_text_length = 0
+        chunk_counter = 0
+        
+        async for ai_chunk in lm_studio_service.chat_completion_stream(chat_request):
+            if ai_chunk.strip():
+                text_buffer += ai_chunk
+                
+                # 发送AI生成的文字片段
+                await websocket.send_json({
+                    "type": "ai_text_chunk",
+                    "content": ai_chunk,
+                    "timestamp": asyncio.get_event_loop().time()
+                })
+                
+                # 清理思考标签
+                cleaned_buffer = clean_text_for_speech(text_buffer)
+                
+                # 只处理新增的部分，避免重复处理
+                if len(cleaned_buffer) > processed_text_length:
+                    new_text = cleaned_buffer[processed_text_length:]
+                    
+                    # 检查是否可以形成完整句子进行TTS
+                    sentence_endings = ['。', '！', '？', '.', '!', '?', '\n']
+                    last_sentence_end = -1
+                    
+                    for i, char in enumerate(new_text):
+                        if char in sentence_endings:
+                            last_sentence_end = i
+                    
+                    # 如果找到完整句子，进行TTS合成
+                    if last_sentence_end >= 0:
+                        sentence_to_process = new_text[:last_sentence_end + 1].strip()
+                        
+                        if sentence_to_process and len(sentence_to_process) >= 3:
+                            try:
+                                logger.info(f"🎵 TTS处理句子: {repr(sentence_to_process[:50])}")
+                                
+                                # TTS合成
+                                audio_buffer = await synthesize_speech_chunk(sentence_to_process)
+                                if audio_buffer:
+                                    # 直接发送二进制音频数据
+                                    await websocket.send_json({
+                                        "type": "audio_chunk_info",
+                                        "text": sentence_to_process,
+                                        "chunk_id": chunk_counter,
+                                        "audio_size": len(audio_buffer),
+                                        "timestamp": asyncio.get_event_loop().time()
+                                    })
+                                    
+                                    # 发送二进制音频数据
+                                    await websocket.send_bytes(audio_buffer)
+                                    chunk_counter += 1
+                                    
+                            except Exception as e:
+                                logger.error(f"❌ 流式TTS合成异常: {e}")
+                                await websocket.send_json({
+                                    "type": "tts_error",
+                                    "message": f"语音合成失败: {str(e)}",
+                                    "text": sentence_to_process[:100],
+                                    "timestamp": asyncio.get_event_loop().time()
+                                })
+                        
+                        processed_text_length += last_sentence_end + 1
+                    
+                    # 处理长文本块
+                    elif len(new_text) > 100:
+                        split_chars = [' ', '，', ',', '、', '；', ';']
+                        best_split = -1
+                        
+                        for i in range(min(80, len(new_text) - 1), 20, -1):
+                            if new_text[i] in split_chars:
+                                best_split = i
+                                break
+                        
+                        if best_split > 20:
+                            chunk_to_process = new_text[:best_split + 1].strip()
+                            
+                            if chunk_to_process:
+                                try:
+                                    audio_buffer = await synthesize_speech_chunk(chunk_to_process)
+                                    if audio_buffer:
+                                        await websocket.send_json({
+                                            "type": "audio_chunk_info",
+                                            "text": chunk_to_process,
+                                            "chunk_id": chunk_counter,
+                                            "audio_size": len(audio_buffer),
+                                            "timestamp": asyncio.get_event_loop().time()
+                                        })
+                                        await websocket.send_bytes(audio_buffer)
+                                        chunk_counter += 1
+                                        
+                                except Exception as e:
+                                    logger.error(f"❌ 长文本TTS异常: {e}")
+                            
+                            processed_text_length += best_split + 1
+        
+        # 处理剩余文本
+        if text_buffer.strip():
+            cleaned_buffer = clean_text_for_speech(text_buffer)
+            
+            if len(cleaned_buffer) > processed_text_length:
+                remaining_text = cleaned_buffer[processed_text_length:].strip()
+                
+                if remaining_text and len(remaining_text) >= 3:
+                    try:
+                        audio_buffer = await synthesize_speech_chunk(remaining_text)
+                        if audio_buffer:
+                            await websocket.send_json({
+                                "type": "audio_chunk_info",
+                                "text": remaining_text,
+                                "chunk_id": chunk_counter,
+                                "audio_size": len(audio_buffer),
+                                "is_final": True,
+                                "timestamp": asyncio.get_event_loop().time()
+                            })
+                            await websocket.send_bytes(audio_buffer)
+                            
+                    except Exception as e:
+                        logger.error(f"❌ 最终TTS合成失败: {e}")
+        
+        # 发送完成信号
+        await websocket.send_json({
+            "type": "stream_complete",
+            "full_response": text_buffer.strip(),
+            "total_chunks": chunk_counter,
             "timestamp": asyncio.get_event_loop().time()
-        }
+        })
         
-        if result["success"]:
-            logger.info(f"✅ WebSocket语音对话成功: {result.get('recognized_text', '')[:50]}...")
-        else:
-            logger.warning(f"⚠️ WebSocket语音对话失败: {result.get('error', '未知错误')}")
-            response["error"] = result.get("error", "语音对话处理失败")
-        
-        await websocket.send_json(response)
-        
-        # 发送监听状态
+        # 恢复监听状态
         await websocket.send_json({
             "type": "status",
             "status": "listening",
@@ -551,10 +591,10 @@ async def process_voice_chat_audio(websocket: WebSocket, message: Dict):
         })
         
     except Exception as e:
-        logger.error(f"❌ WebSocket语音对话处理失败: {e}")
+        logger.error(f"❌ 流式AI响应处理失败: {e}")
         await websocket.send_json({
             "type": "error",
-            "error": str(e),
+            "error": f"AI响应处理失败: {str(e)}",
             "timestamp": asyncio.get_event_loop().time()
         })
 

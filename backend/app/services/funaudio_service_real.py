@@ -165,7 +165,7 @@ class FunAudioLLMService:
                 # 获取置信度
                 confidence = result[0].get("confidence", 1.0)
                 
-                logger.info(f"✅ 语音识别成功: {clean_text[:50]}...")
+                logger.info(f"✅ 语音识别成功: {clean_text[:50]}")
                 
                 return {
                     "success": True,
@@ -193,8 +193,6 @@ class FunAudioLLMService:
                 "engine": "FunAudioLLM-SenseVoice",
                 "recognized_text": ""
             }
-    
-
     
     def _extract_emotion_info(self, processed_text: str) -> Dict[str, Any]:
         """从处理后的文本中提取情感信息"""
@@ -458,89 +456,6 @@ class FunAudioLLMService:
         except Exception as e:
             logger.error(f"❌ 清除会话历史失败: {e}")
             return False
-    
-    async def wake_word_detection(self, audio_data: bytes, wake_words: List[str] = None) -> Dict[str, Any]:
-        """
-        唤醒词检测功能
-        检测音频中是否包含指定的唤醒词（如"小智小智"）
-        """
-        if wake_words is None:
-            wake_words = ["小智小智", "小智", "智能助手", "hey xiaozhi"]
-        
-        try:
-            if not self.is_initialized:
-                success = await self.initialize()
-                if not success:
-                    return {
-                        "success": False,
-                        "wake_word_detected": False,
-                        "error": "FunAudioLLM模型未初始化",
-                        "confidence": 0.0
-                    }
-            
-            logger.info("🎯 开始唤醒词检测...")
-            
-            # 使用快速语音识别检测唤醒词
-            recognition_result = await self.voice_recognition(audio_data, language="zh")
-            
-            if not recognition_result["success"]:
-                return {
-                    "success": False,
-                    "wake_word_detected": False,
-                    "error": recognition_result["error"],
-                    "confidence": 0.0
-                }
-            
-            recognized_text = recognition_result["recognized_text"].lower()
-            confidence = recognition_result.get("confidence", 0.0)
-            
-            # 检测唤醒词
-            wake_word_detected = False
-            detected_word = ""
-            
-            for wake_word in wake_words:
-                if wake_word.lower() in recognized_text:
-                    wake_word_detected = True
-                    detected_word = wake_word
-                    logger.info(f"✅ 检测到唤醒词: {wake_word}")
-                    break
-            
-            # 提高唤醒词检测的准确性
-            if not wake_word_detected:
-                # 模糊匹配，处理语音识别的不准确性
-                for wake_word in wake_words:
-                    # 检查相似度
-                    if self._fuzzy_match(wake_word.lower(), recognized_text):
-                        wake_word_detected = True
-                        detected_word = wake_word
-                        logger.info(f"✅ 模糊匹配检测到唤醒词: {wake_word}")
-                        break
-            
-            return {
-                "success": True,
-                "wake_word_detected": wake_word_detected,
-                "detected_word": detected_word,
-                "recognized_text": recognition_result["recognized_text"],
-                "confidence": confidence,
-                "engine": "FunAudioLLM-SenseVoice",
-                "emotion": recognition_result.get("emotion"),
-                "events": recognition_result.get("events")
-            }
-            
-        except Exception as e:
-            logger.error(f"❌ 唤醒词检测失败: {e}")
-            return {
-                "success": False,
-                "wake_word_detected": False,
-                "error": str(e),
-                "confidence": 0.0
-            }
-    
-    def _fuzzy_match(self, wake_word: str, recognized_text: str) -> bool:
-        """
-        模糊匹配唤醒词，处理语音识别的不准确性
-        """
-        return EmotionAnalyzer.fuzzy_match(wake_word, recognized_text)
 
 # 创建全局服务实例
 funaudio_service = FunAudioLLMService() 
