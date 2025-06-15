@@ -146,7 +146,7 @@ async def startup_event():
     
     # 检查FunAudioLLM语音引擎状态
     try:
-        from app.services import funaudio_service
+        from app.services.funaudio_service_real import funaudio_service
         
         logger.info("🎤 检查FunAudioLLM语音引擎状态...")
         

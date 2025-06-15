@@ -7,7 +7,7 @@ Utils 工具包
 from .common_utils import generate_doc_id, get_random_color, get_timestamp, safe_get, safe_int, safe_float, safe_str_convert, truncate_string, calculate_similarity
 
 # 文本处理
-from .text_processing import TextProcessor
+from .text_processing import TextProcessor, clean_extracted_text
 
 # 文档分析
 from .document_analysis import DocumentAnalyzer
@@ -16,7 +16,15 @@ from .document_analysis import DocumentAnalyzer
 from .llm_client import LLMClient
 
 # 语音处理
-from .voice_utils import VoiceProcessor, clean_text_for_speech, split_text_for_tts, synthesize_speech_chunk
+from .voice_utils import (
+    VoiceProcessor, 
+    clean_text_for_speech, 
+    split_text_for_tts, 
+    synthesize_speech_chunk,
+    convert_rate_to_string,
+    validate_audio_data,
+    format_voice_response
+)
 
 # 时间处理
 from .time_utils import (
@@ -60,9 +68,6 @@ from .file_utils import (
     get_file_info,
     validate_file_size
 )
-
-# 文本处理（新增）
-from .text_processing import clean_extracted_text
 
 # 音频处理
 from .audio_utils import (

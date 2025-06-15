@@ -318,4 +318,33 @@ def split_text_for_tts(text: str) -> List[str]:
 
 async def synthesize_speech_chunk(text: str) -> Optional[bytes]:
     """合成单个文本块的语音 - 便利函数"""
-    return await VoiceProcessor.synthesize_speech_chunk(text) 
+    return await VoiceProcessor.synthesize_speech_chunk(text)
+
+
+def convert_rate_to_string(rate: float) -> str:
+    """将语速倍率转换为TTS服务需要的字符串格式"""
+    if rate >= 1.0:
+        return f"+{int((rate - 1) * 100)}%"
+    else:
+        return f"{int((rate - 1) * 100)}%"
+
+
+def validate_audio_data(audio_data: bytes) -> bool:
+    """验证音频数据是否有效"""
+    return audio_data is not None and len(audio_data) > 0
+
+
+def format_voice_response(success: bool, data: dict = None, error: str = None) -> dict:
+    """格式化语音响应"""
+    import asyncio
+    response = {
+        "success": success,
+        "timestamp": asyncio.get_event_loop().time() if hasattr(asyncio, 'get_event_loop') else None
+    }
+    
+    if success and data:
+        response.update(data)
+    elif not success and error:
+        response["error"] = error
+    
+    return response 

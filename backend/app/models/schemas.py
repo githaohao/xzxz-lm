@@ -195,3 +195,11 @@ class KnowledgeBaseListResponse(BaseModel):
     knowledge_bases: List[KnowledgeBaseResponse]
     total_count: int
     processing_time: float
+
+# 语音相关模型
+class SpeechSynthesizeRequest(BaseModel):
+    """语音合成请求"""
+    text: str = Field(..., description="要合成的文本")
+    voice: Optional[str] = Field("zh-CN-XiaoxiaoNeural", description="语音类型")
+    rate: Optional[float] = Field(1.0, ge=0.1, le=3.0, description="语速倍率")
+    pitch: Optional[float] = Field(1.0, ge=0.1, le=2.0, description="音调倍率")
