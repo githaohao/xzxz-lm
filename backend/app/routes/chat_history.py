@@ -55,6 +55,8 @@ async def get_sessions(
             sort_by=sort_by,
             sort_order=sort_order
         )
+
+        print(f"query_params: {user_id}")
         
         sessions, pagination = await chat_history_service.get_sessions(user_id, query_params)
         

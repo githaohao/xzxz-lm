@@ -10,8 +10,6 @@ import type {
   ChatMessage,
   CreateSessionDto,
   CreateMessageDto,
-  QuerySessionsDto,
-  ChatHistoryResponse
 } from '@/types'
 import { generateId } from '@/utils/voice-utils'
 import { 
@@ -20,7 +18,6 @@ import {
   getChatSessionMessages,
   addChatMessage,
   addChatMessagesBatch,
-  updateChatSession,
   deleteChatSession,
   getSessionDocuments
 } from '@/utils/api'
@@ -106,24 +103,19 @@ export const useConversationStore = defineStore('conversation', () => {
       }
 
       // 创建远程会话
-      
       const sessionData: CreateSessionDto = {
         title: conversation.title,
         tags: ['chat', 'ai', 'conversation']
       }
 
-      const response = await createChatSession(sessionData)
+      const remoteSession = await createChatSession(sessionData)
       
-      if (response.code === 200 && response.data) {
-        const remoteSession = response.data
-        // 将远程会话ID关联到本地对话
-        updateConversationHistorySession(conversation.id, remoteSession.id)
-      } else {
-        console.warn('⚠️ 远程会话创建失败，仅保留本地对话')
-      }
+      // 将远程会话ID关联到本地对话
+      updateConversationHistorySession(conversation.id, remoteSession.id)
 
     } catch (error) {
       console.error('❌ 创建远程会话时出错:', error)
+      console.warn('⚠️ 远程会话创建失败，仅保留本地对话')
       // 即使远程创建失败，也不影响本地对话的使用
     }
   }
@@ -159,14 +151,8 @@ export const useConversationStore = defineStore('conversation', () => {
   ): Promise<boolean> {
     try {
       const messageDto = createMessageDto(message, sessionId, role)
-      const response = await addChatMessage(sessionId, messageDto)
-      
-      if (response.code === 200 && response.data) {
-        return true
-      } else {
-        console.warn('⚠️ 消息保存返回空结果')
-        return false
-      }
+      await addChatMessage(sessionId, messageDto)
+      return true
     } catch (error) {
       console.error('❌ 保存消息到远程会话失败:', error)
       return false
@@ -183,70 +169,16 @@ export const useConversationStore = defineStore('conversation', () => {
         createMessageDto(message, sessionId, role)
       )
       
-      const response = await addChatMessagesBatch(messageDtos)
-      
-      if (response.code === 200 && response.data) {
-        console.log(`✅ 批量保存${messages.length}条消息到远程会话成功`)
-        return true
-      } else {
-        console.warn('⚠️ 批量保存消息失败')
-        return false
-      }
+      await addChatMessagesBatch(messageDtos)
+      console.log(`✅ 批量保存${messages.length}条消息到远程会话成功`)
+      return true
     } catch (error) {
       console.error('❌ 批量保存消息到远程会话失败:', error)
       return false
     }
   }
 
-  // 获取远程会话列表
-  async function fetchRemoteSessions(queryParams: QuerySessionsDto = {}): Promise<ChatSession[]> {
-    try {
-      const response = await getChatSessions(queryParams)
-      
-      if (response.code === 200 && response.data) {
-        return response.data
-      } else {
-        throw new Error(response.msg || '获取远程会话列表失败')
-      }
-    } catch (error) {
-      console.error('❌ 获取远程会话列表失败:', error)
-      return []
-    }
-  }
 
-  // 获取远程会话消息
-  async function fetchRemoteSessionMessages(sessionId: string, page: number = 1, limit: number = 50): Promise<ChatMessage[]> {
-    try {
-      const response = await getChatSessionMessages(sessionId, page, limit)
-      
-      if (response.code === 200 && response.data) {
-        return response.data
-      } else {
-        throw new Error(response.msg || '获取远程会话消息失败')
-      }
-    } catch (error) {
-      console.error('❌ 获取远程会话消息失败:', error)
-      return []
-    }
-  }
-
-  // 更新远程会话信息
-  async function updateRemoteSession(sessionId: string, updateData: Partial<CreateSessionDto>): Promise<boolean> {
-    try {
-      const response = await updateChatSession(sessionId, updateData)
-      
-      if (response.code === 200 && response.data) {
-        console.log('✅ 远程会话更新成功')
-        return true
-      } else {
-        console.warn('⚠️ 远程会话更新失败')
-        return false
-      }
-    } catch (error) {
-      console.error('❌ 更新远程会话失败:', error)
-      return false
-    }
-  }
 
   // 设置当前对话
   async function setCurrentConversation(conversationId: string) {
@@ -283,7 +215,7 @@ export const useConversationStore = defineStore('conversation', () => {
       console.log('📜 从云端加载会话消息和文档:', conversation.historySessionId)
       
       // 加载消息
-      const messages = await fetchRemoteSessionMessages(conversation.historySessionId)
+      const messages = await getChatSessionMessages(conversation.historySessionId)
       if (messages && messages.length > 0) {
         // 转换并添加消息
         for (const chatMsg of messages) {
@@ -358,12 +290,8 @@ export const useConversationStore = defineStore('conversation', () => {
         console.log('🗑️ 正在删除远程会话...', conversation.historySessionId)
         
         try {
-          const response = await deleteChatSession(conversation.historySessionId)
-          if (response.code === 200) {
-            console.log('✅ 远程会话删除成功')
-          } else {
-            console.warn('⚠️ 远程会话删除返回非200状态:', response.msg)
-          }
+          await deleteChatSession(conversation.historySessionId)
+          console.log('✅ 远程会话删除成功')
         } catch (remoteError) {
           // 远程删除失败不阻止本地删除（可能会话已经被删除或网络问题）
           console.warn('⚠️ 删除远程会话失败，继续删除本地数据:', remoteError)
@@ -588,7 +516,7 @@ export const useConversationStore = defineStore('conversation', () => {
       console.log('🔄 正在从后端同步对话列表...')
       
       // 获取用户的聊天会话列表
-      const remoteSessions = await fetchRemoteSessions({ page: 1, limit: 100 })
+      const remoteSessions = await getChatSessions({ page: 1, limit: 100 })
       console.log(`📥 从后端获取到 ${remoteSessions.length} 个会话`)
       
       // 记录同步统计
@@ -841,9 +769,6 @@ export const useConversationStore = defineStore('conversation', () => {
     createRemoteSession,
     saveMessageToRemote,
     saveMessagesBatchToRemote,
-    fetchRemoteSessions,
-    fetchRemoteSessionMessages,
-    updateRemoteSession,
     createMessageDto,
     
     // 消息加载方法

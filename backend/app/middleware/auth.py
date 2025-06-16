@@ -36,25 +36,15 @@ class UserAuthMiddleware(BaseHTTPMiddleware):
             
         except HTTPException as e:
             logger.warning(f"用户认证失败: {e.detail}")
-            # 对于认证失败，设置一个默认用户，避免阻塞
-            request.state.user = self._get_default_user()
+            # 对于认证失败，直接抛出异常，不再设置默认用户
+            raise e
             
         except Exception as e:
             logger.error(f"中间件处理异常: {e}")
-            # 设置默认用户
-            request.state.user = self._get_default_user()
+            # 抛出认证失败异常
+            raise HTTPException(status_code=401, detail="用户认证失败")
         
         return await call_next(request)
-    
-    def _get_default_user(self) -> Dict[str, Any]:
-        """获取默认用户信息"""
-        return {
-            "user_id": 1,
-            "username": "anonymous",
-            "nickname": "匿名用户",
-            "email": "",
-            "avatar": ""
-        }
     
     async def _get_user_info(self, request: Request) -> Dict[str, Any]:
         """从请求头中获取当前用户信息（内部方法）"""
@@ -67,14 +57,14 @@ class UserAuthMiddleware(BaseHTTPMiddleware):
             avatar = request.headers.get("X-Avatar") or request.headers.get("avatar")
             
             if not user_id:
-                logger.debug("请求头中缺少用户ID，使用默认用户")
-                return self._get_default_user()
+                logger.warning("请求头中缺少用户ID，认证失败")
+                raise HTTPException(status_code=401, detail="用户未登录或登录已过期")
             
             try:
                 user_id = int(user_id)
             except ValueError:
                 logger.error(f"无效的用户ID格式: {user_id}")
-                return self._get_default_user()
+                raise HTTPException(status_code=401, detail="用户ID格式无效")
             
             # 构建用户信息（仅用于请求处理，不存储到数据库）
             user_info = {
@@ -89,7 +79,7 @@ class UserAuthMiddleware(BaseHTTPMiddleware):
             
         except Exception as e:
             logger.error(f"用户信息提取失败: {e}")
-            return self._get_default_user()
+            raise HTTPException(status_code=401, detail="用户认证失败")
 
 # 依赖注入函数
 async def get_current_user(request: Request) -> Dict[str, Any]:
@@ -98,14 +88,8 @@ async def get_current_user(request: Request) -> Dict[str, Any]:
     if hasattr(request.state, 'user'):
         return request.state.user
     
-    # 如果没有用户信息，返回默认匿名用户
-    return {
-        "user_id": 1,
-        "username": "anonymous", 
-        "nickname": "匿名用户",
-        "email": "",
-        "avatar": ""
-    }
+    # 如果没有用户信息，抛出认证失败异常
+    raise HTTPException(status_code=401, detail="用户未登录或登录已过期")
 
 async def get_current_user_id(request: Request) -> int:
     """获取当前用户ID的依赖注入函数"""

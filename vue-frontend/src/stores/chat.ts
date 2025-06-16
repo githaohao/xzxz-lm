@@ -2,7 +2,7 @@ import { defineStore } from 'pinia'
 import { ref, computed } from 'vue'
 import type { Message, ProcessedFile, StreamEvent, RAGSearchRequest } from '@/types'
 import { generateId } from '@/utils/voice-utils'
-import { sendTextMessage, sendMultimodalMessage, searchDocuments } from '@/utils/api'
+import { sendTextMessage, sendMultimodalMessage, searchDocuments, getChatSessionMessages, updateChatSession } from '@/utils/api'
 import { useConversationStore } from './conversation'
 
 export const useChatStore = defineStore('chat', () => {
@@ -126,10 +126,8 @@ export const useChatStore = defineStore('chat', () => {
     if (!isHistorySyncEnabled.value) return
 
     try {
-      const success = await conversationStore.updateRemoteSession(sessionId, { title: newTitle })
-      if (success) {
-        console.log('✅ 会话标题已更新:', newTitle)
-      }
+      await updateChatSession(sessionId, { title: newTitle })
+      console.log('✅ 会话标题已更新:', newTitle)
     } catch (error) {
       console.error('❌ 更新会话标题失败:', error)
     }
@@ -378,7 +376,6 @@ export const useChatStore = defineStore('chat', () => {
       
       const searchRequest: RAGSearchRequest = {
         query: query.trim(),
-        top_k: 5,
         similarity_threshold: 0.3,
         doc_ids: docIds
       }
@@ -399,7 +396,7 @@ export const useChatStore = defineStore('chat', () => {
   async function loadSessionMessages(sessionId: string, page: number = 1, limit: number = 50) {
     try {
       console.log('📜 加载聊天历史会话消息:', sessionId)
-      const historyMessages = await conversationStore.fetchRemoteSessionMessages(sessionId, page, limit)
+      const historyMessages = await getChatSessionMessages(sessionId, page, limit)
       
       if (historyMessages && historyMessages.length > 0) {
         // 清除当前消息

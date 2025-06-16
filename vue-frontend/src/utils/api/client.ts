@@ -1,5 +1,6 @@
 import { API_CONFIG } from '../api-config'
 import { authManager } from '../auth'
+import router from '@/router'
 
 // 自定义错误类
 export class ApiError extends Error {
@@ -22,6 +23,21 @@ export class ApiClient {
   constructor(baseURL: string = '', timeout: number = 30000) {
     this.baseURL = baseURL
     this.timeout = timeout
+  }
+
+  // 处理未授权错误，清除认证信息并跳转到登录页
+  private handleUnauthorized(): void {
+    // 清除本地认证信息
+    authManager.clearAuth()
+    
+    // 跳转到登录页面，保存当前路径以便登录后重定向
+    const currentPath = router.currentRoute.value.fullPath
+    if (currentPath !== '/login') {
+      router.push({
+        path: '/login',
+        query: { redirect: currentPath }
+      })
+    }
   }
 
   // 统一的请求方法
@@ -76,7 +92,19 @@ export class ApiClient {
       }
 
       // 默认JSON响应
-      return await response.json()
+      const jsonResponse = await response.json()
+      
+      // 检查是否是标准格式的 401 错误响应
+      if (jsonResponse && jsonResponse.code === 401) {
+        this.handleUnauthorized()
+        throw new ApiError(
+          jsonResponse.msg || '认证失败',
+          401,
+          endpoint
+        )
+      }
+      
+      return jsonResponse
     } catch (error: any) {
       clearTimeout(timeoutId)
       
@@ -176,6 +204,10 @@ export class ApiClient {
     })
 
     if (!response.ok) {
+      // 对于流式请求，如果是 401 错误，也需要处理
+      if (response.status === 401) {
+        this.handleUnauthorized()
+      }
       throw new ApiError(
         `HTTP ${response.status}: ${response.statusText}`,
         response.status,
@@ -208,6 +240,10 @@ export class ApiClient {
       clearTimeout(timeoutId)
 
       if (!response.ok) {
+        // 检查是否是 401 错误
+        if (response.status === 401) {
+          this.handleUnauthorized()
+        }
         throw new ApiError(
           `HTTP ${response.status}: ${response.statusText}`,
           response.status,
@@ -268,6 +304,10 @@ export class ApiClient {
       clearTimeout(timeoutId)
 
       if (!response.ok) {
+        // 检查是否是 401 错误
+        if (response.status === 401) {
+          this.handleUnauthorized()
+        }
         throw new ApiError(
           `HTTP ${response.status}: ${response.statusText}`,
           response.status,
@@ -295,6 +335,122 @@ export class ApiClient {
       throw new ApiError(
         error.message || API_CONFIG.ERROR_MESSAGES.UNKNOWN,
         0,
+        endpoint
+      )
+    }
+  }
+
+  // 处理标准响应格式的POST请求 - 成功时直接返回data，失败时抛出异常
+  async postWithStandardResponse<T>(
+    endpoint: string, 
+    data?: any, 
+    options: RequestInit = {},
+    skipAuth: boolean = false
+  ): Promise<T> {
+    interface StandardResponse {
+      code: number
+      msg: string
+      data?: T
+    }
+
+    const response = await this.post<StandardResponse>(endpoint, data, options, skipAuth)
+    
+    if (response.code === 200 && response.data !== undefined) {
+      return response.data
+    } else {
+      // 检查是否是 401 错误
+      if (response.code === 401) {
+        this.handleUnauthorized()
+      }
+      throw new ApiError(
+        response.msg || '请求失败',
+        response.code || 500,
+        endpoint
+      )
+    }
+  }
+
+  // 处理标准响应格式的GET请求 - 成功时直接返回data，失败时抛出异常
+  async getWithStandardResponse<T>(
+    endpoint: string, 
+    params?: Record<string, any>, 
+    skipAuth: boolean = false
+  ): Promise<T> {
+    interface StandardResponse {
+      code: number
+      msg: string
+      data?: T
+    }
+
+    const response = await this.get<StandardResponse>(endpoint, params, skipAuth)
+    
+    if (response.code === 200 && response.data !== undefined) {
+      return response.data
+    } else {
+      // 检查是否是 401 错误
+      if (response.code === 401) {
+        this.handleUnauthorized()
+      }
+      throw new ApiError(
+        response.msg || '请求失败',
+        response.code || 500,
+        endpoint
+      )
+    }
+  }
+
+  // 处理标准响应格式的DELETE请求 - 成功时直接返回data，失败时抛出异常
+  async deleteWithStandardResponse<T>(
+    endpoint: string, 
+    skipAuth: boolean = false
+  ): Promise<T> {
+    interface StandardResponse {
+      code: number
+      msg: string
+      data?: T
+    }
+
+    const response = await this.delete<StandardResponse>(endpoint, skipAuth)
+    
+    if (response.code === 200 && response.data !== undefined) {
+      return response.data
+    } else {
+      // 检查是否是 401 错误
+      if (response.code === 401) {
+        this.handleUnauthorized()
+      }
+      throw new ApiError(
+        response.msg || '删除失败',
+        response.code || 500,
+        endpoint
+      )
+    }
+  }
+
+  // 处理标准响应格式的PUT请求 - 成功时直接返回data，失败时抛出异常
+  async putWithStandardResponse<T>(
+    endpoint: string, 
+    data?: any, 
+    skipAuth: boolean = false
+  ): Promise<T> {
+    interface StandardResponse {
+      code: number
+      msg: string
+      data?: T
+    }
+
+    const response = await this.put<StandardResponse>(endpoint, data, skipAuth)
+    
+    if (response.code === 200 && response.data !== undefined) {
+      return response.data
+    } else {
+      // 检查是否是 401 错误
+      if (response.code === 401) {
+        this.handleUnauthorized()
+      }
+      throw new ApiError(
+        response.msg || '更新失败',
+        response.code || 500,
         endpoint
       )
     }

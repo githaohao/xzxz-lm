@@ -90,8 +90,6 @@ export {
   getChatSessionById, 
   updateChatSession, 
   deleteChatSession, 
-  archiveChatSession, 
-  restoreChatSession, 
   getChatSessionMessages, 
   addChatMessage, 
   addChatMessagesBatch, 
